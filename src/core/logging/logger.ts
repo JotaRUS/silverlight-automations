@@ -1,6 +1,7 @@
 import pino from 'pino';
 
 import { env } from '../../config/env';
+import { LOG_REDACTION_OPTIONS } from './redaction';
 
 export const logger = pino({
   level: env.LOG_LEVEL,
@@ -10,5 +11,6 @@ export const logger = pino({
       return { level: label };
     }
   },
-  timestamp: pino.stdTimeFunctions.isoTime
+  timestamp: pino.stdTimeFunctions.isoTime,
+  redact: LOG_REDACTION_OPTIONS
 });
