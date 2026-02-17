@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import pinoHttp from 'pino-http';
 
 import { API_PREFIX } from '../config/constants';
+import { openApiSpec } from '../api/openapi/openApiSpec';
 import { authenticate, authorize, type RequestWithAuth } from '../core/auth/authMiddleware';
 import { errorMiddleware } from '../core/http/errorMiddleware';
 import type { RequestWithRawBody } from '../core/http/rawBody';
@@ -51,6 +52,9 @@ export function createApp(): Express {
   );
 
   app.use(`${API_PREFIX}/system`, systemRoutes);
+  app.get(`${API_PREFIX}/openapi.json`, (_request, response) => {
+    response.status(200).json(openApiSpec);
+  });
   app.use(`${API_PREFIX}/auth`, authRoutes);
   app.use(`${API_PREFIX}/projects`, projectsRoutes);
   app.use(`${API_PREFIX}/callers`, callersRoutes);

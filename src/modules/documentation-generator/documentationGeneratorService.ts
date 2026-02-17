@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { PrismaClient } from '@prisma/client';
 
 import { clock } from '../../core/time/clock';
+import { openApiSpec } from '../../api/openapi/openApiSpec';
 
 const GENERATED_DOCS_DIR = path.resolve(process.cwd(), 'docs/generated');
 
@@ -55,7 +56,11 @@ Google Sheets remains operational mirror only.
 
     await Promise.all([
       fs.writeFile(path.join(GENERATED_DOCS_DIR, 'architecture-summary.md'), architectureSummary),
-      fs.writeFile(path.join(GENERATED_DOCS_DIR, 'handover-summary.md'), handoverSummary)
+      fs.writeFile(path.join(GENERATED_DOCS_DIR, 'handover-summary.md'), handoverSummary),
+      fs.writeFile(
+        path.join(GENERATED_DOCS_DIR, 'openapi.json'),
+        JSON.stringify(openApiSpec, null, 2)
+      )
     ]);
   }
 }

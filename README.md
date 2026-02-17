@@ -19,3 +19,7 @@ Deterministic, queue-driven expert sourcing and outreach backend.
 - `npm run lint`
 - `npm test`
 - `npm run build`
+
+## API specification
+
+- Runtime endpoint: `GET /api/v1/openapi.json`
