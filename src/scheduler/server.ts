@@ -45,6 +45,26 @@ async function runScheduledMaintenance(): Promise<void> {
       )
     )
   );
+  await Promise.all(
+    activeCallers.map(async (caller) =>
+      getQueues().callAllocationQueue.add(
+        'call-allocation.assign-current',
+        {
+          correlationId: 'scheduler',
+          data: {
+            callerId: caller.id
+          }
+        },
+        {
+          jobId: buildJobId(
+            'call-allocation',
+            caller.id,
+            clock.now().toISOString().slice(0, 16)
+          )
+        }
+      )
+    )
+  );
 
   const pendingScreenings = await prisma.screeningResponse.findMany({
     where: {
@@ -123,6 +143,7 @@ async function runScheduledMaintenance(): Promise<void> {
       archivedCount,
       cutoff: cutoff.toISOString(),
       performanceJobsEnqueued: activeCallers.length,
+      callAllocationJobsEnqueued: activeCallers.length,
       screeningFollowupsEnqueued: pendingScreenings.length,
       signupChaseCandidates: signupChaseCandidates.length
     },

@@ -99,3 +99,9 @@ export const callValidationJobSchema = z.object({
 });
 
 export type CallValidationJob = z.infer<typeof callValidationJobSchema>;
+
+export const callAllocationJobSchema = z.object({
+  callerId: z.string().uuid()
+});
+
+export type CallAllocationJob = z.infer<typeof callAllocationJobSchema>;

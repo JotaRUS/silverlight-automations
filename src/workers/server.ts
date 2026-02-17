@@ -2,6 +2,7 @@ import { prisma } from '../db/client';
 import { logger } from '../core/logging/logger';
 import { installFatalProcessHandlers } from '../core/process/fatalHandlers';
 import { redisConnection } from '../queues/redis';
+import { createCallAllocationWorker } from '../queues/workers/callAllocationWorker';
 import { createCallValidationWorker } from '../queues/workers/callValidationWorker';
 import { createDeadLetterWorker } from '../queues/workers/deadLetterWorker';
 import { createDocumentationWorker } from '../queues/workers/documentationWorker';
@@ -17,6 +18,7 @@ import { createScreeningWorker } from '../queues/workers/screeningWorker';
 import { createYayCallEventsWorker } from '../queues/workers/yayCallEventsWorker';
 
 const yayWorker = createYayCallEventsWorker();
+const callAllocationWorker = createCallAllocationWorker();
 const callValidationWorker = createCallValidationWorker();
 const enrichmentWorker = createEnrichmentWorker();
 const outreachWorker = createOutreachWorker();
@@ -41,6 +43,7 @@ async function shutdown(): Promise<void> {
 
   await Promise.all([
     yayWorker.close(),
+    callAllocationWorker.close(),
     callValidationWorker.close(),
     enrichmentWorker.close(),
     outreachWorker.close(),
