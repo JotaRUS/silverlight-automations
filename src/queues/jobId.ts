@@ -6,7 +6,7 @@ function sanitizeJobIdPart(part: string): string {
 
 export function buildJobId(
   prefix: string,
-  ...parts: Array<string | number | null | undefined>
+  ...parts: (string | number | null | undefined)[]
 ): string {
   const normalizedParts = [prefix, ...parts].map((part) =>
     sanitizeJobIdPart(String(part ?? 'na'))
