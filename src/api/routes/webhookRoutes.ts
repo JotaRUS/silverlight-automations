@@ -11,11 +11,14 @@ import { getQueues } from '../../queues';
 import { parseYayWebhookEvent } from '../../integrations/yay/eventParser';
 import { verifyYayWebhookSignature } from '../../integrations/yay/webhookVerifier';
 import { EVENT_CATEGORIES } from '../../core/logging/observability';
+import { salesNavWebhookRoutes } from '../../modules/sales-nav/salesNavWebhookRoutes';
 
 const callLogRawRepository = new CallLogRawRepository(prisma);
 const processedWebhookEventsRepository = new ProcessedWebhookEventsRepository(prisma);
 
 export const webhookRoutes = Router();
+
+webhookRoutes.use('/sales-nav', salesNavWebhookRoutes);
 
 webhookRoutes.post('/yay', async (request, response, next) => {
   try {

@@ -25,6 +25,7 @@ const envSchema = z.object({
   OPENAI_CLASSIFICATION_TEMPERATURE: z.coerce.number().min(0).max(0.2).default(0.2),
 
   APOLLO_API_KEY: z.string().optional(),
+  SALES_NAV_WEBHOOK_SECRET: z.string().default('test-sales-nav-webhook-secret'),
 
   LEADMAGIC_API_KEY: z.string().optional(),
   PROSPEO_API_KEY: z.string().optional(),
