@@ -68,6 +68,11 @@ export const openApiSpec = {
         summary: 'Dispatch screening questions'
       }
     },
+    '/api/v1/documentation/generate': {
+      post: {
+        summary: 'Generate operational documentation artifacts'
+      }
+    },
     '/api/v1/call-tasks/current': {
       get: {
         summary: 'Caller fetches currently assigned call task'

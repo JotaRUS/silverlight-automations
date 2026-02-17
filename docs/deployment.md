@@ -25,3 +25,12 @@ docker compose exec api npm run db:migrate
 ```bash
 curl http://localhost:3000/api/v1/system/health
 ```
+
+## Generate documentation artifacts
+
+```bash
+curl -X POST http://localhost:3000/api/v1/documentation/generate \
+  -H "authorization: Bearer <admin-or-ops-jwt>"
+```
+
+Generated files are written to `docs/generated/`.

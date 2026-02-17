@@ -18,8 +18,10 @@ Deterministic, queue-driven expert sourcing and outreach backend.
 - `npm run typecheck`
 - `npm run lint`
 - `npm test`
+- `npm run test:integration` (requires running PostgreSQL/Redis)
 - `npm run build`
 
 ## API specification
 
 - Runtime endpoint: `GET /api/v1/openapi.json`
+- Documentation generation endpoint: `POST /api/v1/documentation/generate`

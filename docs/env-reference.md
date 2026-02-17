@@ -62,6 +62,7 @@
 
 - `YAY_WEBHOOK_SECRET`
 - `YAY_API_KEY`
+- `SALES_NAV_WEBHOOK_SECRET`
 
 ## Google Sheets
 

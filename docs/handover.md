@@ -19,11 +19,19 @@
 - DLQ archival strategy
 - Redis namespace prefixing per environment
 - HMAC + idempotent Yay webhook processing
+- Caller-only call task execution endpoints with role-enforced operator workflows
+- Tab-aware Google Sheets export with append/update row mapping
+- OpenAPI runtime endpoint (`/api/v1/openapi.json`) and generated docs artifacts
 
-## Immediate next implementation tracks
+## Current implementation status
 
-- Expand module endpoints (projects, sales nav intake, screening CRUD)
-- Complete enrichment provider adapters
-- Complete outreach channel adapters
-- Implement ranking and call-allocation workers
-- Implement Google Sheets sync jobs and exporters
+- API, workers, scheduler, Prisma schema, and queue topology are implemented.
+- Unit and route-level suites are green (`npm test`).
+- Integration suites are implemented under `tests/integration`, but require a running PostgreSQL/Redis environment.
+
+## Operational runbook pointers
+
+- `docs/setup.md` - local bootstrap
+- `docs/deployment.md` - docker compose deployment
+- `docs/env-reference.md` - required configuration keys
+- `docs/state-machines.md` - lifecycle transition references
