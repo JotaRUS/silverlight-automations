@@ -14,6 +14,7 @@ import { authRoutes } from '../api/routes/authRoutes';
 import { systemRoutes } from '../api/routes/systemRoutes';
 import { webhookRoutes } from '../api/routes/webhookRoutes';
 import { callersRoutes } from '../modules/callers/callersRoutes';
+import { callAllocationRoutes } from '../modules/call-allocation/callAllocationRoutes';
 import { jobTitleDiscoveryRoutes } from '../modules/job-title-engine/jobTitleDiscoveryRoutes';
 import { outreachRoutes } from '../modules/outreach/outreachRoutes';
 import { projectsRoutes } from '../modules/projects/projectsRoutes';
@@ -51,6 +52,7 @@ export function createApp(): Express {
   app.use(`${API_PREFIX}/auth`, authRoutes);
   app.use(`${API_PREFIX}/projects`, projectsRoutes);
   app.use(`${API_PREFIX}/callers`, callersRoutes);
+  app.use(`${API_PREFIX}/call-tasks`, callAllocationRoutes);
   app.use(`${API_PREFIX}/job-title-discovery`, jobTitleDiscoveryRoutes);
   app.use(`${API_PREFIX}/outreach`, outreachRoutes);
   app.use('/webhooks', webhookRoutes);

@@ -14,14 +14,25 @@ interface JsonRequestOptions {
 }
 
 export async function requestJson<TResponse>(options: JsonRequestOptions): Promise<TResponse> {
+  const encodedBody =
+    typeof options.body === 'string'
+      ? options.body
+      : options.body !== undefined
+        ? JSON.stringify(options.body)
+        : undefined;
+
+  const headers: Record<string, string> = {
+    ...(options.headers ?? {})
+  };
+  if (!headers['content-type'] && encodedBody) {
+    headers['content-type'] = 'application/json';
+  }
+
   const startedAt = clock.now().getTime();
   const response = await fetch(options.url, {
     method: options.method,
-    headers: {
-      'content-type': 'application/json',
-      ...(options.headers ?? {})
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined
+    headers,
+    body: encodedBody
   });
   const finishedAt = clock.now().getTime();
   const latencyMs = finishedAt - startedAt;
