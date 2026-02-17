@@ -18,7 +18,7 @@ export async function withIdentityAdvisoryLock<T>(
   const lockKey = advisoryLockKeyFromIdentity(normalizedIdentity);
 
   return withSerializableTransaction(prismaClient, async (transaction) => {
-    await transaction.$queryRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
+    await transaction.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
     return callback(transaction);
   });
 }
