@@ -26,17 +26,15 @@ function createWorkerStub<TData>(
 }
 
 describe('registerDeadLetterHandler', () => {
-  it('routes terminal failures to dead letter repository', async () => {
-    const createDeadLetterJob = vi.fn();
+  it('routes terminal failures to dead letter queue', async () => {
+    const enqueueDeadLetterJob = vi.fn();
     const logWarn = vi.fn();
     const logError = vi.fn();
     const listenerStore: CapturedFailureListener<{ expertId: string }> = {};
     const worker = createWorkerStub(listenerStore);
 
     registerDeadLetterHandler(worker, 'enrichment', {
-      repository: {
-        create: createDeadLetterJob
-      },
+      enqueue: enqueueDeadLetterJob,
       log: {
         warn: logWarn,
         error: logError
@@ -62,7 +60,7 @@ describe('registerDeadLetterHandler', () => {
 
     await listener?.(failedJob, new Error('provider unavailable'));
 
-    expect(createDeadLetterJob).toHaveBeenCalledWith(
+    expect(enqueueDeadLetterJob).toHaveBeenCalledWith(
       expect.objectContaining({
         queueName: 'enrichment',
         jobId: 'job-123',
@@ -74,16 +72,14 @@ describe('registerDeadLetterHandler', () => {
   });
 
   it('logs retryable failures without routing to dead letter', async () => {
-    const createDeadLetterJob = vi.fn();
+    const enqueueDeadLetterJob = vi.fn();
     const logWarn = vi.fn();
     const logError = vi.fn();
     const listenerStore: CapturedFailureListener<{ projectId: string }> = {};
     const worker = createWorkerStub(listenerStore);
 
     registerDeadLetterHandler(worker, 'screening', {
-      repository: {
-        create: createDeadLetterJob
-      },
+      enqueue: enqueueDeadLetterJob,
       log: {
         warn: logWarn,
         error: logError
@@ -109,7 +105,7 @@ describe('registerDeadLetterHandler', () => {
 
     await listener?.(retryableJob, new Error('temporary timeout'));
 
-    expect(createDeadLetterJob).not.toHaveBeenCalled();
+    expect(enqueueDeadLetterJob).not.toHaveBeenCalled();
     expect(logWarn).toHaveBeenCalledWith(
       expect.objectContaining({
         queue: 'screening',
@@ -123,16 +119,14 @@ describe('registerDeadLetterHandler', () => {
   });
 
   it('stores fallback payload when job data cannot be serialized', async () => {
-    const createDeadLetterJob = vi.fn();
+    const enqueueDeadLetterJob = vi.fn();
     const logWarn = vi.fn();
     const logError = vi.fn();
     const listenerStore: CapturedFailureListener<{ metadata: bigint }> = {};
     const worker = createWorkerStub(listenerStore);
 
     registerDeadLetterHandler(worker, 'ranking', {
-      repository: {
-        create: createDeadLetterJob
-      },
+      enqueue: enqueueDeadLetterJob,
       log: {
         warn: logWarn,
         error: logError
@@ -158,7 +152,7 @@ describe('registerDeadLetterHandler', () => {
 
     await listener?.(failedJob, new Error('non serializable payload'));
 
-    expect(createDeadLetterJob).toHaveBeenCalledWith(
+    expect(enqueueDeadLetterJob).toHaveBeenCalledWith(
       expect.objectContaining({
         queueName: 'ranking',
         payload: {

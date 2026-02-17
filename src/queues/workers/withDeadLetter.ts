@@ -1,12 +1,14 @@
-import type { Prisma } from '@prisma/client';
 import type { Job } from 'bullmq';
 
+import { clock } from '../../core/time/clock';
 import { logger } from '../../core/logging/logger';
-import { prisma } from '../../db/client';
-import { DeadLetterJobRepository } from '../../db/repositories/deadLetterJobRepository';
+import {
+  DEAD_LETTER_CAPTURE_JOB_NAME,
+  type DeadLetterEnvelope
+} from '../dlq/deadLetterPolicy';
+import { getQueues } from '..';
+import { buildJobId } from '../jobId';
 import type { CorrelatedJobData } from './withWorkerContext';
-
-const deadLetterRepository = new DeadLetterJobRepository(prisma);
 
 export interface FailedJobEventSource<TData> {
   on(
@@ -20,17 +22,21 @@ interface DeadLetterLogger {
   error: (payload: Record<string, unknown>, message: string) => void;
 }
 
-interface DeadLetterHandlerDependencies {
-  repository: Pick<DeadLetterJobRepository, 'create'>;
+export interface DeadLetterHandlerDependencies {
+  enqueue: (envelope: DeadLetterEnvelope) => Promise<void>;
   log: DeadLetterLogger;
 }
 
 const defaultDependencies: DeadLetterHandlerDependencies = {
-  repository: deadLetterRepository,
+  enqueue: async (envelope) => {
+    await getQueues().deadLetterQueue.add(DEAD_LETTER_CAPTURE_JOB_NAME, envelope, {
+      jobId: buildJobId('dead-letter', envelope.queueName, envelope.jobId, envelope.failedAt)
+    });
+  },
   log: logger
 };
 
-function toJsonPayload(payload: unknown): Prisma.InputJsonValue {
+function toSerializablePayload(payload: unknown): unknown {
   if (payload === undefined) {
     return {
       unavailable: true
@@ -38,7 +44,7 @@ function toJsonPayload(payload: unknown): Prisma.InputJsonValue {
   }
 
   try {
-    return JSON.parse(JSON.stringify(payload)) as Prisma.InputJsonValue;
+    return JSON.parse(JSON.stringify(payload)) as unknown;
   } catch {
     return {
       serializationError: 'payload_not_serializable'
@@ -88,14 +94,16 @@ async function routeFailedJobToDeadLetter<TData>(
   }
 
   const correlationId = extractCorrelationId(job.data);
-  await dependencies.repository.create({
+  const envelope: DeadLetterEnvelope = {
     queueName,
     jobId: job.id ?? 'unknown',
-    payload: toJsonPayload(job.data),
+    payload: toSerializablePayload(job.data),
     errorMessage: error.message,
-    stackTrace: error.stack,
+    stack: error.stack,
+    failedAt: clock.now().toISOString(),
     correlationId
-  });
+  };
+  await dependencies.enqueue(envelope);
 
   dependencies.log.error(
     {
@@ -103,6 +111,7 @@ async function routeFailedJobToDeadLetter<TData>(
       jobId: job.id,
       attemptsMade: job.attemptsMade,
       correlationId,
+      deadLetterJobId: buildJobId('dead-letter', queueName, job.id ?? 'unknown'),
       err: error
     },
     'worker-job-routed-to-dead-letter'

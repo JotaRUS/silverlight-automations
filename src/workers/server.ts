@@ -2,6 +2,7 @@ import { prisma } from '../db/client';
 import { logger } from '../core/logging/logger';
 import { installFatalProcessHandlers } from '../core/process/fatalHandlers';
 import { redisConnection } from '../queues/redis';
+import { createDeadLetterWorker } from '../queues/workers/deadLetterWorker';
 import { createEnrichmentWorker } from '../queues/workers/enrichmentWorker';
 import { createGoogleSheetsSyncWorker } from '../queues/workers/googleSheetsSyncWorker';
 import { createJobTitleDiscoveryWorker } from '../queues/workers/jobTitleDiscoveryWorker';
@@ -21,6 +22,7 @@ const rankingWorker = createRankingWorker();
 const performanceWorker = createPerformanceWorker();
 const googleSheetsSyncWorker = createGoogleSheetsSyncWorker();
 const screeningWorker = createScreeningWorker();
+const deadLetterWorker = createDeadLetterWorker();
 
 let shuttingDown = false;
 
@@ -40,7 +42,8 @@ async function shutdown(): Promise<void> {
     rankingWorker.close(),
     performanceWorker.close(),
     googleSheetsSyncWorker.close(),
-    screeningWorker.close()
+    screeningWorker.close(),
+    deadLetterWorker.close()
   ]);
   await redisConnection.quit();
   await prisma.$disconnect();
@@ -62,4 +65,4 @@ installFatalProcessHandlers({
   }
 });
 
-logger.info('yay call events worker started');
+logger.info('workers started');
