@@ -8,6 +8,7 @@ import { createLeadIngestionWorker } from '../queues/workers/leadIngestionWorker
 import { createPerformanceWorker } from '../queues/workers/performanceWorker';
 import { createRankingWorker } from '../queues/workers/rankingWorker';
 import { createSalesNavIngestionWorker } from '../queues/workers/salesNavIngestionWorker';
+import { createScreeningWorker } from '../queues/workers/screeningWorker';
 import { createYayCallEventsWorker } from '../queues/workers/yayCallEventsWorker';
 
 const yayWorker = createYayCallEventsWorker();
@@ -18,6 +19,7 @@ const jobTitleDiscoveryWorker = createJobTitleDiscoveryWorker();
 const rankingWorker = createRankingWorker();
 const performanceWorker = createPerformanceWorker();
 const googleSheetsSyncWorker = createGoogleSheetsSyncWorker();
+const screeningWorker = createScreeningWorker();
 
 let shuttingDown = false;
 
@@ -36,7 +38,8 @@ async function shutdown(): Promise<void> {
     jobTitleDiscoveryWorker.close(),
     rankingWorker.close(),
     performanceWorker.close(),
-    googleSheetsSyncWorker.close()
+    googleSheetsSyncWorker.close(),
+    screeningWorker.close()
   ]);
   await redisConnection.quit();
   await prisma.$disconnect();
