@@ -62,3 +62,40 @@ export const googleSheetsSyncJobSchema = z.object({
 });
 
 export type GoogleSheetsSyncJob = z.infer<typeof googleSheetsSyncJobSchema>;
+
+export const outreachMessageJobSchema = z.object({
+  projectId: z.string().uuid(),
+  expertId: z.string().uuid(),
+  channel: z.enum([
+    'PHONE',
+    'EMAIL',
+    'LINKEDIN',
+    'WHATSAPP',
+    'RESPONDIO',
+    'SMS',
+    'IMESSAGE',
+    'LINE',
+    'WECHAT',
+    'VIBER',
+    'TELEGRAM',
+    'KAKAOTALK',
+    'VOICEMAIL'
+  ]),
+  recipient: z.string().min(1),
+  body: z.string().min(1),
+  overrideCooldown: z.boolean().default(false)
+});
+
+export type OutreachMessageJob = z.infer<typeof outreachMessageJobSchema>;
+
+export const documentationGenerationJobSchema = z.object({
+  requestedByUserId: z.string().uuid().optional()
+});
+
+export type DocumentationGenerationJob = z.infer<typeof documentationGenerationJobSchema>;
+
+export const callValidationJobSchema = z.object({
+  event: z.unknown()
+});
+
+export type CallValidationJob = z.infer<typeof callValidationJobSchema>;

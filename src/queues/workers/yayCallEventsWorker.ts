@@ -1,23 +1,39 @@
 import { Worker } from 'bullmq';
 
 import { env } from '../../config/env';
-import { prisma } from '../../db/client';
 import type { YayWebhookEvent } from '../../integrations/yay/types';
-import { YayEventProcessor } from '../../modules/call-validation/yayEventProcessor';
+import { getQueues } from '..';
 import { QUEUE_NAMES } from '../definitions/queueNames';
+import { buildJobId } from '../jobId';
 import { bullMqConnection } from '../redis';
 import { createJobLogger, type CorrelatedJobData } from './withWorkerContext';
 import { registerDeadLetterHandler } from './withDeadLetter';
-
-const yayEventProcessor = new YayEventProcessor(prisma);
 
 export function createYayCallEventsWorker(): Worker<CorrelatedJobData<YayWebhookEvent>> {
   const worker = new Worker<CorrelatedJobData<YayWebhookEvent>>(
     QUEUE_NAMES.YAY_CALL_EVENTS,
     async (job) => {
       const jobLogger = createJobLogger(job);
-      await yayEventProcessor.process(job.data.data, job.data.correlationId);
-      jobLogger.info('yay-event-processed');
+      await getQueues().callValidationQueue.add(
+        'call-validation.process-yay',
+        {
+          correlationId: job.data.correlationId,
+          data: {
+            event: job.data.data
+          }
+        },
+        {
+          jobId: buildJobId('call-validation', job.data.data.event_id),
+          removeOnFail: false
+        }
+      );
+      jobLogger.info(
+        {
+          eventId: job.data.data.event_id,
+          eventType: job.data.data.event_type
+        },
+        'yay-event-forwarded-to-call-validation'
+      );
     },
     {
       connection: bullMqConnection,

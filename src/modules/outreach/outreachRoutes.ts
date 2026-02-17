@@ -3,8 +3,9 @@ import { z } from 'zod';
 
 import { authenticate, authorize } from '../../core/auth/authMiddleware';
 import { AppError } from '../../core/errors/appError';
-import { prisma } from '../../db/client';
-import { OutreachService } from './outreachService';
+import { getRequestContext } from '../../core/http/requestContext';
+import { getQueues } from '../../queues';
+import { buildJobId } from '../../queues/jobId';
 
 const sendOutreachMessageSchema = z.object({
   projectId: z.string().uuid(),
@@ -29,8 +30,6 @@ const sendOutreachMessageSchema = z.object({
   overrideCooldown: z.boolean().default(false)
 });
 
-const outreachService = new OutreachService(prisma);
-
 export const outreachRoutes = Router();
 
 outreachRoutes.use(authenticate, authorize(['admin', 'ops']));
@@ -41,8 +40,31 @@ outreachRoutes.post('/send', async (request, response, next) => {
     if (!parsed.success) {
       throw new AppError('Invalid outreach payload', 400, 'invalid_payload', parsed.error.flatten());
     }
-    const result = await outreachService.sendMessage(parsed.data);
-    response.status(200).json(result);
+
+    const correlationId = getRequestContext()?.correlationId ?? 'system';
+    const jobId = buildJobId(
+      'outreach',
+      parsed.data.projectId,
+      parsed.data.expertId,
+      parsed.data.channel,
+      correlationId
+    );
+
+    await getQueues().outreachQueue.add(
+      'outreach.send-message',
+      {
+        correlationId,
+        data: parsed.data
+      },
+      {
+        jobId
+      }
+    );
+
+    response.status(202).json({
+      accepted: true,
+      jobId
+    });
   } catch (error) {
     next(error);
   }
