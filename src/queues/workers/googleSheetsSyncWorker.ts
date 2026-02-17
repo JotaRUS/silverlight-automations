@@ -12,7 +12,8 @@ interface GoogleSheetsSyncJobData {
   tabName: string;
   entityType: string;
   entityId: string;
-  rowData: string[];
+  rowData?: string[];
+  entityPayload?: Record<string, unknown>;
 }
 
 const googleSheetsSyncService = new GoogleSheetsSyncService(prisma);

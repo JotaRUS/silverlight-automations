@@ -4,7 +4,7 @@ import { logger } from '../logging/logger';
 import { clock } from '../time/clock';
 
 interface JsonRequestOptions {
-  method: 'GET' | 'POST';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   url: string;
   headers?: Record<string, string>;
   body?: unknown;

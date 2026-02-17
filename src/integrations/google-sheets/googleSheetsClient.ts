@@ -15,6 +15,16 @@ export interface GoogleSheetRowInput {
   rowValues: string[];
 }
 
+export interface GoogleSheetUpdateInput extends GoogleSheetRowInput {
+  rowNumber: number;
+}
+
+interface GoogleSheetsAppendResponse {
+  updates?: {
+    updatedRange?: string;
+  };
+}
+
 export class GoogleSheetsClient {
   private accessToken: string | null = null;
   private expiresAtEpochMs = 0;
@@ -43,6 +53,17 @@ export class GoogleSheetsClient {
 
   private base64Url(value: string): string {
     return Buffer.from(value).toString('base64url');
+  }
+
+  private extractRowNumberFromRange(updatedRange: string | undefined): number | null {
+    if (!updatedRange) {
+      return null;
+    }
+    const match = /![A-Z]+(\d+):/.exec(updatedRange);
+    if (!match) {
+      return null;
+    }
+    return Number.parseInt(match[1], 10);
   }
 
   private async getAccessToken(correlationId: string): Promise<string> {
@@ -93,12 +114,12 @@ export class GoogleSheetsClient {
     return tokenResponse.access_token;
   }
 
-  public async appendRow(input: GoogleSheetRowInput, correlationId: string): Promise<void> {
+  public async appendRow(input: GoogleSheetRowInput, correlationId: string): Promise<number | null> {
     if (!env.GOOGLE_SHEETS_SPREADSHEET_ID) {
       throw new AppError('Google spreadsheet id missing', 500, 'google_spreadsheet_id_missing');
     }
     const token = await this.getAccessToken(correlationId);
-    await requestJson({
+    const response = await requestJson<GoogleSheetsAppendResponse>({
       method: 'POST',
       url: `https://sheets.googleapis.com/v4/spreadsheets/${env.GOOGLE_SHEETS_SPREADSHEET_ID}/values/${encodeURIComponent(input.tabName)}:append?valueInputOption=RAW`,
       headers: {
@@ -109,6 +130,29 @@ export class GoogleSheetsClient {
       },
       provider: 'google-sheets',
       operation: 'append-row',
+      correlationId
+    });
+
+    return this.extractRowNumberFromRange(response.updates?.updatedRange);
+  }
+
+  public async updateRow(input: GoogleSheetUpdateInput, correlationId: string): Promise<void> {
+    if (!env.GOOGLE_SHEETS_SPREADSHEET_ID) {
+      throw new AppError('Google spreadsheet id missing', 500, 'google_spreadsheet_id_missing');
+    }
+    const token = await this.getAccessToken(correlationId);
+    const rowStart = `${input.tabName}!A${String(input.rowNumber)}`;
+    await requestJson({
+      method: 'PUT',
+      url: `https://sheets.googleapis.com/v4/spreadsheets/${env.GOOGLE_SHEETS_SPREADSHEET_ID}/values/${encodeURIComponent(rowStart)}?valueInputOption=RAW`,
+      headers: {
+        authorization: `Bearer ${token}`
+      },
+      body: {
+        values: [input.rowValues]
+      },
+      provider: 'google-sheets',
+      operation: 'update-row',
       correlationId
     });
   }

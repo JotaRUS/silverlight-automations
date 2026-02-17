@@ -51,3 +51,14 @@ export type EnrichmentJob = z.infer<typeof enrichmentJobSchema>;
 export const jobTitleDiscoveryJobSchema = jobTitleDiscoveryRequestSchema;
 
 export type JobTitleDiscoveryJob = z.infer<typeof jobTitleDiscoveryJobSchema>;
+
+export const googleSheetsSyncJobSchema = z.object({
+  projectId: z.string().uuid().optional(),
+  tabName: z.string().min(1),
+  entityType: z.string().min(1),
+  entityId: z.string().min(1),
+  rowData: z.array(z.string()).optional(),
+  entityPayload: z.record(z.unknown()).optional()
+});
+
+export type GoogleSheetsSyncJob = z.infer<typeof googleSheetsSyncJobSchema>;
