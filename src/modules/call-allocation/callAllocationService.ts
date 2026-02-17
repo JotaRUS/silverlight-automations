@@ -119,6 +119,93 @@ export class CallAllocationService {
     });
   }
 
+  public async listOperatorTasks(input?: {
+    status?: 'PENDING' | 'ASSIGNED' | 'DIALING' | 'COMPLETED';
+    projectId?: string;
+    limit?: number;
+  }): Promise<CallTask[]> {
+    const limit = Math.min(input?.limit ?? 50, 100);
+    return this.prismaClient.callTask.findMany({
+      where: {
+        status: input?.status,
+        projectId: input?.projectId
+      },
+      orderBy: [{ priorityScore: 'desc' }, { createdAt: 'asc' }],
+      take: limit
+    });
+  }
+
+  public async requeueTaskByOperator(
+    taskId: string,
+    operatorUserId: string,
+    reason?: string
+  ): Promise<void> {
+    const task = await this.prismaClient.callTask.findUnique({
+      where: { id: taskId }
+    });
+    if (!task) {
+      throw new AppError('Task not found', 404, 'call_task_not_found');
+    }
+    if (task.status === 'COMPLETED' || task.status === 'CANCELLED' || task.status === 'EXPIRED') {
+      throw new AppError('Task cannot be requeued in current status', 400, 'call_task_requeue_invalid_status');
+    }
+
+    await this.prismaClient.$transaction(async (transaction) => {
+      if (task.status === 'ASSIGNED' || task.status === 'DIALING') {
+        assertValidTransition(callTaskTransitions, task.status, 'CANCELLED');
+        await transaction.callTask.update({
+          where: { id: task.id },
+          data: {
+            status: 'CANCELLED',
+            metadata: {
+              ...(task.metadata as Record<string, unknown> | undefined),
+              operatorRequeue: {
+                operatorUserId,
+                reason: reason ?? null,
+                timestamp: clock.now().toISOString()
+              }
+            }
+          }
+        });
+
+        await transaction.callTask.create({
+          data: {
+            projectId: task.projectId,
+            expertId: task.expertId,
+            status: 'PENDING',
+            priorityScore: task.priorityScore,
+            attemptedDialCount: task.attemptedDialCount,
+            metadata: {
+              requeuedFromTaskId: task.id,
+              operatorUserId,
+              reason: reason ?? null
+            }
+          }
+        });
+        return;
+      }
+
+      await transaction.callTask.update({
+        where: { id: task.id },
+        data: {
+          status: 'PENDING',
+          callerId: null,
+          assignedAt: null,
+          executionWindowStartsAt: null,
+          executionWindowEndsAt: null,
+          metadata: {
+            ...(task.metadata as Record<string, unknown> | undefined),
+            operatorRequeue: {
+              operatorUserId,
+              reason: reason ?? null,
+              timestamp: clock.now().toISOString()
+            }
+          }
+        }
+      });
+    });
+  }
+
   public async submitCallOutcome(
     callerId: string,
     taskId: string,

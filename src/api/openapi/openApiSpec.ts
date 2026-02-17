@@ -70,12 +70,22 @@ export const openApiSpec = {
     },
     '/api/v1/call-tasks/current': {
       get: {
-        summary: 'Fetch currently assigned call task'
+        summary: 'Caller fetches currently assigned call task'
       }
     },
     '/api/v1/call-tasks/{taskId}/outcome': {
       post: {
-        summary: 'Submit call task outcome'
+        summary: 'Caller submits call task outcome'
+      }
+    },
+    '/api/v1/call-tasks/operator/tasks': {
+      get: {
+        summary: 'Operator lists call tasks with filters'
+      }
+    },
+    '/api/v1/call-tasks/operator/tasks/{taskId}/requeue': {
+      post: {
+        summary: 'Operator requeues a task for reassignment'
       }
     },
     '/webhooks/yay': {
