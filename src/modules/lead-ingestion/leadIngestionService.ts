@@ -4,6 +4,8 @@ import type { Lead, Prisma, PrismaClient } from '@prisma/client';
 
 import { clock } from '../../core/time/clock';
 import { withIdentityAdvisoryLock } from '../../db/transactions/identityAdvisoryLock';
+import { getQueues } from '../../queues';
+import { enqueueWithContext } from '../../queues/producers/enqueueWithContext';
 import type { LeadIngestionJob } from '../../queues/definitions/jobPayloadSchemas';
 
 function normalizeValue(value?: string): string | undefined {
@@ -144,6 +146,19 @@ export class LeadIngestionService {
             invitationType: existingExpert ? 'project_invitation' : 'signup_invitation'
           }
         }
+      });
+
+      await enqueueWithContext(getQueues().enrichmentQueue, 'enrichment.run', {
+        leadId: createdLead.id,
+        projectId: job.projectId,
+        fullName: createdLead.fullName ?? undefined,
+        companyName: job.lead.companyName,
+        linkedinUrl: createdLead.linkedinUrl ?? undefined,
+        countryIso: createdLead.countryIso ?? undefined,
+        emails: job.lead.emails,
+        phones: job.lead.phones
+      }, {
+        jobId: `enrichment:${createdLead.id}`
       });
 
       return createdLead;

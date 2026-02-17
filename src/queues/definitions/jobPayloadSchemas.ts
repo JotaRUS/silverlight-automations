@@ -35,6 +35,19 @@ export const leadIngestionJobSchema = z.object({
 
 export type LeadIngestionJob = z.infer<typeof leadIngestionJobSchema>;
 
+export const enrichmentJobSchema = z.object({
+  leadId: z.string().uuid(),
+  projectId: z.string().uuid(),
+  fullName: z.string().optional(),
+  companyName: z.string().optional(),
+  linkedinUrl: z.string().url().optional(),
+  countryIso: z.string().length(2).optional(),
+  emails: z.array(z.string().email()).default([]),
+  phones: z.array(z.string()).default([])
+});
+
+export type EnrichmentJob = z.infer<typeof enrichmentJobSchema>;
+
 export const jobTitleDiscoveryJobSchema = jobTitleDiscoveryRequestSchema;
 
 export type JobTitleDiscoveryJob = z.infer<typeof jobTitleDiscoveryJobSchema>;
