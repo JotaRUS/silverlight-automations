@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 
 import { env } from '../config/env';
 import { logger } from '../core/logging/logger';
+import { installFatalProcessHandlers } from '../core/process/fatalHandlers';
 import { createApp } from './createApp';
 import { gracefulShutdown } from './shutdown';
 
@@ -36,4 +37,11 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   void onSignal('SIGINT');
+});
+
+installFatalProcessHandlers({
+  logger,
+  onFatalError: async () => {
+    await gracefulShutdown(server);
+  }
 });

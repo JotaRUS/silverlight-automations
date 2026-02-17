@@ -1,5 +1,6 @@
 import { prisma } from '../db/client';
 import { logger } from '../core/logging/logger';
+import { installFatalProcessHandlers } from '../core/process/fatalHandlers';
 import { redisConnection } from '../queues/redis';
 import { createEnrichmentWorker } from '../queues/workers/enrichmentWorker';
 import { createGoogleSheetsSyncWorker } from '../queues/workers/googleSheetsSyncWorker';
@@ -52,6 +53,13 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   void shutdown();
+});
+
+installFatalProcessHandlers({
+  logger,
+  onFatalError: async () => {
+    await shutdown();
+  }
 });
 
 logger.info('yay call events worker started');

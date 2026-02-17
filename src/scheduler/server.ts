@@ -1,5 +1,6 @@
 import { subDays } from './timeUtils';
 import { logger } from '../core/logging/logger';
+import { installFatalProcessHandlers } from '../core/process/fatalHandlers';
 import { clock } from '../core/time/clock';
 import { prisma } from '../db/client';
 import { DeadLetterJobRepository } from '../db/repositories/deadLetterJobRepository';
@@ -134,6 +135,13 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   void shutdown();
+});
+
+installFatalProcessHandlers({
+  logger,
+  onFatalError: async () => {
+    await shutdown();
+  }
 });
 
 schedulerHandle = setInterval(() => {
