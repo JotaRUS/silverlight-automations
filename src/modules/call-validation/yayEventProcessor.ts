@@ -4,6 +4,7 @@ import { ENFORCEMENT } from '../../config/constants';
 import { EVENT_CATEGORIES } from '../../core/logging/observability';
 import { clock } from '../../core/time/clock';
 import type { YayWebhookEvent } from '../../integrations/yay/types';
+import { evaluateCallFraud } from './callValidationRules';
 
 function parseOptionalDate(value?: string): Date | undefined {
   if (!value) {
@@ -106,43 +107,53 @@ export class YayEventProcessor {
           });
           break;
         case 'call.ended': {
-          const isValidDuration =
-            event.data.timing.duration_seconds >= ENFORCEMENT.MIN_CALL_DURATION_SECONDS;
           const timezoneMismatch = Boolean(
             caller?.timezone && expert?.timezone && caller.timezone !== expert.timezone
           );
-          const isFraud = !isValidDuration || timezoneMismatch;
 
           await transaction.callLog.update({
             where: { callId: event.data.call_id },
             data: {
-              validated: isValidDuration,
-              fraudFlag: isFraud
+              validated: false,
+              fraudFlag: false
             }
           });
 
-          if (isFraud) {
-            const tenMinutesAgo = new Date(clock.now().getTime() - 10 * 60 * 1000);
-            const recentShortCalls = await transaction.callLog.count({
-              where: {
-                callerId: metadata.caller_id,
-                createdAt: {
-                  gte: tenMinutesAgo
-                },
-                OR: [
-                  {
-                    durationSeconds: {
-                      lt: ENFORCEMENT.MIN_CALL_DURATION_SECONDS
-                    }
-                  },
-                  {
-                    fraudFlag: true
+          const tenMinutesAgo = new Date(clock.now().getTime() - 10 * 60 * 1000);
+          const recentShortCalls = await transaction.callLog.count({
+            where: {
+              callerId: metadata.caller_id,
+              createdAt: {
+                gte: tenMinutesAgo
+              },
+              OR: [
+                {
+                  durationSeconds: {
+                    lt: ENFORCEMENT.MIN_CALL_DURATION_SECONDS
                   }
-                ]
-              }
-            });
+                },
+                {
+                  fraudFlag: true
+                }
+              ]
+            }
+          });
+          const fraudEvaluation = evaluateCallFraud({
+            durationSeconds: event.data.timing.duration_seconds,
+            timezoneMismatch,
+            recentShortCalls
+          });
+          const isValidCall = !fraudEvaluation.isFraud;
 
-            const shouldSuspend = recentShortCalls >= 3;
+          await transaction.callLog.update({
+            where: { callId: event.data.call_id },
+            data: {
+              validated: isValidCall,
+              fraudFlag: fraudEvaluation.isFraud
+            }
+          });
+
+          if (fraudEvaluation.isFraud) {
             await transaction.callTask.update({
               where: { id: metadata.call_task_id },
               data: {
@@ -154,8 +165,8 @@ export class YayEventProcessor {
             await transaction.caller.update({
               where: { id: metadata.caller_id },
               data: {
-                allocationStatus: shouldSuspend ? 'SUSPENDED' : 'RESTRICTED_FRAUD',
-                fraudStatus: shouldSuspend ? 'SUSPENDED' : 'RESTRICTED'
+                allocationStatus: fraudEvaluation.shouldSuspend ? 'SUSPENDED' : 'RESTRICTED_FRAUD',
+                fraudStatus: fraudEvaluation.shouldSuspend ? 'SUSPENDED' : 'RESTRICTED'
               }
             });
 
@@ -171,7 +182,7 @@ export class YayEventProcessor {
                   durationSeconds: event.data.timing.duration_seconds,
                   timezoneMismatch,
                   recentShortCalls,
-                  enforcement: shouldSuspend ? 'suspended' : 'restricted'
+                  enforcement: fraudEvaluation.shouldSuspend ? 'suspended' : 'restricted'
                 })
               }
             });
