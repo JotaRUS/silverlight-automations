@@ -8,6 +8,7 @@ import { prisma } from '../../db/client';
 import { CallLogRawRepository } from '../../db/repositories/callLogRawRepository';
 import { ProcessedWebhookEventsRepository } from '../../db/repositories/processedWebhookEventsRepository';
 import { getQueues } from '../../queues';
+import { buildJobId } from '../../queues/jobId';
 import { parseYayWebhookEvent } from '../../integrations/yay/eventParser';
 import { verifyYayWebhookSignature } from '../../integrations/yay/webhookVerifier';
 import { EVENT_CATEGORIES } from '../../core/logging/observability';
@@ -66,7 +67,7 @@ webhookRoutes.post('/yay', async (request, response, next) => {
         data: event
       },
       {
-        jobId: `yay:${event.event_id}`,
+        jobId: buildJobId('yay', event.event_id),
         removeOnFail: false
       }
     );

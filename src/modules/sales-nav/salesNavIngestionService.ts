@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 
 import { getQueues } from '../../queues';
+import { buildJobId } from '../../queues/jobId';
 import type { SalesNavIngestionJob } from '../../queues/definitions/jobPayloadSchemas';
 import { enqueueWithContext } from '../../queues/producers/enqueueWithContext';
 
@@ -41,7 +42,13 @@ export class SalesNavIngestionService {
         salesNavSearchId: search.id,
         lead
       }, {
-        jobId: `lead-ingestion:${payload.projectId}:${search.id}:${String(index)}:${lead.linkedinUrl ?? lead.fullName ?? 'unknown'}`
+        jobId: buildJobId(
+          'lead-ingestion',
+          payload.projectId,
+          search.id,
+          String(index),
+          lead.linkedinUrl ?? lead.fullName ?? 'unknown'
+        )
       });
       enqueued += 1;
     }

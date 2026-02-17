@@ -5,6 +5,7 @@ import { clock } from '../core/time/clock';
 import { prisma } from '../db/client';
 import { DeadLetterJobRepository } from '../db/repositories/deadLetterJobRepository';
 import { getQueues } from '../queues';
+import { buildJobId } from '../queues/jobId';
 
 const deadLetterRepository = new DeadLetterJobRepository(prisma);
 const DLQ_ARCHIVE_AFTER_DAYS = 30;
@@ -35,7 +36,11 @@ async function runScheduledMaintenance(): Promise<void> {
           }
         },
         {
-          jobId: `performance:${caller.id}:${clock.now().toISOString().slice(0, 16)}`
+          jobId: buildJobId(
+            'performance',
+            caller.id,
+            clock.now().toISOString().slice(0, 16)
+          )
         }
       )
     )
@@ -68,7 +73,12 @@ async function runScheduledMaintenance(): Promise<void> {
           }
         },
         {
-          jobId: `screening-followup:${item.projectId}:${item.expertId}:${clock.now().toISOString().slice(0, 13)}`
+          jobId: buildJobId(
+            'screening-followup',
+            item.projectId,
+            item.expertId,
+            clock.now().toISOString().slice(0, 13)
+          )
         }
       )
     )

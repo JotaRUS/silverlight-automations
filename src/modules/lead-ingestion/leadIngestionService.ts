@@ -5,6 +5,7 @@ import type { Lead, Prisma, PrismaClient } from '@prisma/client';
 import { clock } from '../../core/time/clock';
 import { withIdentityAdvisoryLock } from '../../db/transactions/identityAdvisoryLock';
 import { getQueues } from '../../queues';
+import { buildJobId } from '../../queues/jobId';
 import { enqueueWithContext } from '../../queues/producers/enqueueWithContext';
 import type { LeadIngestionJob } from '../../queues/definitions/jobPayloadSchemas';
 
@@ -158,7 +159,7 @@ export class LeadIngestionService {
         emails: job.lead.emails,
         phones: job.lead.phones
       }, {
-        jobId: `enrichment:${createdLead.id}`
+        jobId: buildJobId('enrichment', createdLead.id)
       });
 
       return createdLead;

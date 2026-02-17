@@ -4,6 +4,7 @@ import { env } from '../../config/env';
 import { AppError } from '../../core/errors/appError';
 import { getRequestContext } from '../../core/http/requestContext';
 import { getQueues } from '../../queues';
+import { buildJobId } from '../../queues/jobId';
 import { enqueueWithContext } from '../../queues/producers/enqueueWithContext';
 import { salesNavWebhookPayloadSchema } from './salesNavWebhookSchemas';
 
@@ -24,7 +25,7 @@ salesNavWebhookRoutes.post('/', async (request, response, next) => {
     const payload = parsed.data;
     const correlationId = getRequestContext()?.correlationId ?? 'system';
     await enqueueWithContext(getQueues().salesNavIngestionQueue, 'sales-nav.ingest', payload, {
-      jobId: `sales-nav:${payload.projectId}:${payload.normalizedUrl}:${correlationId}`
+      jobId: buildJobId('sales-nav', payload.projectId, payload.normalizedUrl, correlationId)
     });
 
     response.status(202).json({

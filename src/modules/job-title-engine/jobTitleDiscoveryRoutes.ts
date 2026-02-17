@@ -4,6 +4,7 @@ import { authenticate, authorize } from '../../core/auth/authMiddleware';
 import { AppError } from '../../core/errors/appError';
 import { getRequestContext } from '../../core/http/requestContext';
 import { getQueues } from '../../queues';
+import { buildJobId } from '../../queues/jobId';
 import { enqueueWithContext } from '../../queues/producers/enqueueWithContext';
 import {
   jobTitleDiscoveryRequestSchema,
@@ -30,7 +31,7 @@ jobTitleDiscoveryRoutes.post('/trigger', async (request, response, next) => {
       JOB_NAME,
       payload,
       {
-        jobId: `job-title-discovery:${payload.projectId}:${correlationId}`
+        jobId: buildJobId('job-title-discovery', payload.projectId, correlationId)
       }
     );
 
