@@ -86,6 +86,16 @@ const channelProviderConfigs: Partial<Record<Channel, ChannelProviderConfig>> = 
 };
 
 export class MessagingClient {
+  private extractProviderMessageId(response: { id?: string; messageId?: string; data?: { id?: string; messageId?: string } }, fallbackPrefix: string): string {
+    return (
+      response.id ??
+      response.messageId ??
+      response.data?.id ??
+      response.data?.messageId ??
+      `${fallbackPrefix}-${String(clock.now().getTime())}`
+    );
+  }
+
   public async sendMessage(input: SendMessageInput): Promise<{ providerMessageId: string }> {
     const providerConfig = channelProviderConfigs[input.channel];
     if (!providerConfig?.apiKey) {
@@ -115,8 +125,7 @@ export class MessagingClient {
       correlationId: input.correlationId
     });
 
-    const providerMessageId =
-      response.id ?? response.messageId ?? `${input.channel}-${String(clock.now().getTime())}`;
+    const providerMessageId = this.extractProviderMessageId(response, input.channel);
     return {
       providerMessageId
     };

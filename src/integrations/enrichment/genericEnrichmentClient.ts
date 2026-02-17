@@ -9,6 +9,57 @@ interface GenericEnrichmentClientInput {
   apiKeyHeader?: string;
 }
 
+function toStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string');
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return [value];
+  }
+  return [];
+}
+
+function extractArrayFromKnownPaths(payload: Record<string, unknown>, keys: string[]): string[] {
+  for (const key of keys) {
+    const direct = toStringArray(payload[key]);
+    if (direct.length) {
+      return direct;
+    }
+  }
+
+  const data = payload.data;
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const nested = data as Record<string, unknown>;
+    for (const key of keys) {
+      const nestedValues = toStringArray(nested[key]);
+      if (nestedValues.length) {
+        return nestedValues;
+      }
+    }
+  }
+
+  return [];
+}
+
+function extractConfidenceScore(payload: Record<string, unknown>): number {
+  const candidateValues = [
+    payload.confidenceScore,
+    payload.confidence,
+    payload.score,
+    (payload.data as Record<string, unknown> | undefined)?.confidenceScore,
+    (payload.data as Record<string, unknown> | undefined)?.confidence,
+    (payload.data as Record<string, unknown> | undefined)?.score
+  ];
+
+  for (const value of candidateValues) {
+    if (typeof value === 'number' && value >= 0 && value <= 1) {
+      return value;
+    }
+  }
+
+  return 0.5;
+}
+
 export class GenericEnrichmentClient implements EnrichmentProviderClient {
   public readonly providerName: string;
   private readonly endpoint: string;
@@ -46,17 +97,22 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
       correlationId
     });
 
-    const parsed = response as {
-      emails?: string[];
-      phones?: string[];
-      confidenceScore?: number;
-    };
+    const parsed = (response ?? {}) as Record<string, unknown>;
+    const emails = extractArrayFromKnownPaths(parsed, [
+      'emails',
+      'email',
+      'workEmails',
+      'professionalEmails',
+      'personalEmails'
+    ]);
+    const phones = extractArrayFromKnownPaths(parsed, ['phones', 'phone', 'mobilePhones']);
+    const confidenceScore = extractConfidenceScore(parsed);
 
     return {
       provider: this.providerName,
-      emails: parsed.emails ?? [],
-      phones: parsed.phones ?? [],
-      confidenceScore: parsed.confidenceScore ?? 0.5,
+      emails,
+      phones,
+      confidenceScore,
       rawPayload: response
     };
   }
