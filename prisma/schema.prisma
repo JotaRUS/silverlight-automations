@@ -1,0 +1,658 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectStatus {
+  ACTIVE
+  COMPLETED
+  PAUSED
+  ARCHIVED
+}
+
+enum LeadStatus {
+  NEW
+  ENRICHING
+  ENRICHED
+  OUTREACH_PENDING
+  CONTACTED
+  REPLIED
+  DISQUALIFIED
+  CONVERTED
+}
+
+enum ExpertStatus {
+  PENDING
+  ACTIVE
+  SUPPRESSED
+  ARCHIVED
+}
+
+enum ContactType {
+  EMAIL
+  PHONE
+  LINKEDIN
+  HANDLE
+}
+
+enum ContactLabel {
+  PROFESSIONAL
+  PERSONAL
+  MOBILE
+  LANDLINE
+  OTHER
+}
+
+enum ContactVerificationStatus {
+  UNVERIFIED
+  VERIFIED
+  BOUNCED
+  INVALID
+}
+
+enum EnrichmentProvider {
+  LEADMAGIC
+  PROSPEO
+  EXA
+  ROCKETREACH
+  WIZA
+  FORAGER
+  ZELIQ
+  CONTACTOUT
+  DATAGM
+  PEOPLEDATALABS
+}
+
+enum EnrichmentAttemptStatus {
+  SUCCESS
+  FAILED
+  RATE_LIMITED
+  TRIAL_EXHAUSTED
+  SKIPPED
+}
+
+enum Channel {
+  PHONE
+  EMAIL
+  LINKEDIN
+  WHATSAPP
+  RESPONDIO
+  SMS
+  IMESSAGE
+  LINE
+  WECHAT
+  VIBER
+  TELEGRAM
+  KAKAOTALK
+  VOICEMAIL
+}
+
+enum ThreadStatus {
+  OPEN
+  CLOSED
+  ARCHIVED
+}
+
+enum MessageDirection {
+  OUTBOUND
+  INBOUND
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  RECEIVED
+}
+
+enum ScreeningStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETE
+  ESCALATED
+}
+
+enum CallTaskStatus {
+  PENDING
+  ASSIGNED
+  DIALING
+  COMPLETED
+  CANCELLED
+  EXPIRED
+  RESTRICTED
+}
+
+enum CallOutcome {
+  INTERESTED_SIGNUP_LINK_SENT
+  RETRYABLE_REJECTION
+  NEVER_CONTACT_AGAIN
+  NO_ANSWER
+  BUSY
+  FAILED
+}
+
+enum CallerAllocationStatus {
+  ACTIVE
+  WARMUP_GRACE
+  AT_RISK
+  PAUSED_LOW_DIAL_RATE
+  RESTRICTED_FRAUD
+  IDLE_NO_AVAILABLE_TASKS
+  SUSPENDED
+}
+
+enum FraudStatus {
+  NONE
+  FLAGGED
+  RESTRICTED
+  SUSPENDED
+}
+
+enum GoogleSheetOperation {
+  APPEND
+  UPDATE
+}
+
+enum ExportStatus {
+  SUCCESS
+  FAILED
+  RETRYING
+}
+
+enum SystemEventCategory {
+  SYSTEM
+  JOB
+  WEBHOOK
+  ENFORCEMENT
+  FRAUD
+  ALLOCATION
+}
+
+model Project {
+  id                   String                 @id @default(uuid()) @db.Uuid
+  name                 String
+  description          String?
+  targetThreshold      Int
+  signedUpCount        Int                    @default(0)
+  completionPercentage Decimal                @default(0) @db.Decimal(5, 2)
+  status               ProjectStatus          @default(ACTIVE)
+  priority             Int                    @default(0)
+  geographyIsoCodes    String[]
+  regionConfig         Json                   @db.JsonB
+  overrideCooldown     Boolean                @default(false)
+  metadata             Json?                  @db.JsonB
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  deletedAt            DateTime?
+  companies            Company[]
+  jobTitles            JobTitle[]
+  salesNavSearches     SalesNavSearch[]
+  leads                Lead[]
+  outreachThreads      OutreachThread[]
+  screeningQuestions   ScreeningQuestion[]
+  screeningResponses   ScreeningResponse[]
+  callTasks            CallTask[]
+  callLogs             CallLog[]
+  rankingSnapshots     RankingSnapshot[]
+  cooldownLogs         CooldownLog[]
+  googleSheetExports   GoogleSheetExport[]
+
+  @@index([status, priority, completionPercentage], map: "idx_project_ranking")
+  @@index([deletedAt], map: "idx_project_deleted_at")
+}
+
+model Company {
+  id          String    @id @default(uuid()) @db.Uuid
+  projectId   String    @db.Uuid
+  name        String
+  domain      String?
+  countryIso  String?
+  metadata    Json?     @db.JsonB
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  jobTitles   JobTitle[]
+  leads       Lead[]
+
+  @@unique([projectId, name], map: "uniq_company_project_name")
+  @@index([projectId], map: "idx_company_project")
+}
+
+model JobTitle {
+  id               String    @id @default(uuid()) @db.Uuid
+  projectId        String    @db.Uuid
+  companyId        String?   @db.Uuid
+  titleOriginal    String
+  titleNormalized  String
+  relevanceScore   Decimal   @db.Decimal(5, 2)
+  aiDecisionLog    Json      @db.JsonB
+  source           String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  company          Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, titleNormalized], map: "uniq_job_title_project_normalized")
+  @@index([projectId, relevanceScore], map: "idx_job_title_project_score")
+}
+
+model SalesNavSearch {
+  id               String    @id @default(uuid()) @db.Uuid
+  projectId        String    @db.Uuid
+  sourceUrl        String
+  normalizedUrl    String
+  metadata         Json      @db.JsonB
+  paginationCursor String?
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  leads            Lead[]
+
+  @@unique([projectId, normalizedUrl], map: "uniq_sales_nav_project_url")
+  @@index([projectId, isActive], map: "idx_sales_nav_project_active")
+}
+
+model Lead {
+  id                    String      @id @default(uuid()) @db.Uuid
+  projectId             String      @db.Uuid
+  companyId             String?     @db.Uuid
+  salesNavSearchId      String?     @db.Uuid
+  firstName             String?
+  lastName              String?
+  fullName              String?
+  jobTitle              String?
+  regionIso             String?
+  countryIso            String?
+  linkedinUrl           String?
+  status                LeadStatus  @default(NEW)
+  enrichmentConfidence  Decimal?    @db.Decimal(5, 2)
+  metadata              Json?       @db.JsonB
+  expertId              String?     @db.Uuid
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  deletedAt             DateTime?
+  project               Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  company               Company?    @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  salesNavSearch        SalesNavSearch? @relation(fields: [salesNavSearchId], references: [id], onDelete: SetNull)
+  expert                Expert?     @relation(fields: [expertId], references: [id], onDelete: SetNull)
+  enrichmentAttempts    EnrichmentAttempt[]
+
+  @@index([projectId, status], map: "idx_lead_project_status")
+  @@index([projectId, createdAt], map: "idx_lead_project_created_at")
+  @@index([linkedinUrl], map: "idx_lead_linkedin")
+}
+
+model Expert {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  firstName             String?
+  lastName              String?
+  fullName              String
+  currentRole           String?
+  currentCompany        String?
+  regionIso             String?
+  countryIso            String?
+  timezone              String?
+  languageCodes         String[]
+  preferredChannel      Channel?
+  status                ExpertStatus            @default(PENDING)
+  sourceLeadId          String?                 @db.Uuid
+  emailHash             String?
+  phoneHash             String?
+  linkedinHash          String?
+  metadata              Json?                   @db.JsonB
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  deletedAt             DateTime?
+  contacts              ExpertContact[]
+  enrichmentAttempts    EnrichmentAttempt[]
+  cooldownLogs          CooldownLog[]
+  outreachThreads       OutreachThread[]
+  screeningResponses    ScreeningResponse[]
+  callTasks             CallTask[]
+  callLogs              CallLog[]
+  rankingSnapshots      RankingSnapshot[]
+  leads                 Lead[]
+
+  @@index([emailHash], map: "idx_expert_email_hash")
+  @@index([phoneHash], map: "idx_expert_phone_hash")
+  @@index([linkedinHash], map: "idx_expert_linkedin_hash")
+  @@index([status, countryIso, timezone], map: "idx_expert_callable_filters")
+}
+
+model ExpertContact {
+  id                   String                    @id @default(uuid()) @db.Uuid
+  expertId             String                    @db.Uuid
+  type                 ContactType
+  label                ContactLabel              @default(OTHER)
+  value                String
+  valueNormalized      String
+  verificationStatus   ContactVerificationStatus @default(UNVERIFIED)
+  isPrimary            Boolean                   @default(false)
+  confidenceScore      Decimal?                  @db.Decimal(5, 2)
+  metadata             Json?                     @db.JsonB
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  deletedAt            DateTime?
+  expert               Expert                    @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  @@unique([expertId, type, valueNormalized], map: "uniq_expert_contact")
+  @@index([type, valueNormalized], map: "idx_contact_type_normalized_value")
+}
+
+model EnrichmentAttempt {
+  id                String                  @id @default(uuid()) @db.Uuid
+  leadId            String?                 @db.Uuid
+  expertId          String?                 @db.Uuid
+  provider          EnrichmentProvider
+  status            EnrichmentAttemptStatus
+  confidenceScore   Decimal?                @db.Decimal(5, 2)
+  responsePayload   Json?                   @db.JsonB
+  errorMessage      String?
+  rateLimited       Boolean                 @default(false)
+  trialExhausted    Boolean                 @default(false)
+  attemptedAt       DateTime                @default(now())
+  createdAt         DateTime                @default(now())
+  lead              Lead?                   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  expert            Expert?                 @relation(fields: [expertId], references: [id], onDelete: SetNull)
+
+  @@index([leadId, attemptedAt], map: "idx_enrichment_lead_attempted_at")
+  @@index([provider, status, attemptedAt], map: "idx_enrichment_provider_status")
+}
+
+model CooldownLog {
+  id                String    @id @default(uuid()) @db.Uuid
+  projectId         String    @db.Uuid
+  expertId          String    @db.Uuid
+  channel           Channel
+  blocked           Boolean
+  overrideApplied   Boolean   @default(false)
+  reason            String?
+  enforcedAt        DateTime  @default(now())
+  expiresAt         DateTime
+  createdAt         DateTime  @default(now())
+  project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  expert            Expert    @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, expertId, expiresAt], map: "idx_cooldown_lookup")
+  @@index([expertId, channel, expiresAt], map: "idx_cooldown_channel_expiry")
+}
+
+model OutreachThread {
+  id                  String        @id @default(uuid()) @db.Uuid
+  projectId           String        @db.Uuid
+  expertId            String        @db.Uuid
+  channel             Channel
+  status              ThreadStatus  @default(OPEN)
+  firstContactAt      DateTime?
+  lastMessageAt       DateTime?
+  replied             Boolean       @default(false)
+  metadata            Json?         @db.JsonB
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  deletedAt           DateTime?
+  project             Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  expert              Expert        @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  messages            OutreachMessage[]
+
+  @@index([projectId, status, lastMessageAt], map: "idx_thread_project_status_activity")
+  @@index([expertId, channel], map: "idx_thread_expert_channel")
+}
+
+model OutreachMessage {
+  id                 String           @id @default(uuid()) @db.Uuid
+  threadId           String           @db.Uuid
+  direction          MessageDirection
+  status             MessageStatus
+  body               String
+  providerMessageId  String?
+  metadata           Json?            @db.JsonB
+  sentAt             DateTime?
+  receivedAt         DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
+  thread             OutreachThread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt], map: "idx_outreach_message_thread_created")
+  @@index([providerMessageId], map: "idx_outreach_message_provider_id")
+}
+
+model ScreeningQuestion {
+  id               String    @id @default(uuid()) @db.Uuid
+  projectId        String    @db.Uuid
+  prompt           String
+  displayOrder     Int
+  required         Boolean   @default(true)
+  metadata         Json?     @db.JsonB
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  responses        ScreeningResponse[]
+
+  @@unique([projectId, displayOrder], map: "uniq_question_order_project")
+}
+
+model ScreeningResponse {
+  id               String          @id @default(uuid()) @db.Uuid
+  projectId        String          @db.Uuid
+  questionId       String          @db.Uuid
+  expertId         String          @db.Uuid
+  channel          Channel
+  responseText     String?
+  status           ScreeningStatus @default(PENDING)
+  score            Decimal?        @db.Decimal(5, 2)
+  qualified        Boolean?
+  metadata         Json?           @db.JsonB
+  submittedAt      DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  question         ScreeningQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  expert           Expert          @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, expertId, status], map: "idx_screening_progress")
+}
+
+model Caller {
+  id                        String                 @id @default(uuid()) @db.Uuid
+  email                     String                 @unique
+  name                      String
+  timezone                  String
+  languageCodes             String[]
+  regionIsoCodes            String[]
+  allocationStatus          CallerAllocationStatus @default(ACTIVE)
+  fraudStatus               FraudStatus            @default(NONE)
+  metadata                  Json?                  @db.JsonB
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @updatedAt
+  deletedAt                 DateTime?
+  callTasks                 CallTask[]
+  callLogs                  CallLog[]
+  performanceMetrics        CallerPerformanceMetric[]
+
+  @@index([allocationStatus, fraudStatus], map: "idx_caller_alloc_fraud")
+}
+
+model CallTask {
+  id                        String         @id @default(uuid()) @db.Uuid
+  projectId                 String         @db.Uuid
+  expertId                  String         @db.Uuid
+  callerId                  String?        @db.Uuid
+  status                    CallTaskStatus @default(PENDING)
+  callOutcome               CallOutcome?
+  priorityScore             Decimal        @default(0) @db.Decimal(8, 2)
+  assignedAt                DateTime?
+  executionWindowStartsAt   DateTime?
+  executionWindowEndsAt     DateTime?
+  attemptedDialCount        Int            @default(0)
+  metadata                  Json?          @db.JsonB
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+  deletedAt                 DateTime?
+  project                   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  expert                    Expert         @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  caller                    Caller?        @relation(fields: [callerId], references: [id], onDelete: SetNull)
+  callLogs                  CallLog[]
+
+  @@index([status, priorityScore], map: "idx_call_task_status_priority")
+  @@index([callerId, status], map: "idx_call_task_caller_status")
+  @@index([projectId, status], map: "idx_call_task_project_status")
+}
+
+model CallLog {
+  id                    String      @id @default(uuid()) @db.Uuid
+  callTaskId            String?     @db.Uuid
+  projectId             String?     @db.Uuid
+  expertId              String?     @db.Uuid
+  callerId              String?     @db.Uuid
+  callId                String      @unique
+  startedAt             DateTime?
+  answeredAt            DateTime?
+  endedAt               DateTime?
+  durationSeconds       Int         @default(0)
+  billableSeconds       Int?
+  ringDurationSeconds   Int?
+  dialedNumber          String
+  terminationReason     String?
+  sipCode               Int?
+  recordingUrl          String?
+  validated             Boolean     @default(false)
+  fraudFlag             Boolean     @default(false)
+  metadata              Json?       @db.JsonB
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  callTask              CallTask?   @relation(fields: [callTaskId], references: [id], onDelete: SetNull)
+  project               Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  expert                Expert?     @relation(fields: [expertId], references: [id], onDelete: SetNull)
+  caller                Caller?     @relation(fields: [callerId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt], map: "idx_call_log_project_created")
+  @@index([callerId, createdAt], map: "idx_call_log_caller_created")
+  @@index([expertId, createdAt], map: "idx_call_log_expert_created")
+}
+
+model CallLogRaw {
+  id               String    @id @default(uuid()) @db.Uuid
+  eventId          String    @unique
+  eventType        String
+  accountId        String?
+  payload          Json      @db.JsonB
+  receivedAt       DateTime  @default(now())
+  processed        Boolean   @default(false)
+  correlationId    String?
+
+  @@index([eventType, receivedAt], map: "idx_call_log_raw_type_received")
+}
+
+model ProcessedWebhookEvent {
+  id               String    @id @default(uuid()) @db.Uuid
+  eventId          String    @unique
+  hash             String
+  status           String
+  processedAt      DateTime  @default(now())
+
+  @@index([processedAt], map: "idx_processed_webhook_processed_at")
+}
+
+model CallerPerformanceMetric {
+  id                             String                 @id @default(uuid()) @db.Uuid
+  callerId                       String                 @db.Uuid
+  snapshotAt                     DateTime               @default(now())
+  rolling60MinuteDials           Int                    @default(0)
+  rolling60MinuteConnections     Int                    @default(0)
+  rolling60MinuteValidConnections Int                   @default(0)
+  shortCallsLastHour             Int                    @default(0)
+  activeCallExemptionSeconds     Int                    @default(0)
+  graceModeActive                Boolean                @default(false)
+  warmupStartedAt                DateTime?
+  allocationStatus               CallerAllocationStatus
+  performanceScore               Decimal?               @db.Decimal(6, 2)
+  createdAt                      DateTime               @default(now())
+  caller                         Caller                 @relation(fields: [callerId], references: [id], onDelete: Cascade)
+
+  @@index([callerId, snapshotAt], map: "idx_perf_caller_snapshot")
+}
+
+model RankingSnapshot {
+  id               String    @id @default(uuid()) @db.Uuid
+  projectId        String?   @db.Uuid
+  expertId         String?   @db.Uuid
+  score            Decimal   @db.Decimal(8, 3)
+  rank             Int
+  reason           String
+  metadata         Json?     @db.JsonB
+  createdAt        DateTime  @default(now())
+  project          Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  expert           Expert?   @relation(fields: [expertId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt, rank], map: "idx_ranking_created_rank")
+  @@index([projectId, createdAt], map: "idx_ranking_project_created")
+}
+
+model GoogleSheetExport {
+  id               String                @id @default(uuid()) @db.Uuid
+  projectId        String?               @db.Uuid
+  tabName          String
+  operation        GoogleSheetOperation
+  entityType       String
+  entityId         String
+  status           ExportStatus
+  payload          Json                  @db.JsonB
+  errorMessage     String?
+  attemptedAt      DateTime              @default(now())
+  createdAt        DateTime              @default(now())
+  project          Project?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([tabName, status, attemptedAt], map: "idx_sheet_export_tab_status")
+  @@index([entityType, entityId], map: "idx_sheet_export_entity")
+}
+
+model GoogleSheetRowMap {
+  id               String    @id @default(uuid()) @db.Uuid
+  entityType       String
+  entityId         String
+  sheetTab         String
+  rowNumber        Int
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([entityType, entityId, sheetTab], map: "uniq_sheet_row_map")
+  @@index([sheetTab, rowNumber], map: "idx_sheet_row_map_lookup")
+}
+
+model SystemEvent {
+  id               String              @id @default(uuid()) @db.Uuid
+  category         SystemEventCategory
+  entityType       String
+  entityId         String?
+  correlationId    String?
+  message          String
+  payload          Json?               @db.JsonB
+  createdAt        DateTime            @default(now())
+
+  @@index([category, createdAt], map: "idx_system_event_category_created")
+  @@index([entityType, entityId], map: "idx_system_event_entity")
+}
+
+model DeadLetterJob {
+  id               String    @id @default(uuid()) @db.Uuid
+  queueName        String
+  jobId            String
+  payload          Json      @db.JsonB
+  errorMessage     String
+  stackTrace       String?
+  failedAt         DateTime  @default(now())
+  archivedAt       DateTime?
+  correlationId    String?
+
+  @@index([queueName, failedAt], map: "idx_dlq_queue_failed_at")
+  @@index([archivedAt], map: "idx_dlq_archived_at")
+}
