@@ -75,6 +75,15 @@ export class YayEventProcessor {
         data: { processed: true }
       });
 
+      const [caller, expert] = await Promise.all([
+        transaction.caller.findUnique({
+          where: { id: metadata.caller_id }
+        }),
+        transaction.expert.findUnique({
+          where: { id: metadata.expert_id }
+        })
+      ]);
+
       switch (event.event_type) {
         case 'call.started':
           await transaction.callTask.update({
@@ -99,7 +108,10 @@ export class YayEventProcessor {
         case 'call.ended': {
           const isValidDuration =
             event.data.timing.duration_seconds >= ENFORCEMENT.MIN_CALL_DURATION_SECONDS;
-          const isFraud = !isValidDuration;
+          const timezoneMismatch = Boolean(
+            caller?.timezone && expert?.timezone && caller.timezone !== expert.timezone
+          );
+          const isFraud = !isValidDuration || timezoneMismatch;
 
           await transaction.callLog.update({
             where: { callId: event.data.call_id },
@@ -110,6 +122,27 @@ export class YayEventProcessor {
           });
 
           if (isFraud) {
+            const tenMinutesAgo = new Date(clock.now().getTime() - 10 * 60 * 1000);
+            const recentShortCalls = await transaction.callLog.count({
+              where: {
+                callerId: metadata.caller_id,
+                createdAt: {
+                  gte: tenMinutesAgo
+                },
+                OR: [
+                  {
+                    durationSeconds: {
+                      lt: ENFORCEMENT.MIN_CALL_DURATION_SECONDS
+                    }
+                  },
+                  {
+                    fraudFlag: true
+                  }
+                ]
+              }
+            });
+
+            const shouldSuspend = recentShortCalls >= 3;
             await transaction.callTask.update({
               where: { id: metadata.call_task_id },
               data: {
@@ -121,8 +154,8 @@ export class YayEventProcessor {
             await transaction.caller.update({
               where: { id: metadata.caller_id },
               data: {
-                allocationStatus: 'RESTRICTED_FRAUD',
-                fraudStatus: 'RESTRICTED'
+                allocationStatus: shouldSuspend ? 'SUSPENDED' : 'RESTRICTED_FRAUD',
+                fraudStatus: shouldSuspend ? 'SUSPENDED' : 'RESTRICTED'
               }
             });
 
@@ -135,7 +168,10 @@ export class YayEventProcessor {
                 message: 'short_call_detected_restriction_applied',
                 payload: toJsonValue({
                   callId: event.data.call_id,
-                  durationSeconds: event.data.timing.duration_seconds
+                  durationSeconds: event.data.timing.duration_seconds,
+                  timezoneMismatch,
+                  recentShortCalls,
+                  enforcement: shouldSuspend ? 'suspended' : 'restricted'
                 })
               }
             });

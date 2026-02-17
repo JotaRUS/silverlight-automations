@@ -59,8 +59,40 @@ export class CallAllocationService {
           },
           languageCodes: {
             hasSome: caller.languageCodes
+          },
+          OR: [
+            {
+              timezone: caller.timezone
+            },
+            {
+              timezone: null
+            }
+          ]
+        },
+        AND: [
+          {
+            OR: [
+              {
+                executionWindowEndsAt: null
+              },
+              {
+                executionWindowEndsAt: {
+                  gte: clock.now()
+                }
+              }
+            ]
           }
-        }
+        ],
+        OR: [
+          {
+            executionWindowStartsAt: null
+          },
+          {
+            executionWindowStartsAt: {
+              lte: clock.now()
+            }
+          }
+        ]
       },
       orderBy: [{ priorityScore: 'desc' }, { createdAt: 'asc' }]
     });
