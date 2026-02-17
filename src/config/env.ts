@@ -51,7 +51,7 @@ const envSchema = z.object({
   KAKAOTALK_API_KEY: z.string().optional(),
   VOICEMAIL_DROP_API_KEY: z.string().optional(),
 
-  YAY_WEBHOOK_SECRET: z.string().optional(),
+  YAY_WEBHOOK_SECRET: z.string().default('test-yay-webhook-secret'),
   YAY_API_KEY: z.string().optional(),
 
   GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: z.string().optional(),

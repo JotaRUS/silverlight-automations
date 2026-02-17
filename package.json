@@ -11,6 +11,9 @@
     "start": "node dist/app/server.js",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
+    "prisma:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
     "test": "vitest run",
     "test:watch": "vitest"
   },

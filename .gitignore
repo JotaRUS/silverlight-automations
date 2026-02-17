@@ -47,9 +47,7 @@ Thumbs.db
 ########################################
 # Prisma
 ########################################
-prisma/migrations/
-# Uncomment below ONLY if you want migrations committed:
-# !prisma/migrations/
+!prisma/migrations/
 
 ########################################
 # Redis dump files
