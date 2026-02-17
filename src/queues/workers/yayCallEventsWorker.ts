@@ -1,13 +1,13 @@
 import { Worker } from 'bullmq';
 
 import { env } from '../../config/env';
-import { logger } from '../../core/logging/logger';
 import { prisma } from '../../db/client';
 import type { YayWebhookEvent } from '../../integrations/yay/types';
 import { YayEventProcessor } from '../../modules/call-validation/yayEventProcessor';
 import { QUEUE_NAMES } from '../definitions/queueNames';
 import { bullMqConnection } from '../redis';
 import { createJobLogger, type CorrelatedJobData } from './withWorkerContext';
+import { registerDeadLetterHandler } from './withDeadLetter';
 
 const yayEventProcessor = new YayEventProcessor(prisma);
 
@@ -26,16 +26,6 @@ export function createYayCallEventsWorker(): Worker<CorrelatedJobData<YayWebhook
     }
   );
 
-  worker.on('failed', (job, error) => {
-    logger.error(
-      {
-        queue: QUEUE_NAMES.YAY_CALL_EVENTS,
-        jobId: job?.id,
-        err: error
-      },
-      'yay-worker-job-failed'
-    );
-  });
-
+  registerDeadLetterHandler(worker, QUEUE_NAMES.YAY_CALL_EVENTS);
   return worker;
 }

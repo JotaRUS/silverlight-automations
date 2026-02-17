@@ -9,6 +9,7 @@ import { bullMqConnection } from '../redis';
 import { createJobLogger, type CorrelatedJobData } from './withWorkerContext';
 import { jobTitleDiscoveryJobSchema, type JobTitleDiscoveryJob } from '../definitions/jobPayloadSchemas';
 import { JobTitleDiscoveryService } from '../../modules/job-title-engine/jobTitleDiscoveryService';
+import { registerDeadLetterHandler } from './withDeadLetter';
 
 const jobTitleDiscoveryService = new JobTitleDiscoveryService({
   prismaClient: prisma,
@@ -17,7 +18,7 @@ const jobTitleDiscoveryService = new JobTitleDiscoveryService({
 });
 
 export function createJobTitleDiscoveryWorker(): Worker<CorrelatedJobData<JobTitleDiscoveryJob>> {
-  return new Worker<CorrelatedJobData<JobTitleDiscoveryJob>>(
+  const worker = new Worker<CorrelatedJobData<JobTitleDiscoveryJob>>(
     QUEUE_NAMES.JOB_TITLE_DISCOVERY,
     async (job) => {
       const jobLogger = createJobLogger(job);
@@ -31,4 +32,7 @@ export function createJobTitleDiscoveryWorker(): Worker<CorrelatedJobData<JobTit
       concurrency: 5
     }
   );
+
+  registerDeadLetterHandler(worker, QUEUE_NAMES.JOB_TITLE_DISCOVERY);
+  return worker;
 }

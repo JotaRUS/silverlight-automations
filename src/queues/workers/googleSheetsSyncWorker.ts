@@ -6,6 +6,7 @@ import { GoogleSheetsSyncService } from '../../modules/google-sheets-sync/google
 import { QUEUE_NAMES } from '../definitions/queueNames';
 import { bullMqConnection } from '../redis';
 import { createJobLogger, type CorrelatedJobData } from './withWorkerContext';
+import { registerDeadLetterHandler } from './withDeadLetter';
 
 interface GoogleSheetsSyncJobData {
   projectId?: string;
@@ -19,7 +20,7 @@ interface GoogleSheetsSyncJobData {
 const googleSheetsSyncService = new GoogleSheetsSyncService(prisma);
 
 export function createGoogleSheetsSyncWorker(): Worker<CorrelatedJobData<GoogleSheetsSyncJobData>> {
-  return new Worker<CorrelatedJobData<GoogleSheetsSyncJobData>>(
+  const worker = new Worker<CorrelatedJobData<GoogleSheetsSyncJobData>>(
     QUEUE_NAMES.GOOGLE_SHEETS_SYNC,
     async (job) => {
       const jobLogger = createJobLogger(job);
@@ -32,4 +33,7 @@ export function createGoogleSheetsSyncWorker(): Worker<CorrelatedJobData<GoogleS
       concurrency: 4
     }
   );
+
+  registerDeadLetterHandler(worker, QUEUE_NAMES.GOOGLE_SHEETS_SYNC);
+  return worker;
 }

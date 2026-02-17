@@ -7,11 +7,12 @@ import { salesNavIngestionJobSchema, type SalesNavIngestionJob } from '../defini
 import { QUEUE_NAMES } from '../definitions/queueNames';
 import { bullMqConnection } from '../redis';
 import { createJobLogger, type CorrelatedJobData } from './withWorkerContext';
+import { registerDeadLetterHandler } from './withDeadLetter';
 
 const salesNavIngestionService = new SalesNavIngestionService(prisma);
 
 export function createSalesNavIngestionWorker(): Worker<CorrelatedJobData<SalesNavIngestionJob>> {
-  return new Worker<CorrelatedJobData<SalesNavIngestionJob>>(
+  const worker = new Worker<CorrelatedJobData<SalesNavIngestionJob>>(
     QUEUE_NAMES.SALES_NAV_INGESTION,
     async (job) => {
       const jobLogger = createJobLogger(job);
@@ -25,4 +26,7 @@ export function createSalesNavIngestionWorker(): Worker<CorrelatedJobData<SalesN
       concurrency: 5
     }
   );
+
+  registerDeadLetterHandler(worker, QUEUE_NAMES.SALES_NAV_INGESTION);
+  return worker;
 }

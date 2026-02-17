@@ -6,6 +6,7 @@ import { PerformanceService } from '../../modules/performance-engine/performance
 import { QUEUE_NAMES } from '../definitions/queueNames';
 import { bullMqConnection } from '../redis';
 import { createJobLogger, type CorrelatedJobData } from './withWorkerContext';
+import { registerDeadLetterHandler } from './withDeadLetter';
 
 const performanceService = new PerformanceService(prisma);
 
@@ -14,7 +15,7 @@ interface PerformanceJobPayload {
 }
 
 export function createPerformanceWorker(): Worker<CorrelatedJobData<PerformanceJobPayload>> {
-  return new Worker<CorrelatedJobData<PerformanceJobPayload>>(
+  const worker = new Worker<CorrelatedJobData<PerformanceJobPayload>>(
     QUEUE_NAMES.PERFORMANCE,
     async (job) => {
       const jobLogger = createJobLogger(job);
@@ -27,4 +28,7 @@ export function createPerformanceWorker(): Worker<CorrelatedJobData<PerformanceJ
       concurrency: 5
     }
   );
+
+  registerDeadLetterHandler(worker, QUEUE_NAMES.PERFORMANCE);
+  return worker;
 }

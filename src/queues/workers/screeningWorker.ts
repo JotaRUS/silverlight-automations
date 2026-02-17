@@ -7,6 +7,7 @@ import { ScreeningService } from '../../modules/screening/screeningService';
 import { QUEUE_NAMES } from '../definitions/queueNames';
 import { bullMqConnection } from '../redis';
 import { createJobLogger, type CorrelatedJobData } from './withWorkerContext';
+import { registerDeadLetterHandler } from './withDeadLetter';
 
 const screeningFollowUpSchema = z.object({
   projectId: z.string().uuid(),
@@ -18,7 +19,7 @@ type ScreeningFollowUpJob = z.infer<typeof screeningFollowUpSchema>;
 const screeningService = new ScreeningService(prisma);
 
 export function createScreeningWorker(): Worker<CorrelatedJobData<ScreeningFollowUpJob>> {
-  return new Worker<CorrelatedJobData<ScreeningFollowUpJob>>(
+  const worker = new Worker<CorrelatedJobData<ScreeningFollowUpJob>>(
     QUEUE_NAMES.SCREENING,
     async (job) => {
       const jobLogger = createJobLogger(job);
@@ -32,4 +33,7 @@ export function createScreeningWorker(): Worker<CorrelatedJobData<ScreeningFollo
       concurrency: 10
     }
   );
+
+  registerDeadLetterHandler(worker, QUEUE_NAMES.SCREENING);
+  return worker;
 }

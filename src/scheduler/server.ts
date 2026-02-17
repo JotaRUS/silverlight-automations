@@ -5,16 +5,16 @@ import { clock } from '../core/time/clock';
 import { prisma } from '../db/client';
 import { DeadLetterJobRepository } from '../db/repositories/deadLetterJobRepository';
 import { getQueues } from '../queues';
+import { DEAD_LETTER_RETENTION_DAYS } from '../queues/dlq/deadLetterPolicy';
 import { buildJobId } from '../queues/jobId';
 
 const deadLetterRepository = new DeadLetterJobRepository(prisma);
-const DLQ_ARCHIVE_AFTER_DAYS = 30;
 const SCHEDULER_INTERVAL_MS = 60 * 1000;
 
 let schedulerHandle: NodeJS.Timeout | undefined;
 
 async function runScheduledMaintenance(): Promise<void> {
-  const cutoff = subDays(clock.now(), DLQ_ARCHIVE_AFTER_DAYS);
+  const cutoff = subDays(clock.now(), DEAD_LETTER_RETENTION_DAYS);
   const archivedCount = await deadLetterRepository.archiveOlderThan(cutoff);
 
   const activeCallers = await prisma.caller.findMany({

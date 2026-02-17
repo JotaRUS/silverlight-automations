@@ -7,11 +7,12 @@ import { enrichmentJobSchema, type EnrichmentJob } from '../definitions/jobPaylo
 import { QUEUE_NAMES } from '../definitions/queueNames';
 import { bullMqConnection } from '../redis';
 import { createJobLogger, type CorrelatedJobData } from './withWorkerContext';
+import { registerDeadLetterHandler } from './withDeadLetter';
 
 const enrichmentService = new EnrichmentService(prisma);
 
 export function createEnrichmentWorker(): Worker<CorrelatedJobData<EnrichmentJob>> {
-  return new Worker<CorrelatedJobData<EnrichmentJob>>(
+  const worker = new Worker<CorrelatedJobData<EnrichmentJob>>(
     QUEUE_NAMES.ENRICHMENT,
     async (job) => {
       const jobLogger = createJobLogger(job);
@@ -25,4 +26,7 @@ export function createEnrichmentWorker(): Worker<CorrelatedJobData<EnrichmentJob
       concurrency: 6
     }
   );
+
+  registerDeadLetterHandler(worker, QUEUE_NAMES.ENRICHMENT);
+  return worker;
 }

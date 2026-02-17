@@ -7,11 +7,12 @@ import { leadIngestionJobSchema, type LeadIngestionJob } from '../definitions/jo
 import { QUEUE_NAMES } from '../definitions/queueNames';
 import { bullMqConnection } from '../redis';
 import { createJobLogger, type CorrelatedJobData } from './withWorkerContext';
+import { registerDeadLetterHandler } from './withDeadLetter';
 
 const leadIngestionService = new LeadIngestionService(prisma);
 
 export function createLeadIngestionWorker(): Worker<CorrelatedJobData<LeadIngestionJob>> {
-  return new Worker<CorrelatedJobData<LeadIngestionJob>>(
+  const worker = new Worker<CorrelatedJobData<LeadIngestionJob>>(
     QUEUE_NAMES.LEAD_INGESTION,
     async (job) => {
       const jobLogger = createJobLogger(job);
@@ -25,4 +26,7 @@ export function createLeadIngestionWorker(): Worker<CorrelatedJobData<LeadIngest
       concurrency: 10
     }
   );
+
+  registerDeadLetterHandler(worker, QUEUE_NAMES.LEAD_INGESTION);
+  return worker;
 }
