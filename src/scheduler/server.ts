@@ -161,12 +161,22 @@ async function shutdown(): Promise<void> {
   logger.info('scheduler shutdown complete');
 }
 
+async function onSignal(signal: NodeJS.Signals): Promise<void> {
+  try {
+    await shutdown();
+    process.exit(0);
+  } catch (error) {
+    logger.error({ err: error, signal }, 'failed during scheduler shutdown');
+    process.exit(1);
+  }
+}
+
 process.on('SIGTERM', () => {
-  void shutdown();
+  void onSignal('SIGTERM');
 });
 
 process.on('SIGINT', () => {
-  void shutdown();
+  void onSignal('SIGINT');
 });
 
 installFatalProcessHandlers({
