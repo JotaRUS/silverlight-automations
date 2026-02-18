@@ -6,6 +6,9 @@ services:
     command: node dist/app/server.js
     env_file:
       - .env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/expert_sourcing
+      REDIS_URL: redis://redis:6379
     ports:
       - '3000:3000'
     depends_on:
@@ -20,6 +23,9 @@ services:
     command: node dist/workers/server.js
     env_file:
       - .env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/expert_sourcing
+      REDIS_URL: redis://redis:6379
     depends_on:
       - postgres
       - redis
@@ -32,6 +38,9 @@ services:
     command: node dist/scheduler/server.js
     env_file:
       - .env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/expert_sourcing
+      REDIS_URL: redis://redis:6379
     depends_on:
       - postgres
       - redis
