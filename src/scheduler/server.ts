@@ -4,7 +4,7 @@ import { installFatalProcessHandlers } from '../core/process/fatalHandlers';
 import { clock } from '../core/time/clock';
 import { prisma } from '../db/client';
 import { DeadLetterJobRepository } from '../db/repositories/deadLetterJobRepository';
-import { getQueues } from '../queues';
+import { closeQueues, getQueues } from '../queues';
 import { DEAD_LETTER_RETENTION_DAYS } from '../queues/dlq/deadLetterPolicy';
 import { buildJobId } from '../queues/jobId';
 
@@ -156,6 +156,7 @@ async function shutdown(): Promise<void> {
     clearInterval(schedulerHandle);
     schedulerHandle = undefined;
   }
+  await closeQueues();
   await prisma.$disconnect();
   logger.info('scheduler shutdown complete');
 }
