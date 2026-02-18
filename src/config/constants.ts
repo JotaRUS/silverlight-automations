@@ -1,0 +1,21 @@
+export const API_PREFIX = '/api/v1';
+
+export const ENFORCEMENT = {
+  COOLDOWN_DAYS: 30,
+  MIN_CALL_DURATION_SECONDS: 5,
+  DIALS_PER_HOUR_TARGET: 30,
+  CALLER_WARMUP_GRACE_MINUTES: 5,
+  CALLER_AT_RISK_THRESHOLD_MINUTES: 5,
+  CALLER_PAUSE_THRESHOLD_MINUTES: 10,
+  SIGNUP_CHASE_RETRY_AFTER_HOURS: 24,
+  SIGNUP_CHASE_MAX_DAILY_CALL_ATTEMPTS: 3
+} as const;
+
+export const YAY_WEBHOOK = {
+  MAX_EVENT_AGE_MS: 5 * 60 * 1000
+} as const;
+
+export const JOB_NAMES = {
+  YAY_CALL_EVENT: 'yay.call-event',
+  DEAD_LETTER_ARCHIVAL: 'dead-letter.archival'
+} as const;
