@@ -85,4 +85,5 @@ export async function closeQueues(): Promise<void> {
     queueRegistry.deadLetterQueue
   ];
   await Promise.all(queueList.map((queue) => queue.close()));
+  queueRegistry = null;
 }

@@ -3,6 +3,7 @@ import type { CallTask, Caller, PrismaClient } from '@prisma/client';
 import { AppError } from '../../core/errors/appError';
 import { assertValidTransition, type TransitionMap } from '../../core/state-machine/assertValidTransition';
 import { clock } from '../../core/time/clock';
+import { withSerializableTransaction } from '../../db/transactions/withSerializableTransaction';
 
 const callTaskTransitions: TransitionMap<
   'PENDING' | 'ASSIGNED' | 'DIALING' | 'COMPLETED' | 'CANCELLED' | 'EXPIRED' | 'RESTRICTED'
@@ -35,87 +36,89 @@ export class CallAllocationService {
       return null;
     }
 
-    const existingAssignedTask = await this.prismaClient.callTask.findFirst({
-      where: {
-        callerId,
-        status: {
-          in: ['ASSIGNED', 'DIALING']
+    return withSerializableTransaction(this.prismaClient, async (tx) => {
+      const existingAssignedTask = await tx.callTask.findFirst({
+        where: {
+          callerId,
+          status: {
+            in: ['ASSIGNED', 'DIALING']
+          }
+        },
+        orderBy: {
+          updatedAt: 'desc'
         }
-      },
-      orderBy: {
-        updatedAt: 'desc'
+      });
+      if (existingAssignedTask) {
+        return existingAssignedTask;
       }
-    });
-    if (existingAssignedTask) {
-      return existingAssignedTask;
-    }
 
-    const task = await this.prismaClient.callTask.findFirst({
-      where: {
-        status: 'PENDING',
-        expert: {
-          countryIso: {
-            in: caller.regionIsoCodes
+      const task = await tx.callTask.findFirst({
+        where: {
+          status: 'PENDING',
+          expert: {
+            countryIso: {
+              in: caller.regionIsoCodes
+            },
+            languageCodes: {
+              hasSome: caller.languageCodes
+            },
+            OR: [
+              {
+                timezone: caller.timezone
+              },
+              {
+                timezone: null
+              }
+            ]
           },
-          languageCodes: {
-            hasSome: caller.languageCodes
-          },
+          AND: [
+            {
+              OR: [
+                {
+                  executionWindowEndsAt: null
+                },
+                {
+                  executionWindowEndsAt: {
+                    gte: clock.now()
+                  }
+                }
+              ]
+            }
+          ],
           OR: [
             {
-              timezone: caller.timezone
+              executionWindowStartsAt: null
             },
             {
-              timezone: null
+              executionWindowStartsAt: {
+                lte: clock.now()
+              }
             }
           ]
         },
-        AND: [
-          {
-            OR: [
-              {
-                executionWindowEndsAt: null
-              },
-              {
-                executionWindowEndsAt: {
-                  gte: clock.now()
-                }
-              }
-            ]
+        orderBy: [{ priorityScore: 'desc' }, { createdAt: 'asc' }]
+      });
+      if (!task) {
+        await tx.caller.update({
+          where: { id: callerId },
+          data: {
+            allocationStatus: 'IDLE_NO_AVAILABLE_TASKS'
           }
-        ],
-        OR: [
-          {
-            executionWindowStartsAt: null
-          },
-          {
-            executionWindowStartsAt: {
-              lte: clock.now()
-            }
-          }
-        ]
-      },
-      orderBy: [{ priorityScore: 'desc' }, { createdAt: 'asc' }]
-    });
-    if (!task) {
-      await this.prismaClient.caller.update({
-        where: { id: callerId },
+        });
+        return null;
+      }
+
+      assertValidTransition(callTaskTransitions, task.status, 'ASSIGNED');
+      return tx.callTask.update({
+        where: { id: task.id },
         data: {
-          allocationStatus: 'IDLE_NO_AVAILABLE_TASKS'
+          status: 'ASSIGNED',
+          callerId,
+          assignedAt: clock.now(),
+          executionWindowStartsAt: clock.now(),
+          executionWindowEndsAt: new Date(clock.now().getTime() + 15 * 60 * 1000)
         }
       });
-      return null;
-    }
-
-    assertValidTransition(callTaskTransitions, task.status, 'ASSIGNED');
-    return this.prismaClient.callTask.update({
-      where: { id: task.id },
-      data: {
-        status: 'ASSIGNED',
-        callerId,
-        assignedAt: clock.now(),
-        executionWindowStartsAt: clock.now(),
-        executionWindowEndsAt: new Date(clock.now().getTime() + 15 * 60 * 1000)
-      }
     });
   }
 

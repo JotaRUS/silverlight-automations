@@ -12,6 +12,9 @@ const deadLetterRepository = new DeadLetterJobRepository(prisma);
 const SCHEDULER_INTERVAL_MS = 60 * 1000;
 
 let schedulerHandle: NodeJS.Timeout | undefined;
+let running = false;
+let stopping = false;
+let activeCyclePromise: Promise<void> | null = null;
 
 async function runScheduledMaintenance(): Promise<void> {
   const cutoff = subDays(clock.now(), DEAD_LETTER_RETENTION_DAYS);
@@ -152,9 +155,13 @@ async function runScheduledMaintenance(): Promise<void> {
 }
 
 async function shutdown(): Promise<void> {
+  stopping = true;
   if (schedulerHandle) {
-    clearInterval(schedulerHandle);
+    clearTimeout(schedulerHandle);
     schedulerHandle = undefined;
+  }
+  if (activeCyclePromise) {
+    await activeCyclePromise;
   }
   await closeQueues();
   await prisma.$disconnect();
@@ -186,9 +193,25 @@ installFatalProcessHandlers({
   }
 });
 
-schedulerHandle = setInterval(() => {
-  void runScheduledMaintenance();
-}, SCHEDULER_INTERVAL_MS);
+function scheduleNext(): void {
+  if (stopping) return;
+  schedulerHandle = setTimeout(() => {
+    activeCyclePromise = runMaintenanceCycle();
+  }, SCHEDULER_INTERVAL_MS);
+}
 
-void runScheduledMaintenance();
+async function runMaintenanceCycle(): Promise<void> {
+  if (running || stopping) return;
+  running = true;
+  try {
+    await runScheduledMaintenance();
+  } catch (error) {
+    logger.error({ err: error }, 'scheduler-maintenance-run-failed');
+  } finally {
+    running = false;
+    scheduleNext();
+  }
+}
+
+activeCyclePromise = runMaintenanceCycle();
 logger.info('scheduler started');

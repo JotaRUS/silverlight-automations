@@ -1,0 +1,16 @@
+node_modules
+dist
+coverage
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+docs
+tests
+*.md
+.prettierrc
+eslint.config.js
+docker-compose.yml
+.cursor
+.vscode

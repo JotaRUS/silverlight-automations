@@ -38,7 +38,13 @@ export class LeadIngestionService {
       conditions.push({ linkedinUrl: job.lead.linkedinUrl });
     }
     if (job.lead.fullName && job.lead.companyName) {
-      conditions.push({ fullName: job.lead.fullName });
+      conditions.push({
+        fullName: job.lead.fullName,
+        metadata: {
+          path: ['companyName'],
+          equals: job.lead.companyName
+        }
+      });
     }
 
     if (!conditions.length) {
