@@ -181,6 +181,17 @@ export class ProjectsService {
     });
   }
 
+  public async listProjects(): Promise<Project[]> {
+    return this.prismaClient.project.findMany({
+      where: {
+        deletedAt: null
+      },
+      orderBy: {
+        updatedAt: 'desc'
+      }
+    });
+  }
+
   public async attachCompanies(projectId: string, input: AttachCompaniesInput): Promise<number> {
     const createdCompanies = await this.prismaClient.$transaction(async (transaction) => {
       const results = await Promise.all(

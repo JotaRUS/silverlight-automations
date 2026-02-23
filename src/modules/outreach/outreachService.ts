@@ -3,6 +3,7 @@ import type { Channel, PrismaClient } from '@prisma/client';
 import { normalizeChannel } from '../../config/channels';
 import { AppError } from '../../core/errors/appError';
 import { getRequestContext } from '../../core/http/requestContext';
+import { publishRealtimeEvent } from '../../core/realtime/realtimePubSub';
 import { clock } from '../../core/time/clock';
 import { MessagingClient } from '../../integrations/messaging/messagingClient';
 import { CooldownService } from '../cooldown/cooldownService';
@@ -86,6 +87,17 @@ export class OutreachService {
         body: input.body,
         providerMessageId: providerResult.providerMessageId,
         sentAt: clock.now()
+      }
+    });
+
+    await publishRealtimeEvent({
+      namespace: 'admin',
+      event: 'outreach.thread.updated',
+      data: {
+        projectId: input.projectId,
+        expertId: input.expertId,
+        threadId: thread.id,
+        channel: input.channel
       }
     });
 

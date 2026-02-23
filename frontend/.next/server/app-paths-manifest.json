@@ -1,0 +1,15 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/caller/page": "app/caller/page.js",
+  "/login/page": "app/login/page.js",
+  "/page": "app/page.js",
+  "/admin/observability/page": "app/admin/observability/page.js",
+  "/admin/leads/page": "app/admin/leads/page.js",
+  "/admin/calls/page": "app/admin/calls/page.js",
+  "/admin/outreach/page": "app/admin/outreach/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/admin/projects/page": "app/admin/projects/page.js",
+  "/admin/providers/page": "app/admin/providers/page.js",
+  "/admin/ranking/page": "app/admin/ranking/page.js",
+  "/admin/screening/page": "app/admin/screening/page.js"
+}

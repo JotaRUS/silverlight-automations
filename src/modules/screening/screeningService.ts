@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 
 import { getRequestContext } from '../../core/http/requestContext';
+import { publishRealtimeEvent } from '../../core/realtime/realtimePubSub';
 import { clock } from '../../core/time/clock';
 import { OutreachService } from '../outreach/outreachService';
 import { ProjectCompletionService } from '../projects/projectCompletionService';
@@ -127,6 +128,17 @@ export class ScreeningService {
       });
     }
 
+    await publishRealtimeEvent({
+      namespace: 'admin',
+      event: 'screening.response.updated',
+      data: {
+        projectId: input.projectId,
+        expertId: input.expertId,
+        questionId: input.questionId,
+        status: pendingCount === 0 ? 'COMPLETE' : 'IN_PROGRESS'
+      }
+    });
+
     await this.projectCompletionService.recalculate(input.projectId);
   }
 
@@ -186,6 +198,16 @@ export class ScreeningService {
       },
       data: {
         status: 'IN_PROGRESS'
+      }
+    });
+
+    await publishRealtimeEvent({
+      namespace: 'admin',
+      event: 'screening.followup.sent',
+      data: {
+        projectId,
+        expertId,
+        pendingCount: pendingResponses.length
       }
     });
   }

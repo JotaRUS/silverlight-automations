@@ -50,6 +50,15 @@ projectsRoutes.post('/', async (request, response, next) => {
   }
 });
 
+projectsRoutes.get('/', async (_request, response, next) => {
+  try {
+    const projects = await projectsService.listProjects();
+    response.status(200).json(projects);
+  } catch (error) {
+    next(error);
+  }
+});
+
 projectsRoutes.get('/:projectId', async (request, response, next) => {
   try {
     const params = parseOrThrow(pathParamsSchema, request.params);

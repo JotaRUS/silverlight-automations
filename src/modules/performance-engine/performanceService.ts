@@ -1,6 +1,7 @@
 import type { CallerAllocationStatus, PrismaClient } from '@prisma/client';
 
 import { ENFORCEMENT } from '../../config/constants';
+import { publishRealtimeEvent } from '../../core/realtime/realtimePubSub';
 import { clock } from '../../core/time/clock';
 
 export interface PerformanceStatusComputationInput {
@@ -111,6 +112,27 @@ export class PerformanceService {
           allocationStatus: status
         }
       });
+    });
+
+    await publishRealtimeEvent({
+      namespace: 'admin',
+      event: 'caller.performance.updated',
+      data: {
+        callerId,
+        status,
+        rolling60MinuteDials: dials,
+        rolling60MinuteConnections: connections,
+        rolling60MinuteValidConnections: validConnections
+      }
+    });
+    await publishRealtimeEvent({
+      namespace: 'caller',
+      event: 'caller.performance.updated',
+      data: {
+        callerId,
+        status,
+        rolling60MinuteDials: dials
+      }
     });
   }
 }

@@ -14,6 +14,7 @@ import { logger } from '../core/logging/logger';
 import { authRoutes } from '../api/routes/authRoutes';
 import { systemRoutes } from '../api/routes/systemRoutes';
 import { webhookRoutes } from '../api/routes/webhookRoutes';
+import { adminRoutes } from '../modules/admin/adminRoutes';
 import { callersRoutes } from '../modules/callers/callersRoutes';
 import { callAllocationRoutes } from '../modules/call-allocation/callAllocationRoutes';
 import { documentationGeneratorRoutes } from '../modules/documentation-generator/documentationGeneratorRoutes';
@@ -61,6 +62,7 @@ export function createApp(): Express {
     response.status(200).json(openApiSpec);
   });
   app.use(`${API_PREFIX}/auth`, authRateLimiter, authRoutes);
+  app.use(`${API_PREFIX}/admin`, adminRoutes);
   app.use(`${API_PREFIX}/projects`, projectsRoutes);
   app.use(`${API_PREFIX}/callers`, callersRoutes);
   app.use(`${API_PREFIX}/call-tasks`, callAllocationRoutes);

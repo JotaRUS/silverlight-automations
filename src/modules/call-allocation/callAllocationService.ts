@@ -1,6 +1,7 @@
 import type { CallTask, Caller, PrismaClient } from '@prisma/client';
 
 import { AppError } from '../../core/errors/appError';
+import { publishRealtimeEvent } from '../../core/realtime/realtimePubSub';
 import { assertValidTransition, type TransitionMap } from '../../core/state-machine/assertValidTransition';
 import { clock } from '../../core/time/clock';
 import { withSerializableTransaction } from '../../db/transactions/withSerializableTransaction';
@@ -36,7 +37,7 @@ export class CallAllocationService {
       return null;
     }
 
-    return withSerializableTransaction(this.prismaClient, async (tx) => {
+    const task = await withSerializableTransaction(this.prismaClient, async (tx) => {
       const existingAssignedTask = await tx.callTask.findFirst({
         where: {
           callerId,
@@ -120,6 +121,29 @@ export class CallAllocationService {
         }
       });
     });
+
+    await publishRealtimeEvent({
+      namespace: 'admin',
+      event: 'call-allocation.updated',
+      data: {
+        callerId,
+        taskId: task?.id ?? null,
+        status: task?.status ?? 'IDLE_NO_AVAILABLE_TASKS'
+      }
+    });
+    if (task) {
+      await publishRealtimeEvent({
+        namespace: 'caller',
+        event: 'caller.task.updated',
+        data: {
+          callerId,
+          taskId: task.id,
+          status: task.status
+        }
+      });
+    }
+
+    return task;
   }
 
   public async listOperatorTasks(input?: {
@@ -207,6 +231,15 @@ export class CallAllocationService {
         }
       });
     });
+
+    await publishRealtimeEvent({
+      namespace: 'admin',
+      event: 'call-allocation.updated',
+      data: {
+        taskId,
+        requeuedBy: operatorUserId
+      }
+    });
   }
 
   public async submitCallOutcome(
@@ -248,6 +281,25 @@ export class CallAllocationService {
             priorityScore: task.priorityScore
           }
         });
+      }
+    });
+
+    await publishRealtimeEvent({
+      namespace: 'admin',
+      event: 'call-allocation.outcome',
+      data: {
+        taskId,
+        callerId,
+        outcome
+      }
+    });
+    await publishRealtimeEvent({
+      namespace: 'caller',
+      event: 'caller.task.outcome',
+      data: {
+        taskId,
+        callerId,
+        outcome
       }
     });
   }
