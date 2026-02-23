@@ -9,7 +9,7 @@ import { createJobLogger, type CorrelatedJobData } from './withWorkerContext';
 import { registerDeadLetterHandler } from './withDeadLetter';
 
 interface GoogleSheetsSyncJobData {
-  projectId?: string;
+  projectId: string;
   tabName: string;
   entityType: string;
   entityId: string;

@@ -71,6 +71,7 @@ export class OutreachService {
 
     const correlationId = getRequestContext()?.correlationId ?? 'system';
     const providerResult = await this.messagingClient.sendMessage({
+      projectId: input.projectId,
       channel: normalizeChannel(input.channel),
       recipient: input.recipient,
       body: input.body,

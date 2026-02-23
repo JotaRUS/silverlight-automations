@@ -4,9 +4,14 @@ import { z } from 'zod';
 
 import { createApp } from '../../src/app/createApp';
 
-const tokenResponseSchema = z.object({
-  accessToken: z.string(),
-  tokenType: z.string()
+const loginResponseSchema = z.object({
+  authenticated: z.boolean(),
+  role: z.string(),
+  userId: z.string()
+});
+
+const csrfResponseSchema = z.object({
+  csrfToken: z.string().min(1)
 });
 
 const meResponseSchema = z.object({
@@ -15,21 +20,26 @@ const meResponseSchema = z.object({
 });
 
 describe('auth routes', () => {
-  it('issues and verifies JWT token', async () => {
+  it('issues cookie session and verifies authenticated profile', async () => {
     const app = createApp();
 
-    const tokenResponse = await request(app).post('/api/v1/auth/token').send({
+    const loginResponse = await request(app).post('/api/v1/auth/login').send({
       userId: 'user-1',
       role: 'admin'
     });
 
-    expect(tokenResponse.status).toBe(200);
-    const tokenPayload = tokenResponseSchema.parse(tokenResponse.body);
-    expect(tokenPayload.accessToken).toBeTruthy();
+    expect(loginResponse.status).toBe(200);
+    const loginPayload = loginResponseSchema.parse(loginResponse.body);
+    expect(loginPayload.authenticated).toBe(true);
+    const authCookie = loginResponse.headers['set-cookie'][0];
+    expect(authCookie).toContain('access_token=');
 
-    const meResponse = await request(app)
-      .get('/api/v1/auth/me')
-      .set('authorization', `Bearer ${tokenPayload.accessToken}`);
+    const csrfResponse = await request(app).get('/api/v1/auth/csrf').set('cookie', authCookie);
+    expect(csrfResponse.status).toBe(200);
+    const csrfPayload = csrfResponseSchema.parse(csrfResponse.body);
+    expect(csrfPayload.csrfToken).toBeTruthy();
+
+    const meResponse = await request(app).get('/api/v1/auth/me').set('cookie', authCookie);
 
     expect(meResponse.status).toBe(200);
     const mePayload = meResponseSchema.parse(meResponse.body);

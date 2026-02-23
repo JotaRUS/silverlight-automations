@@ -1,19 +1,39 @@
 import { Router } from 'express';
+import { z } from 'zod';
 
-import { env } from '../../config/env';
 import { AppError } from '../../core/errors/appError';
 import { getRequestContext } from '../../core/http/requestContext';
+import { prisma } from '../../db/client';
+import { ProviderAccountsService } from '../providers/providerAccountsService';
 import { getQueues } from '../../queues';
 import { buildJobId } from '../../queues/jobId';
 import { enqueueWithContext } from '../../queues/producers/enqueueWithContext';
 import { salesNavWebhookPayloadSchema } from './salesNavWebhookSchemas';
 
 export const salesNavWebhookRoutes = Router();
+const providerAccountParamsSchema = z.object({
+  providerAccountId: z.string().uuid()
+});
+const providerAccountsService = new ProviderAccountsService(prisma);
 
-salesNavWebhookRoutes.post('/', async (request, response, next) => {
+salesNavWebhookRoutes.post('/:providerAccountId', async (request, response, next) => {
   try {
     const secretHeader = request.header('x-sales-nav-secret');
-    if (!secretHeader || secretHeader !== env.SALES_NAV_WEBHOOK_SECRET) {
+    if (!secretHeader) {
+      throw new AppError('Unauthorized sales navigator webhook', 401, 'sales_nav_webhook_unauthorized');
+    }
+    const params = providerAccountParamsSchema.parse(request.params);
+    const providerAccount = await providerAccountsService.getActiveAccountOrThrow(
+      params.providerAccountId,
+      'SALES_NAV_WEBHOOK'
+    );
+    const credentials = await providerAccountsService.getDecryptedCredentials(
+      providerAccount.id,
+      'SALES_NAV_WEBHOOK'
+    );
+    const webhookSecret =
+      typeof credentials.webhookSecret === 'string' ? credentials.webhookSecret : '';
+    if (!webhookSecret || secretHeader !== webhookSecret) {
       throw new AppError('Unauthorized sales navigator webhook', 401, 'sales_nav_webhook_unauthorized');
     }
 
@@ -25,7 +45,13 @@ salesNavWebhookRoutes.post('/', async (request, response, next) => {
     const payload = parsed.data;
     const correlationId = getRequestContext()?.correlationId ?? 'system';
     await enqueueWithContext(getQueues().salesNavIngestionQueue, 'sales-nav.ingest', payload, {
-      jobId: buildJobId('sales-nav', payload.projectId, payload.normalizedUrl, correlationId)
+      jobId: buildJobId(
+        'sales-nav',
+        params.providerAccountId,
+        payload.projectId,
+        payload.normalizedUrl,
+        correlationId
+      )
     });
 
     response.status(202).json({

@@ -1,4 +1,5 @@
 export interface EnrichmentRequest {
+  projectId?: string;
   fullName?: string;
   companyName?: string;
   linkedinUrl?: string;

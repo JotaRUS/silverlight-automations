@@ -1,6 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-import { env } from '../../config/env';
 import { YAY_WEBHOOK } from '../../config/constants';
 import { AppError } from '../../core/errors/appError';
 import { clock } from '../../core/time/clock';
@@ -13,7 +12,8 @@ export interface YayWebhookHeaders {
 
 export function verifyYayWebhookSignature(
   headers: YayWebhookHeaders,
-  rawBody: string
+  rawBody: string,
+  webhookSecret: string
 ): { eventId: string } {
   const signature = headers.signature;
   const timestamp = headers.timestamp;
@@ -21,7 +21,7 @@ export function verifyYayWebhookSignature(
   if (!signature || !timestamp || !eventId) {
     throw new AppError('Missing Yay webhook headers', 400, 'missing_webhook_headers');
   }
-  if (!env.YAY_WEBHOOK_SECRET) {
+  if (!webhookSecret) {
     throw new AppError('Yay webhook secret is not configured', 500, 'yay_secret_missing');
   }
 
@@ -34,7 +34,7 @@ export function verifyYayWebhookSignature(
     throw new AppError('Stale webhook timestamp', 401, 'stale_webhook_timestamp');
   }
 
-  const computedSignature = createHmac('sha256', env.YAY_WEBHOOK_SECRET)
+  const computedSignature = createHmac('sha256', webhookSecret)
     .update(timestamp + rawBody)
     .digest('hex');
 
