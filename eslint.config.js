@@ -5,7 +5,7 @@ const eslintConfigPrettier = require("eslint-config-prettier");
 /** @type {import("eslint").Linter.FlatConfig[]} */
 module.exports = [
   {
-    ignores: ["dist/**", "node_modules/**", "coverage/**", "prisma/migrations/**"]
+    ignores: ["dist/**", "node_modules/**", "coverage/**", "prisma/migrations/**", "frontend/**"]
   },
   {
     files: ["**/*.ts"],

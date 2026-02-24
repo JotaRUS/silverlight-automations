@@ -25,9 +25,19 @@ export const openApiSpec = {
         }
       }
     },
-    '/api/v1/auth/token': {
+    '/api/v1/auth/login': {
       post: {
-        summary: 'Issue JWT access token'
+        summary: 'Login and issue cookie-based session'
+      }
+    },
+    '/api/v1/auth/logout': {
+      post: {
+        summary: 'Logout and clear cookie-based session'
+      }
+    },
+    '/api/v1/auth/csrf': {
+      get: {
+        summary: 'Get CSRF token for mutating authenticated requests'
       }
     },
     '/api/v1/projects': {
@@ -68,6 +78,32 @@ export const openApiSpec = {
         summary: 'Dispatch screening questions'
       }
     },
+    '/api/v1/providers': {
+      get: {
+        summary: 'List provider accounts'
+      },
+      post: {
+        summary: 'Create provider account'
+      }
+    },
+    '/api/v1/providers/{providerAccountId}': {
+      get: {
+        summary: 'Get provider account'
+      },
+      patch: {
+        summary: 'Update provider account'
+      }
+    },
+    '/api/v1/providers/{providerAccountId}/test-connection': {
+      post: {
+        summary: 'Run provider-specific health check'
+      }
+    },
+    '/api/v1/providers/{providerAccountId}/bind-project': {
+      post: {
+        summary: 'Bind provider account to project role'
+      }
+    },
     '/api/v1/documentation/generate': {
       post: {
         summary: 'Generate operational documentation artifacts'
@@ -93,12 +129,12 @@ export const openApiSpec = {
         summary: 'Operator requeues a task for reassignment'
       }
     },
-    '/webhooks/yay': {
+    '/webhooks/yay/{providerAccountId}': {
       post: {
         summary: 'Ingest Yay webhook events'
       }
     },
-    '/webhooks/sales-nav': {
+    '/webhooks/sales-nav/{providerAccountId}': {
       post: {
         summary: 'Ingest Sales Navigator webhook payload'
       }

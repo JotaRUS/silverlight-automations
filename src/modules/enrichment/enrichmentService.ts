@@ -1,9 +1,20 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 
+import { AppError } from '../../core/errors/appError';
+import { ProviderCredentialResolver } from '../../core/providers/providerCredentialResolver';
+import type { ProviderType } from '../../core/providers/providerTypes';
 import { providerLimiter } from '../../core/rate-limiter/providerLimiter';
 import { clock } from '../../core/time/clock';
-import { enrichmentProviderClients } from '../../integrations/enrichment/providerClients';
-import type { EnrichmentProviderClient, EnrichmentRequest, EnrichmentResult } from '../../integrations/enrichment/types';
+import { GenericEnrichmentClient } from '../../integrations/enrichment/genericEnrichmentClient';
+import {
+  enrichmentProviderDefinitions,
+  type EnrichmentProviderDefinition
+} from '../../integrations/enrichment/providerClients';
+import type {
+  EnrichmentProviderClient,
+  EnrichmentRequest,
+  EnrichmentResult
+} from '../../integrations/enrichment/types';
 import { normalizeEmail, normalizePhone } from './enrichmentValidators';
 
 export interface EnrichmentJobInput {
@@ -21,14 +32,93 @@ function toJsonValue(value: unknown): Prisma.InputJsonValue {
   return value as Prisma.InputJsonValue;
 }
 
+interface ResolvedAwareProviderClient extends EnrichmentProviderClient {
+  providerType?: ProviderType;
+}
+
+class DynamicResolvedEnrichmentProviderClient implements ResolvedAwareProviderClient {
+  public readonly providerName: string;
+  public readonly providerType: ProviderType;
+  private readonly endpoint: string;
+  private readonly apiKeyHeader: string;
+  private readonly providerCredentialResolver: ProviderCredentialResolver;
+
+  public constructor(
+    definition: EnrichmentProviderDefinition,
+    providerCredentialResolver: ProviderCredentialResolver
+  ) {
+    this.providerName = definition.providerName;
+    this.providerType = definition.providerType;
+    this.endpoint = definition.endpoint;
+    this.apiKeyHeader = definition.apiKeyHeader;
+    this.providerCredentialResolver = providerCredentialResolver;
+  }
+
+  public async enrich(request: EnrichmentRequest, correlationId: string): Promise<EnrichmentResult> {
+    const projectId = request.projectId;
+    if (!projectId) {
+      throw new AppError('Project id is required for enrichment provider resolution', 400, 'project_id_required');
+    }
+    const resolvedCredentials = await this.providerCredentialResolver.resolve({
+      providerType: this.providerType,
+      projectId,
+      correlationId,
+      fallbackStrategy: 'round_robin'
+    });
+    const apiKey =
+      typeof resolvedCredentials.credentials.apiKey === 'string'
+        ? resolvedCredentials.credentials.apiKey
+        : '';
+    if (!apiKey) {
+      throw new AppError('Provider API key missing', 500, 'provider_api_key_missing', {
+        providerType: this.providerType,
+        providerAccountId: resolvedCredentials.providerAccountId
+      });
+    }
+
+    const client = new GenericEnrichmentClient({
+      providerName: this.providerName,
+      endpoint: this.endpoint,
+      apiKey,
+      apiKeyHeader: this.apiKeyHeader
+    });
+    try {
+      return await client.enrich(request, correlationId);
+    } catch (error) {
+      await this.providerCredentialResolver.markFailure({
+        providerAccountId: resolvedCredentials.providerAccountId,
+        providerType: this.providerType,
+        reason: error instanceof Error ? error.message : 'unknown provider error',
+        statusCode:
+          error instanceof AppError &&
+          typeof error.details === 'object' &&
+          error.details !== null &&
+          'statusCode' in error.details &&
+          typeof (error.details as { statusCode?: unknown }).statusCode === 'number'
+            ? ((error.details as { statusCode: number }).statusCode)
+            : undefined
+      });
+      throw error;
+    }
+  }
+}
+
 export class EnrichmentService {
   public constructor(
     private readonly prismaClient: PrismaClient,
-    private readonly providerClients: EnrichmentProviderClient[] = enrichmentProviderClients
-  ) {}
+    private readonly providerClients: ResolvedAwareProviderClient[] = enrichmentProviderDefinitions.map(
+      (definition) =>
+        new DynamicResolvedEnrichmentProviderClient(
+          definition,
+          new ProviderCredentialResolver(prismaClient)
+        )
+    )
+  ) {
+  }
 
   private buildRequest(job: EnrichmentJobInput): EnrichmentRequest {
     return {
+      projectId: job.projectId,
       fullName: job.fullName,
       companyName: job.companyName,
       linkedinUrl: job.linkedinUrl,
@@ -62,7 +152,7 @@ export class EnrichmentService {
   }
 
   private async runProvider(
-    providerClient: EnrichmentProviderClient,
+    providerClient: ResolvedAwareProviderClient,
     request: EnrichmentRequest,
     correlationId: string,
     leadId: string

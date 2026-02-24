@@ -25,46 +25,11 @@
 - `OPENAI_MODEL`
 - `OPENAI_CLASSIFICATION_TEMPERATURE` (must remain `<= 0.2`)
 
-## Sourcing inputs
+## Provider credential encryption
 
-- `APOLLO_API_KEY`
+- `PROVIDER_ENCRYPTION_SECRET` (AES-256-GCM master secret for decrypting `provider_accounts.credentials_json`)
 
-## Enrichment providers
+## Provider credentials
 
-- `LEADMAGIC_API_KEY`
-- `PROSPEO_API_KEY`
-- `EXA_API_KEY`
-- `ROCKETREACH_API_KEY`
-- `WIZA_API_KEY`
-- `FORAGER_API_KEY`
-- `ZELIQ_API_KEY`
-- `CONTACTOUT_API_KEY`
-- `DATAGM_API_KEY`
-- `PEOPLEDATALABS_API_KEY`
-
-## Messaging + outreach channels
-
-- `LINKEDIN_API_KEY`
-- `EMAIL_PROVIDER_API_KEY`
-- `TWILIO_API_KEY`
-- `TWILIO_ACCOUNT_SID`
-- `TWILIO_AUTH_TOKEN`
-- `WHATSAPP_2CHAT_API_KEY`
-- `RESPONDIO_API_KEY`
-- `LINE_API_KEY`
-- `WECHAT_API_KEY`
-- `VIBER_API_KEY`
-- `TELEGRAM_BOT_TOKEN`
-- `KAKAOTALK_API_KEY`
-- `VOICEMAIL_DROP_API_KEY`
-
-## Yay call integration
-
-- `YAY_WEBHOOK_SECRET`
-- `YAY_API_KEY`
-- `SALES_NAV_WEBHOOK_SECRET`
-
-## Google Sheets
-
-- `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON`
-- `GOOGLE_SHEETS_SPREADSHEET_ID`
+Provider integration secrets are now stored in the database (`ProviderAccount.credentialsJson`) and are
+encrypted at rest. They are no longer loaded from environment variables.

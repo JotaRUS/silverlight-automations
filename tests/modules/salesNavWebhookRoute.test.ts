@@ -14,7 +14,7 @@ describe('sales nav webhook route', () => {
   it('rejects unauthorized webhook requests', async () => {
     const app = createApp();
 
-    const response = await request(app).post('/webhooks/sales-nav').send({
+    const response = await request(app).post('/webhooks/sales-nav/ee65e470-9fe2-43f8-ab7f-cf10ec95f496').send({
       projectId: 'ee65e470-9fe2-43f8-ab7f-cf10ec95f496',
       sourceUrl: 'https://www.linkedin.com/sales/search/people?query=abc',
       normalizedUrl: 'https://www.linkedin.com/sales/search/people?query=abc',
