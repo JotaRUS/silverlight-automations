@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 
 import { AppError } from '../../core/errors/appError';
 import { logger } from '../../core/logging/logger';
@@ -13,16 +14,32 @@ import { parseYayWebhookEvent } from '../../integrations/yay/eventParser';
 import { verifyYayWebhookSignature } from '../../integrations/yay/webhookVerifier';
 import { EVENT_CATEGORIES } from '../../core/logging/observability';
 import { salesNavWebhookRoutes } from '../../modules/sales-nav/salesNavWebhookRoutes';
+import { ProviderAccountsService } from '../../modules/providers/providerAccountsService';
 
 const callLogRawRepository = new CallLogRawRepository(prisma);
 const processedWebhookEventsRepository = new ProcessedWebhookEventsRepository(prisma);
+const providerAccountsService = new ProviderAccountsService(prisma);
+const yayWebhookParamsSchema = z.object({
+  providerAccountId: z.string().uuid()
+});
 
 export const webhookRoutes = Router();
 
 webhookRoutes.use('/sales-nav', salesNavWebhookRoutes);
 
-webhookRoutes.post('/yay', async (request, response, next) => {
+webhookRoutes.post('/yay/:providerAccountId', async (request, response, next) => {
   try {
+    const params = yayWebhookParamsSchema.parse(request.params);
+    const providerAccount = await providerAccountsService.getActiveAccountOrThrow(
+      params.providerAccountId,
+      'YAY'
+    );
+    const credentials = await providerAccountsService.getDecryptedCredentials(
+      providerAccount.id,
+      'YAY'
+    );
+    const webhookSecret =
+      typeof credentials.webhookSecret === 'string' ? credentials.webhookSecret : '';
     const requestWithRawBody = request as RequestWithRawBody;
     const rawBody = requestWithRawBody.rawBody ?? JSON.stringify(request.body);
     const verification = verifyYayWebhookSignature(
@@ -31,7 +48,8 @@ webhookRoutes.post('/yay', async (request, response, next) => {
         timestamp: request.header('x-yay-timestamp'),
         eventId: request.header('x-yay-event-id')
       },
-      rawBody
+      rawBody,
+      webhookSecret
     );
     const event = parseYayWebhookEvent(request.body);
 

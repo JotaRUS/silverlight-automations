@@ -22,6 +22,7 @@ export class JobTitleDiscoveryService {
       const collectedTitles: string[] = [];
       for (const geographyIsoCode of request.geographyIsoCodes) {
         const titles = await this.dependencies.apolloClient.fetchJobTitles({
+          projectId: request.projectId,
           companyName: company.companyName,
           geographyIsoCode,
           correlationId

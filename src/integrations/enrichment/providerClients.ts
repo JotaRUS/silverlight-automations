@@ -1,66 +1,71 @@
-import { env } from '../../config/env';
-import { GenericEnrichmentClient } from './genericEnrichmentClient';
-import type { EnrichmentProviderClient } from './types';
+import type { ProviderType } from '../../core/providers/providerTypes';
 
-export const enrichmentProviderClients: EnrichmentProviderClient[] = [
-  new GenericEnrichmentClient({
+export interface EnrichmentProviderDefinition {
+  providerType: ProviderType;
+  providerName: string;
+  endpoint: string;
+  apiKeyHeader: string;
+}
+
+export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
+  {
+    providerType: 'LEADMAGIC',
     providerName: 'LEADMAGIC',
     endpoint: 'https://api.leadmagic.io/v1/enrich',
-    apiKey: env.LEADMAGIC_API_KEY,
     apiKeyHeader: 'x-api-key'
-  }),
-  new GenericEnrichmentClient({
+  },
+  {
+    providerType: 'PROSPEO',
     providerName: 'PROSPEO',
     endpoint: 'https://api.prospeo.io/v1/enrichment',
-    apiKey: env.PROSPEO_API_KEY,
     apiKeyHeader: 'x-api-key'
-  }),
-  new GenericEnrichmentClient({
+  },
+  {
+    providerType: 'EXA',
     providerName: 'EXA',
     endpoint: 'https://api.exa.ai/enrich',
-    apiKey: env.EXA_API_KEY,
     apiKeyHeader: 'x-api-key'
-  }),
-  new GenericEnrichmentClient({
+  },
+  {
+    providerType: 'ROCKETREACH',
     providerName: 'ROCKETREACH',
     endpoint: 'https://api.rocketreach.co/v2/person/lookup',
-    apiKey: env.ROCKETREACH_API_KEY,
     apiKeyHeader: 'x-api-key'
-  }),
-  new GenericEnrichmentClient({
+  },
+  {
+    providerType: 'WIZA',
     providerName: 'WIZA',
     endpoint: 'https://wiza.co/api/v1/enrichment',
-    apiKey: env.WIZA_API_KEY,
     apiKeyHeader: 'x-api-key'
-  }),
-  new GenericEnrichmentClient({
+  },
+  {
+    providerType: 'FORAGER',
     providerName: 'FORAGER',
     endpoint: 'https://api.forager.ai/v1/enrichment',
-    apiKey: env.FORAGER_API_KEY,
     apiKeyHeader: 'x-api-key'
-  }),
-  new GenericEnrichmentClient({
+  },
+  {
+    providerType: 'ZELIQ',
     providerName: 'ZELIQ',
     endpoint: 'https://api.zeliq.com/v1/enrich',
-    apiKey: env.ZELIQ_API_KEY,
     apiKeyHeader: 'x-api-key'
-  }),
-  new GenericEnrichmentClient({
+  },
+  {
+    providerType: 'CONTACTOUT',
     providerName: 'CONTACTOUT',
     endpoint: 'https://api.contactout.com/v1/enrich',
-    apiKey: env.CONTACTOUT_API_KEY,
     apiKeyHeader: 'x-api-key'
-  }),
-  new GenericEnrichmentClient({
+  },
+  {
+    providerType: 'DATAGM',
     providerName: 'DATAGM',
     endpoint: 'https://api.datagm.com/v1/enrich',
-    apiKey: env.DATAGM_API_KEY,
     apiKeyHeader: 'x-api-key'
-  }),
-  new GenericEnrichmentClient({
+  },
+  {
+    providerType: 'PEOPLEDATALABS',
     providerName: 'PEOPLEDATALABS',
     endpoint: 'https://api.peopledatalabs.com/v5/person/enrich',
-    apiKey: env.PEOPLEDATALABS_API_KEY,
     apiKeyHeader: 'x-api-key'
-  })
+  }
 ];

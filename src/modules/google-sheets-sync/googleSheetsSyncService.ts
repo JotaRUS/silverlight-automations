@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 
+import { AppError } from '../../core/errors/appError';
 import { getRequestContext } from '../../core/http/requestContext';
 import { GoogleSheetRowMapRepository } from '../../db/repositories/googleSheetRowMapRepository';
 import { GoogleSheetsClient } from '../../integrations/google-sheets/googleSheetsClient';
@@ -39,6 +40,9 @@ export class GoogleSheetsSyncService {
   }
 
   public async syncRow(input: GoogleSheetsSyncInput): Promise<void> {
+    if (!input.projectId) {
+      throw new AppError('Google Sheets sync requires projectId', 400, 'project_id_required');
+    }
     const correlationId = getRequestContext()?.correlationId ?? 'system';
     const rowData = this.resolveRowData(input);
     const existing = await this.rowMapRepository.getRowMap(
@@ -53,6 +57,7 @@ export class GoogleSheetsSyncService {
       operation = 'UPDATE';
       await this.sheetsClient.updateRow(
         {
+          projectId: input.projectId,
           tabName: input.tabName,
           rowNumber: existing.rowNumber,
           rowValues: rowData
@@ -62,6 +67,7 @@ export class GoogleSheetsSyncService {
     } else {
       const appendedRow = await this.sheetsClient.appendRow(
         {
+          projectId: input.projectId,
           tabName: input.tabName,
           rowValues: rowData
         },

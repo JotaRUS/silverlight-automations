@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 
 import type { AuthRole } from './jwt';
+import { verifyCsrfToken } from './csrf';
 import { AppError } from '../errors/appError';
 import { verifyAccessToken } from './jwt';
 
@@ -11,15 +12,40 @@ export interface RequestWithAuth extends Request {
   };
 }
 
-export function authenticate(request: Request, _response: Response, next: NextFunction): void {
-  const authorizationHeader = request.header('authorization');
-  if (!authorizationHeader) {
-    throw new AppError('Unauthorized', 401, 'missing_authorization_header');
+function parseCookieHeader(cookieHeader: string | undefined): Record<string, string> {
+  if (!cookieHeader) {
+    return {};
   }
 
-  const [scheme, token] = authorizationHeader.split(' ');
-  if (scheme !== 'Bearer' || !token) {
-    throw new AppError('Unauthorized', 401, 'invalid_authorization_header');
+  return cookieHeader
+    .split(';')
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+    .reduce<Record<string, string>>((accumulator, chunk) => {
+      const separatorIndex = chunk.indexOf('=');
+      if (separatorIndex <= 0) {
+        return accumulator;
+      }
+      const key = chunk.slice(0, separatorIndex).trim();
+      const value = chunk.slice(separatorIndex + 1).trim();
+      accumulator[key] = decodeURIComponent(value);
+      return accumulator;
+    }, {});
+}
+
+function isMutatingMethod(method: string): boolean {
+  return method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
+}
+
+function isCsrfExemptPath(path: string): boolean {
+  return path.startsWith('/api/v1/auth/login') || path.startsWith('/api/v1/auth/logout');
+}
+
+export function authenticate(request: Request, _response: Response, next: NextFunction): void {
+  const cookies = parseCookieHeader(request.header('cookie'));
+  const token = cookies.access_token;
+  if (!token) {
+    throw new AppError('Unauthorized', 401, 'missing_auth_cookie');
   }
 
   const payload = verifyAccessToken(token);
@@ -27,6 +53,18 @@ export function authenticate(request: Request, _response: Response, next: NextFu
     userId: payload.sub,
     role: payload.role
   };
+
+  if (isMutatingMethod(request.method) && !isCsrfExemptPath(request.path)) {
+    const csrfToken = request.header('x-csrf-token');
+    if (!csrfToken) {
+      throw new AppError('Forbidden', 403, 'missing_csrf_token');
+    }
+    const isValid = verifyCsrfToken(payload.sub, csrfToken);
+    if (!isValid) {
+      throw new AppError('Forbidden', 403, 'invalid_csrf_token');
+    }
+  }
+
   next();
 }
 

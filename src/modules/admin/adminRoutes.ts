@@ -1,0 +1,385 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { LeadStatus } from '@prisma/client';
+
+import { authenticate, authorize } from '../../core/auth/authMiddleware';
+import { AppError } from '../../core/errors/appError';
+import { publishRealtimeEvent } from '../../core/realtime/realtimePubSub';
+import { prisma } from '../../db/client';
+import { ScreeningService } from '../screening/screeningService';
+
+const leadQuerySchema = z.object({
+  projectId: z.string().uuid().optional(),
+  status: z.nativeEnum(LeadStatus).optional(),
+  enrichmentStatus: z.nativeEnum(LeadStatus).optional(),
+  cooldownBlocked: z.enum(['true', 'false']).optional()
+});
+
+const screeningActionParamsSchema = z.object({
+  responseId: z.string().uuid()
+});
+
+const screeningService = new ScreeningService(prisma);
+
+export const adminRoutes = Router();
+
+adminRoutes.use(authenticate, authorize(['admin', 'ops']));
+
+adminRoutes.get('/leads', async (request, response, next) => {
+  try {
+    const query = leadQuerySchema.parse(request.query);
+    const leads = await prisma.lead.findMany({
+      where: {
+        projectId: query.projectId,
+        status: query.status
+      },
+      include: {
+        project: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        expert: {
+          include: {
+            contacts: true
+          }
+        },
+        enrichmentAttempts: {
+          orderBy: {
+            attemptedAt: 'desc'
+          },
+          take: 5
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      take: 200
+    });
+
+    const leadIds = leads.map((lead) => lead.id);
+    const cooldownByExpert = new Map<string, number>();
+    if (query.cooldownBlocked) {
+      const cooldownLogs = await prisma.cooldownLog.findMany({
+        where: {
+          expertId: {
+            in: leads.map((lead) => lead.expertId).filter((value): value is string => Boolean(value))
+          },
+          expiresAt: {
+            gt: new Date()
+          }
+        }
+      });
+      for (const log of cooldownLogs) {
+        cooldownByExpert.set(log.expertId, (cooldownByExpert.get(log.expertId) ?? 0) + 1);
+      }
+    }
+
+    const filteredLeads = leads.filter((lead) => {
+      if (query.enrichmentStatus && lead.status !== query.enrichmentStatus) {
+        return false;
+      }
+      if (query.cooldownBlocked === 'true') {
+        return Boolean(lead.expertId && cooldownByExpert.has(lead.expertId));
+      }
+      if (query.cooldownBlocked === 'false') {
+        return !lead.expertId || !cooldownByExpert.has(lead.expertId);
+      }
+      return true;
+    });
+
+    response.status(200).json({
+      total: filteredLeads.length,
+      leadIds,
+      leads: filteredLeads
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRoutes.get('/outreach/threads', async (request, response, next) => {
+  try {
+    const projectId = typeof request.query.projectId === 'string' ? request.query.projectId : undefined;
+    const threads = await prisma.outreachThread.findMany({
+      where: {
+        projectId
+      },
+      include: {
+        expert: true,
+        messages: {
+          orderBy: {
+            createdAt: 'desc'
+          },
+          take: 20
+        }
+      },
+      orderBy: {
+        updatedAt: 'desc'
+      },
+      take: 200
+    });
+    response.status(200).json(threads);
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRoutes.get('/screening/responses', async (request, response, next) => {
+  try {
+    const projectId = typeof request.query.projectId === 'string' ? request.query.projectId : undefined;
+    const statuses = typeof request.query.status === 'string' ? request.query.status.split(',') : undefined;
+    const responses = await prisma.screeningResponse.findMany({
+      where: {
+        projectId,
+        status: statuses ? { in: statuses as never[] } : undefined
+      },
+      include: {
+        question: true,
+        expert: true
+      },
+      orderBy: {
+        updatedAt: 'desc'
+      },
+      take: 300
+    });
+    response.status(200).json(responses);
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRoutes.post('/screening/:responseId/follow-up', async (request, response, next) => {
+  try {
+    const params = screeningActionParamsSchema.parse(request.params);
+    const screeningResponse = await prisma.screeningResponse.findUnique({
+      where: {
+        id: params.responseId
+      }
+    });
+    if (!screeningResponse) {
+      throw new AppError('Screening response not found', 404, 'screening_response_not_found');
+    }
+    await screeningService.processFollowUp(screeningResponse.projectId, screeningResponse.expertId);
+    response.status(200).json({
+      accepted: true
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRoutes.post('/screening/:responseId/escalate', async (request, response, next) => {
+  try {
+    const params = screeningActionParamsSchema.parse(request.params);
+    const screeningResponse = await prisma.screeningResponse.findUnique({
+      where: {
+        id: params.responseId
+      }
+    });
+    if (!screeningResponse) {
+      throw new AppError('Screening response not found', 404, 'screening_response_not_found');
+    }
+
+    await prisma.$transaction([
+      prisma.screeningResponse.update({
+        where: {
+          id: params.responseId
+        },
+        data: {
+          status: 'ESCALATED'
+        }
+      }),
+      prisma.callTask.create({
+        data: {
+          projectId: screeningResponse.projectId,
+          expertId: screeningResponse.expertId,
+          status: 'PENDING',
+          priorityScore: 99
+        }
+      })
+    ]);
+
+    await publishRealtimeEvent({
+      namespace: 'admin',
+      event: 'screening.escalated',
+      data: {
+        responseId: params.responseId,
+        projectId: screeningResponse.projectId,
+        expertId: screeningResponse.expertId
+      }
+    });
+
+    response.status(200).json({
+      escalated: true
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRoutes.get('/call-board', async (_request, response, next) => {
+  try {
+    const [tasks, callers, metrics] = await Promise.all([
+      prisma.callTask.findMany({
+        where: {
+          status: {
+            in: ['PENDING', 'ASSIGNED', 'DIALING']
+          }
+        },
+        include: {
+          expert: true,
+          caller: true
+        },
+        orderBy: {
+          priorityScore: 'desc'
+        },
+        take: 300
+      }),
+      prisma.caller.findMany({
+        where: {
+          deletedAt: null
+        },
+        orderBy: {
+          updatedAt: 'desc'
+        }
+      }),
+      prisma.callerPerformanceMetric.findMany({
+        orderBy: {
+          snapshotAt: 'desc'
+        },
+        take: 300
+      })
+    ]);
+
+    response.status(200).json({
+      tasks,
+      callers,
+      metrics
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRoutes.get('/ranking/latest', async (request, response, next) => {
+  try {
+    const projectId = typeof request.query.projectId === 'string' ? request.query.projectId : undefined;
+    const ranking = await prisma.rankingSnapshot.findMany({
+      where: {
+        projectId
+      },
+      include: {
+        expert: true,
+        project: true
+      },
+      orderBy: [
+        {
+          createdAt: 'desc'
+        },
+        {
+          rank: 'asc'
+        }
+      ],
+      take: 200
+    });
+    response.status(200).json(ranking);
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRoutes.get('/observability/dlq', async (_request, response, next) => {
+  try {
+    const jobs = await prisma.deadLetterJob.findMany({
+      orderBy: {
+        failedAt: 'desc'
+      },
+      take: 200
+    });
+    response.status(200).json(jobs);
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRoutes.get('/observability/webhooks', async (_request, response, next) => {
+  try {
+    const events = await prisma.processedWebhookEvent.findMany({
+      orderBy: {
+        processedAt: 'desc'
+      },
+      take: 200
+    });
+    response.status(200).json(events);
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRoutes.get('/observability/provider-limits', async (_request, response, next) => {
+  try {
+    const events = await prisma.systemEvent.findMany({
+      where: {
+        entityType: 'provider_account'
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      take: 200
+    });
+    response.status(200).json(events);
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRoutes.get('/observability/fraud', async (_request, response, next) => {
+  try {
+    const [callLogs, fraudEvents] = await Promise.all([
+      prisma.callLog.findMany({
+        where: {
+          fraudFlag: true
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        take: 200
+      }),
+      prisma.systemEvent.findMany({
+        where: {
+          category: 'FRAUD'
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        take: 200
+      })
+    ]);
+    response.status(200).json({
+      callLogs,
+      events: fraudEvents
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRoutes.get('/observability/state-violations', async (_request, response, next) => {
+  try {
+    const events = await prisma.systemEvent.findMany({
+      where: {
+        category: 'ENFORCEMENT'
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      take: 200
+    });
+    response.status(200).json(events);
+  } catch (error) {
+    next(error);
+  }
+});
+

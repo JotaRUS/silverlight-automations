@@ -14,16 +14,22 @@ import { logger } from '../core/logging/logger';
 import { authRoutes } from '../api/routes/authRoutes';
 import { systemRoutes } from '../api/routes/systemRoutes';
 import { webhookRoutes } from '../api/routes/webhookRoutes';
+import { adminRoutes } from '../modules/admin/adminRoutes';
 import { callersRoutes } from '../modules/callers/callersRoutes';
 import { callAllocationRoutes } from '../modules/call-allocation/callAllocationRoutes';
 import { documentationGeneratorRoutes } from '../modules/documentation-generator/documentationGeneratorRoutes';
 import { jobTitleDiscoveryRoutes } from '../modules/job-title-engine/jobTitleDiscoveryRoutes';
 import { outreachRoutes } from '../modules/outreach/outreachRoutes';
+import { providerAccountRoutes } from '../modules/providers/providerAccountRoutes';
 import { projectsRoutes } from '../modules/projects/projectsRoutes';
 import { screeningRoutes } from '../modules/screening/screeningRoutes';
 
 export function createApp(): Express {
   const app = express();
+  const authRateLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30
+  });
 
   app.use(correlationIdMiddleware);
   app.use(
@@ -55,13 +61,15 @@ export function createApp(): Express {
   app.get(`${API_PREFIX}/openapi.json`, (_request, response) => {
     response.status(200).json(openApiSpec);
   });
-  app.use(`${API_PREFIX}/auth`, authRoutes);
+  app.use(`${API_PREFIX}/auth`, authRateLimiter, authRoutes);
+  app.use(`${API_PREFIX}/admin`, adminRoutes);
   app.use(`${API_PREFIX}/projects`, projectsRoutes);
   app.use(`${API_PREFIX}/callers`, callersRoutes);
   app.use(`${API_PREFIX}/call-tasks`, callAllocationRoutes);
   app.use(`${API_PREFIX}/job-title-discovery`, jobTitleDiscoveryRoutes);
   app.use(`${API_PREFIX}/documentation`, documentationGeneratorRoutes);
   app.use(`${API_PREFIX}/outreach`, outreachRoutes);
+  app.use(`${API_PREFIX}/providers`, providerAccountRoutes);
   app.use(`${API_PREFIX}/screening`, screeningRoutes);
   app.use('/webhooks', webhookRoutes);
 

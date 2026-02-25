@@ -1,9 +1,10 @@
 import { createSign } from 'node:crypto';
 
-import { env } from '../../config/env';
 import { AppError } from '../../core/errors/appError';
 import { requestJson } from '../../core/http/httpJsonClient';
+import { ProviderCredentialResolver } from '../../core/providers/providerCredentialResolver';
 import { clock } from '../../core/time/clock';
+import { prisma } from '../../db/client';
 
 interface GoogleTokenResponse {
   access_token: string;
@@ -11,6 +12,7 @@ interface GoogleTokenResponse {
 }
 
 export interface GoogleSheetRowInput {
+  projectId: string;
   tabName: string;
   rowValues: string[];
 }
@@ -26,19 +28,21 @@ interface GoogleSheetsAppendResponse {
 }
 
 export class GoogleSheetsClient {
+  private readonly credentialResolver: ProviderCredentialResolver;
   private accessToken: string | null = null;
+  private activeProviderAccountId: string | null = null;
   private expiresAtEpochMs = 0;
 
-  private parseServiceAccount(): {
+  public constructor(credentialResolver?: ProviderCredentialResolver) {
+    this.credentialResolver = credentialResolver ?? new ProviderCredentialResolver(prisma);
+  }
+
+  private parseServiceAccount(serviceAccountJson: string): {
     client_email: string;
     private_key: string;
     token_uri: string;
   } {
-    if (!env.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON) {
-      throw new AppError('Google service account not configured', 500, 'google_service_account_missing');
-    }
-
-    const parsed = JSON.parse(env.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON) as {
+    const parsed = JSON.parse(serviceAccountJson) as {
       client_email: string;
       private_key: string;
       token_uri: string;
@@ -66,12 +70,20 @@ export class GoogleSheetsClient {
     return Number.parseInt(match[1], 10);
   }
 
-  private async getAccessToken(correlationId: string): Promise<string> {
-    if (this.accessToken && this.expiresAtEpochMs > clock.now().getTime() + 30_000) {
+  private async getAccessToken(
+    serviceAccountJson: string,
+    correlationId: string,
+    providerAccountId: string
+  ): Promise<string> {
+    if (
+      this.accessToken &&
+      this.activeProviderAccountId === providerAccountId &&
+      this.expiresAtEpochMs > clock.now().getTime() + 30_000
+    ) {
       return this.accessToken;
     }
 
-    const serviceAccount = this.parseServiceAccount();
+    const serviceAccount = this.parseServiceAccount(serviceAccountJson);
     const now = Math.floor(clock.now().getTime() / 1000);
     const claims = {
       iss: serviceAccount.client_email,
@@ -110,18 +122,36 @@ export class GoogleSheetsClient {
     });
 
     this.accessToken = tokenResponse.access_token;
+    this.activeProviderAccountId = providerAccountId;
     this.expiresAtEpochMs = clock.now().getTime() + tokenResponse.expires_in * 1000;
     return tokenResponse.access_token;
   }
 
   public async appendRow(input: GoogleSheetRowInput, correlationId: string): Promise<number | null> {
-    if (!env.GOOGLE_SHEETS_SPREADSHEET_ID) {
+    const resolvedCredentials = await this.credentialResolver.resolve({
+      providerType: 'GOOGLE_SHEETS',
+      projectId: input.projectId,
+      correlationId,
+      fallbackStrategy: 'single'
+    });
+    const spreadsheetId =
+      typeof resolvedCredentials.credentials.spreadsheetId === 'string'
+        ? resolvedCredentials.credentials.spreadsheetId
+        : '';
+    const serviceAccountJson =
+      typeof resolvedCredentials.credentials.serviceAccountJson === 'string'
+        ? resolvedCredentials.credentials.serviceAccountJson
+        : '';
+    if (!spreadsheetId) {
       throw new AppError('Google spreadsheet id missing', 500, 'google_spreadsheet_id_missing');
     }
-    const token = await this.getAccessToken(correlationId);
+    if (!serviceAccountJson) {
+      throw new AppError('Google service account missing', 500, 'google_service_account_missing');
+    }
+    const token = await this.getAccessToken(serviceAccountJson, correlationId, resolvedCredentials.providerAccountId);
     const response = await requestJson<GoogleSheetsAppendResponse>({
       method: 'POST',
-      url: `https://sheets.googleapis.com/v4/spreadsheets/${env.GOOGLE_SHEETS_SPREADSHEET_ID}/values/${encodeURIComponent(input.tabName)}:append?valueInputOption=RAW`,
+      url: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(input.tabName)}:append?valueInputOption=RAW`,
       headers: {
         authorization: `Bearer ${token}`
       },
@@ -137,14 +167,31 @@ export class GoogleSheetsClient {
   }
 
   public async updateRow(input: GoogleSheetUpdateInput, correlationId: string): Promise<void> {
-    if (!env.GOOGLE_SHEETS_SPREADSHEET_ID) {
+    const resolvedCredentials = await this.credentialResolver.resolve({
+      providerType: 'GOOGLE_SHEETS',
+      projectId: input.projectId,
+      correlationId,
+      fallbackStrategy: 'single'
+    });
+    const spreadsheetId =
+      typeof resolvedCredentials.credentials.spreadsheetId === 'string'
+        ? resolvedCredentials.credentials.spreadsheetId
+        : '';
+    const serviceAccountJson =
+      typeof resolvedCredentials.credentials.serviceAccountJson === 'string'
+        ? resolvedCredentials.credentials.serviceAccountJson
+        : '';
+    if (!spreadsheetId) {
       throw new AppError('Google spreadsheet id missing', 500, 'google_spreadsheet_id_missing');
     }
-    const token = await this.getAccessToken(correlationId);
+    if (!serviceAccountJson) {
+      throw new AppError('Google service account missing', 500, 'google_service_account_missing');
+    }
+    const token = await this.getAccessToken(serviceAccountJson, correlationId, resolvedCredentials.providerAccountId);
     const rowStart = `${input.tabName}!A${String(input.rowNumber)}`;
     await requestJson({
       method: 'PUT',
-      url: `https://sheets.googleapis.com/v4/spreadsheets/${env.GOOGLE_SHEETS_SPREADSHEET_ID}/values/${encodeURIComponent(rowStart)}?valueInputOption=RAW`,
+      url: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(rowStart)}?valueInputOption=RAW`,
       headers: {
         authorization: `Bearer ${token}`
       },

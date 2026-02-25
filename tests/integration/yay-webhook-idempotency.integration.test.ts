@@ -1,15 +1,16 @@
 import { createHmac } from 'node:crypto';
 
+import type { Prisma } from '@prisma/client';
 import request from 'supertest';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApp } from '../../src/app/createApp';
-import { env } from '../../src/config/env';
+import { encryptProviderCredentials } from '../../src/core/providers/providerCredentialsCrypto';
 import { prisma } from '../../src/db/client';
 import { cleanDatabase, disconnectDatabase } from './helpers/testDb';
 
-function signYayPayload(timestamp: string, payload: unknown): string {
-  return createHmac('sha256', env.YAY_WEBHOOK_SECRET).update(timestamp + JSON.stringify(payload)).digest('hex');
+function signYayPayload(timestamp: string, payload: unknown, secret: string): string {
+  return createHmac('sha256', secret).update(timestamp + JSON.stringify(payload)).digest('hex');
 }
 
 describe('yay webhook idempotency integration', () => {
@@ -20,6 +21,28 @@ describe('yay webhook idempotency integration', () => {
   });
 
   it('accepts first event and rejects duplicates by event id', async () => {
+    const admin = await prisma.caller.create({
+      data: {
+        email: 'admin@example.com',
+        name: 'Admin',
+        timezone: 'UTC',
+        languageCodes: ['en'],
+        regionIsoCodes: ['US']
+      }
+    });
+    const yayWebhookSecret = 'yay-webhook-secret-test';
+    const yayProviderAccount = await prisma.providerAccount.create({
+      data: {
+        providerType: 'YAY',
+        accountLabel: 'yay-primary',
+        credentialsJson: encryptProviderCredentials({
+          apiKey: 'yay-api-key',
+          webhookSecret: yayWebhookSecret
+        }) as unknown as Prisma.InputJsonValue,
+        createdByAdminId: admin.id
+      }
+    });
+
     const payload = {
       event_id: 'event_1234',
       event_type: 'call.started',
@@ -55,10 +78,10 @@ describe('yay webhook idempotency integration', () => {
     } as const;
 
     const timestamp = new Date().toISOString();
-    const signature = signYayPayload(timestamp, payload);
+    const signature = signYayPayload(timestamp, payload, yayWebhookSecret);
 
     const firstResponse = await request(app)
-      .post('/webhooks/yay')
+      .post(`/webhooks/yay/${yayProviderAccount.id}`)
       .set('x-yay-signature', signature)
       .set('x-yay-timestamp', timestamp)
       .set('x-yay-event-id', payload.event_id)
@@ -68,7 +91,7 @@ describe('yay webhook idempotency integration', () => {
     expect(firstResponse.body).toEqual({ accepted: true });
 
     const duplicateResponse = await request(app)
-      .post('/webhooks/yay')
+      .post(`/webhooks/yay/${yayProviderAccount.id}`)
       .set('x-yay-signature', signature)
       .set('x-yay-timestamp', timestamp)
       .set('x-yay-event-id', payload.event_id)
