@@ -121,9 +121,9 @@ docker compose up -d postgres redis
 npm run db:migrate
 ```
 
-### Start the processes
+### Start the four processes
 
-Each process runs independently. Open four terminals:
+Each process runs independently. Open four terminals (all commands run from the repository root):
 
 ```bash
 # Terminal 1 — API server (port 3000)
