@@ -1,6 +1,6 @@
 # Expert Sourcing Automation Platform — Operations Manual
 
-This manual covers every aspect of operating the platform via its REST API and background processes. There is no frontend; all interaction happens through HTTP requests (curl, Postman, HTTPie, etc.) and background queue/scheduler processes.
+This manual covers operating the platform via its REST API, background processes, and optional Next.js frontend. You can interact through HTTP requests (curl, Postman, HTTPie, etc.) or through the web UI when the frontend is running.
 
 ---
 
@@ -121,9 +121,9 @@ docker compose up -d postgres redis
 npm run db:migrate
 ```
 
-### Start the three processes
+### Start the processes
 
-Each process runs independently. Open three terminals:
+Each process runs independently. Open four terminals:
 
 ```bash
 # Terminal 1 — API server (port 3000)
@@ -134,6 +134,9 @@ npm run dev:worker
 
 # Terminal 3 — Scheduler
 npm run dev:scheduler
+
+# Terminal 4 — Frontend (port 3001)
+npm run dev:frontend
 ```
 
 ### Validate the setup
