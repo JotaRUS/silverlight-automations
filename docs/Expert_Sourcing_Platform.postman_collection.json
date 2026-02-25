@@ -1470,12 +1470,10 @@
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "http://localhost:3000/api/v1/system/health",
-          "protocol": "http",
+          "raw": "{{baseUrl}}/api/v1/system/health",
           "host": [
-            "localhost"
+            "{{baseUrl}}"
           ],
-          "port": "3000",
           "path": [
             "api",
             "v1",
@@ -1493,12 +1491,10 @@
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "http://localhost:3000/api/v1/system/ready",
-          "protocol": "http",
+          "raw": "{{baseUrl}}/api/v1/system/ready",
           "host": [
-            "localhost"
+            "{{baseUrl}}"
           ],
-          "port": "3000",
           "path": [
             "api",
             "v1",
