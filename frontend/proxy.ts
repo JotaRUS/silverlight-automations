@@ -24,7 +24,7 @@ function decodeJwtPayload(token: string | undefined): JwtPayload | null {
   }
 }
 
-export function middleware(request: NextRequest): NextResponse {
+export function proxy(request: NextRequest): NextResponse {
   const token = request.cookies.get('access_token')?.value;
   const payload = decodeJwtPayload(token);
   const pathname = request.nextUrl.pathname;
