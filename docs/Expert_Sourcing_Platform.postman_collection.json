@@ -1,0 +1,1563 @@
+{
+  "info": {
+    "_postman_id": "a5a30d79-eb74-4c94-815e-c3f2475978a0",
+    "name": "Expert Sourcing Automation Platform",
+    "description": "Complete API collection for the Expert Sourcing Automation Platform.\n\n## Setup\n1. Set the `baseUrl` variable (default: `http://localhost:3000`)\n2. Run **Auth > Create Token (Admin)** first — it auto-saves the token\n3. All authenticated requests use `{{token}}` from the collection variables\n\n## Roles\n- **admin** — full access\n- **ops** — projects, callers, outreach, screening, operator call tasks\n- **caller** — call-tasks/current, call-tasks/:taskId/outcome",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "System",
+      "item": [
+        {
+          "name": "Health Check",
+          "id": "26a7509d-1ced-45d8-85d4-27950e0b5485",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "health"
+              ]
+            },
+            "description": "Returns `{\"status\":\"ok\"}` if the API process is alive. No auth required."
+          },
+          "response": []
+        },
+        {
+          "name": "Readiness Check",
+          "id": "51bc4d7b-7e42-4cd9-afc4-9d9b681490c2",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/system/ready",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "system",
+                "ready"
+              ]
+            },
+            "description": "Pings PostgreSQL and Redis. Returns `{\"status\":\"ready\"}` or 500 if a dependency is unreachable."
+          },
+          "response": []
+        }
+      ],
+      "id": "e7660e25-29b0-4e39-92de-bb57f883d25b",
+      "description": "Health and readiness checks. No authentication required."
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Create Token (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('token', body.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "id": "cc3ada31-1947-490c-9698-350ef007f276",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"admin-user-1\",\n  \"role\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "token"
+              ]
+            },
+            "description": "Creates an admin JWT token. The token is automatically saved to the `{{token}}` collection variable.\n\n**No auth required.**"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Token (Ops)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('token', body.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "id": "2982714d-c196-4ec1-a380-61402bc9fb3a",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"ops-user-1\",\n  \"role\": \"ops\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "token"
+              ]
+            },
+            "description": "Creates an ops JWT token. Saved to `{{token}}`."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Token (Caller)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('callerToken', body.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "id": "db5c7a9a-df79-420b-8188-8c8c9e1cfa30",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"caller-user-1\",\n  \"role\": \"caller\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "token"
+              ]
+            },
+            "description": "Creates a caller JWT token. Saved to `{{callerToken}}` for use in call task endpoints."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current Identity",
+          "id": "ce28322c-bba3-49ed-a825-45422bcbe479",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Returns the `userId` and `role` of the authenticated user.\n\n**Auth:** any role."
+          },
+          "response": []
+        },
+        {
+          "name": "Admin Ping",
+          "id": "83df53d8-3b23-49e8-b612-434f764b1ce8",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/ping",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "ping"
+              ]
+            },
+            "description": "Returns `{\"status\":\"admin-ok\"}`. Verifies admin-level access.\n\n**Auth:** admin only."
+          },
+          "response": []
+        }
+      ],
+      "id": "deeb2275-5a4d-4771-a323-607a7a63fe66",
+      "description": "Token creation and identity verification.\n\nRun **Create Token (Admin)** first to populate the `{{token}}` variable for all other requests."
+    },
+    {
+      "name": "Projects",
+      "item": [
+        {
+          "name": "Create Project",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('projectId', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "id": "3fe6d930-b8dd-4a36-a5b6-0d3971f00d22",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"APAC Fintech Experts Q1\",\n  \"description\": \"Source senior fintech experts in APAC region\",\n  \"targetThreshold\": 50,\n  \"geographyIsoCodes\": [\"SG\", \"JP\", \"AU\"],\n  \"priority\": 1,\n  \"overrideCooldown\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects"
+              ]
+            },
+            "description": "Creates a new sourcing project. The returned `id` is auto-saved to `{{projectId}}`.\n\n**Required fields:** name, targetThreshold, geographyIsoCodes\n**Optional:** description, priority (default 0), overrideCooldown (default false), regionConfig (default {})"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Project",
+          "id": "f5dd02ac-7b6b-49ed-8407-cc86b5883ec3",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}"
+              ]
+            },
+            "description": "Retrieves a project by ID. Returns 404 if not found."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Project",
+          "id": "83ccff64-48e7-4d33-b458-78d44465162d",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priority\": 2,\n  \"description\": \"Updated project description\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}"
+              ]
+            },
+            "description": "Partial update — send any subset of the create fields."
+          },
+          "response": []
+        },
+        {
+          "name": "Attach Companies",
+          "id": "c301ce0f-ab97-436a-9b24-9c331a87ae1e",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companies\": [\n    {\n      \"name\": \"Stripe\",\n      \"domain\": \"stripe.com\",\n      \"countryIso\": \"US\"\n    },\n    {\n      \"name\": \"Wise\",\n      \"domain\": \"wise.com\",\n      \"countryIso\": \"GB\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/companies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "companies"
+              ]
+            },
+            "description": "Attach target companies to a project. Min 1 company.\n\n**Company fields:** name (required), domain, countryIso (2-char ISO), metadata\n\n**Response:** `{\"createdOrUpdated\": N}`"
+          },
+          "response": []
+        },
+        {
+          "name": "Add Sales Nav Searches",
+          "id": "dd970604-2e37-4fd0-a23b-f3bd8aa12e54",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"searches\": [\n    {\"sourceUrl\": \"https://linkedin.com/sales/search/1\", \"normalizedUrl\": \"https://linkedin.com/sales/search/1\"},\n    {\"sourceUrl\": \"https://linkedin.com/sales/search/2\", \"normalizedUrl\": \"https://linkedin.com/sales/search/2\"},\n    {\"sourceUrl\": \"https://linkedin.com/sales/search/3\", \"normalizedUrl\": \"https://linkedin.com/sales/search/3\"},\n    {\"sourceUrl\": \"https://linkedin.com/sales/search/4\", \"normalizedUrl\": \"https://linkedin.com/sales/search/4\"},\n    {\"sourceUrl\": \"https://linkedin.com/sales/search/5\", \"normalizedUrl\": \"https://linkedin.com/sales/search/5\"},\n    {\"sourceUrl\": \"https://linkedin.com/sales/search/6\", \"normalizedUrl\": \"https://linkedin.com/sales/search/6\"}\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/sales-nav-searches",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "sales-nav-searches"
+              ]
+            },
+            "description": "Add LinkedIn Sales Navigator search URLs to a project. **Minimum 6 searches required.**\n\nEach search needs: sourceUrl (URL), normalizedUrl (URL), optional metadata.\n\n**Response:** `{\"created\": N}`"
+          },
+          "response": []
+        },
+        {
+          "name": "List Screening Questions",
+          "id": "d96df2dc-5cd5-4463-b765-ef61026af3fe",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/screening-questions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "screening-questions"
+              ]
+            },
+            "description": "List all screening questions for a project."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Screening Question",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('questionId', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "id": "431f4462-0531-4229-b338-066509824e29",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"How many years of experience do you have in fintech?\",\n  \"displayOrder\": 1,\n  \"required\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/screening-questions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "screening-questions"
+              ]
+            },
+            "description": "Create a screening question for a project. The `id` is auto-saved to `{{questionId}}`.\n\n**Fields:** prompt (required), displayOrder (required, int >= 1), required (default true), metadata"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Screening Question",
+          "id": "6cbdae4e-50bc-4163-9070-4dc0273085fe",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Updated question text\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/screening-questions/{{questionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "screening-questions",
+                "{{questionId}}"
+              ]
+            },
+            "description": "Partial update of a screening question."
+          },
+          "response": []
+        }
+      ],
+      "id": "6b71bca8-4e38-47c8-b373-c012bdb27e4c",
+      "description": "Project lifecycle management — create projects, attach companies, add Sales Nav searches, manage screening questions.\n\n**Auth:** admin or ops."
+    },
+    {
+      "name": "Callers",
+      "item": [
+        {
+          "name": "Register Caller",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('callerId', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "id": "93a6f595-1def-46df-8e15-993e7c417c23",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john.smith@example.com\",\n  \"name\": \"John Smith\",\n  \"timezone\": \"America/New_York\",\n  \"languageCodes\": [\"en\", \"es\"],\n  \"regionIsoCodes\": [\"US\", \"MX\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/callers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "callers"
+              ]
+            },
+            "description": "Register a new caller. The `id` is auto-saved to `{{callerId}}`.\n\n**Required:** email (unique), name, timezone (IANA), languageCodes (min 1), regionIsoCodes (min 1, 2-char ISO)\n**Optional:** metadata"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Caller",
+          "id": "1b3d8a5c-c239-4737-b7bd-af92fac1f598",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/callers/{{callerId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "callers",
+                "{{callerId}}"
+              ]
+            },
+            "description": "Retrieve a caller by ID. Returns 404 if not found."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Caller",
+          "id": "25918baa-fb6e-4772-b012-e31a5046592d",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timezone\": \"Europe/London\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/callers/{{callerId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "callers",
+                "{{callerId}}"
+              ]
+            },
+            "description": "Partial update — send any subset of the create fields."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Latest Performance",
+          "id": "a7b165e8-b8dc-42ba-8b91-8defcaee1461",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/callers/{{callerId}}/performance/latest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "callers",
+                "{{callerId}}",
+                "performance",
+                "latest"
+              ]
+            },
+            "description": "Returns the most recent performance snapshot:\n- rolling60MinuteDials / Connections / ValidConnections\n- shortCallsLastHour\n- allocationStatus (ACTIVE, AT_RISK, PAUSED_LOW_DIAL_RATE, etc.)\n- performanceScore"
+          },
+          "response": []
+        }
+      ],
+      "id": "cd6f9a23-bf27-4912-bf38-eaa46dcca646",
+      "description": "Caller (phone agent) management — register, update, view performance.\n\n**Auth:** admin or ops."
+    },
+    {
+      "name": "Call Tasks — Caller",
+      "item": [
+        {
+          "name": "Get Current Task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    if (body && body.id) {",
+                  "        pm.collectionVariables.set('taskId', body.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "id": "e8b176eb-ed3a-425f-916d-8d7484276392",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{callerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/call-tasks/current",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "call-tasks",
+                "current"
+              ]
+            },
+            "description": "Fetches the caller's currently assigned task, or assigns one if none is active. The `id` is auto-saved to `{{taskId}}`."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Outcome — Interested",
+          "id": "d0e9272a-e27f-4c3b-9fec-c36544799f82",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{callerToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"outcome\": \"INTERESTED_SIGNUP_LINK_SENT\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/call-tasks/{{taskId}}/outcome",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "call-tasks",
+                "{{taskId}}",
+                "outcome"
+              ]
+            },
+            "description": "Expert expressed interest. A signup chase retry will be created after 24 hours if they don't complete signup."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Outcome — Retryable Rejection",
+          "id": "5647c854-8151-46ed-9598-48e5ef9d4287",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{callerToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"outcome\": \"RETRYABLE_REJECTION\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/call-tasks/{{taskId}}/outcome",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "call-tasks",
+                "{{taskId}}",
+                "outcome"
+              ]
+            },
+            "description": "Expert declined but may be retried later."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Outcome — Never Contact Again",
+          "id": "dd19a3a3-8b1a-49ef-b2cb-d4fefb36d24f",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{callerToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"outcome\": \"NEVER_CONTACT_AGAIN\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/call-tasks/{{taskId}}/outcome",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "call-tasks",
+                "{{taskId}}",
+                "outcome"
+              ]
+            },
+            "description": "Expert permanently suppressed — will never be contacted again."
+          },
+          "response": []
+        }
+      ],
+      "id": "f2a86f6d-9a77-4373-a526-117ef3ead7f9",
+      "description": "Endpoints for phone agents (callers) to receive and complete call tasks.\n\n**Auth:** caller role. Uses `{{callerToken}}`."
+    },
+    {
+      "name": "Call Tasks — Operator",
+      "item": [
+        {
+          "name": "List Tasks (All)",
+          "id": "0418eb39-13ac-402d-af28-b0679488b1b8",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/call-tasks/operator/tasks?limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "call-tasks",
+                "operator",
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "List all call tasks. Use query params to filter."
+          },
+          "response": []
+        },
+        {
+          "name": "List Tasks (Pending)",
+          "id": "c19c52e3-73cd-4272-b20e-82b1039495c8",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/call-tasks/operator/tasks?status=PENDING&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "call-tasks",
+                "operator",
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "PENDING"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "List pending tasks waiting to be assigned."
+          },
+          "response": []
+        },
+        {
+          "name": "List Tasks (Assigned)",
+          "id": "7ae894b8-8beb-400f-a80c-89bad0fe8bf2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/call-tasks/operator/tasks?status=ASSIGNED&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "call-tasks",
+                "operator",
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "ASSIGNED"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "List currently assigned tasks — useful for finding stalled tasks."
+          },
+          "response": []
+        },
+        {
+          "name": "List Tasks (By Project)",
+          "id": "1249341f-cf7d-4fba-8870-8386ab0d4431",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/call-tasks/operator/tasks?projectId={{projectId}}&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "call-tasks",
+                "operator",
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "projectId",
+                  "value": "{{projectId}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "List tasks filtered by project."
+          },
+          "response": []
+        },
+        {
+          "name": "Requeue Task",
+          "id": "27999e2f-eb47-44b0-80eb-fd2fb8803ffe",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Caller reported technical issues\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/call-tasks/operator/tasks/{{taskId}}/requeue",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "call-tasks",
+                "operator",
+                "tasks",
+                "{{taskId}}",
+                "requeue"
+              ]
+            },
+            "description": "Requeue a task back to PENDING so it can be reassigned. Optional `reason` field (max 500 chars)."
+          },
+          "response": []
+        }
+      ],
+      "id": "a346e640-65fb-4bf9-97ca-d13b2063abdf",
+      "description": "Operator endpoints for managing call tasks (list, filter, requeue).\n\n**Auth:** admin or ops."
+    },
+    {
+      "name": "Job Title Discovery",
+      "item": [
+        {
+          "name": "Trigger Discovery",
+          "id": "bf12c827-52db-4ab4-8a8b-8580772598f2",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": \"{{projectId}}\",\n  \"companies\": [\n    {\"companyName\": \"Stripe\"},\n    {\"companyName\": \"Wise\"}\n  ],\n  \"geographyIsoCodes\": [\"US\", \"GB\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/job-title-discovery/trigger",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "job-title-discovery",
+                "trigger"
+              ]
+            },
+            "description": "Enqueues an async job that fetches titles from Apollo and uses OpenAI to expand/score them.\n\n**Response:** `{\"accepted\": true}` (202)\n\nRequires the worker process to be running for processing."
+          },
+          "response": []
+        }
+      ],
+      "id": "ceb0625f-6531-404d-b9dd-eda11b9f87c9",
+      "description": "Trigger async job title discovery using Apollo + OpenAI.\n\n**Auth:** admin or ops."
+    },
+    {
+      "name": "Outreach",
+      "item": [
+        {
+          "name": "Send Message (Email)",
+          "id": "b8ae3702-4fa2-483b-b4ea-be0e681f1eae",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": \"{{projectId}}\",\n  \"expertId\": \"{{expertId}}\",\n  \"channel\": \"EMAIL\",\n  \"recipient\": \"expert@example.com\",\n  \"body\": \"Hi, we would like to invite you to participate in our research project.\",\n  \"overrideCooldown\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/outreach/send",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "outreach",
+                "send"
+              ]
+            },
+            "description": "Send an email outreach message.\n\n**Response:** `{\"accepted\": true, \"jobId\": \"...\"}` (202)"
+          },
+          "response": []
+        },
+        {
+          "name": "Send Message (LinkedIn)",
+          "id": "d31a441f-fe62-4972-b314-0c51c5a6ae92",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": \"{{projectId}}\",\n  \"expertId\": \"{{expertId}}\",\n  \"channel\": \"LINKEDIN\",\n  \"recipient\": \"https://linkedin.com/in/expert-profile\",\n  \"body\": \"Hi, I came across your profile and would love to connect regarding a research opportunity.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/outreach/send",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "outreach",
+                "send"
+              ]
+            },
+            "description": "Send a LinkedIn outreach message."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Message (WhatsApp)",
+          "id": "77e81304-c32d-4a13-b2f4-04470d72a0df",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": \"{{projectId}}\",\n  \"expertId\": \"{{expertId}}\",\n  \"channel\": \"WHATSAPP\",\n  \"recipient\": \"+14155551234\",\n  \"body\": \"Hello! We have an exciting opportunity we'd like to discuss with you.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/outreach/send",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "outreach",
+                "send"
+              ]
+            },
+            "description": "Send a WhatsApp outreach message via 2Chat."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Message (Override Cooldown)",
+          "id": "851dcc3c-a083-4adc-b379-89cf97032f20",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": \"{{projectId}}\",\n  \"expertId\": \"{{expertId}}\",\n  \"channel\": \"EMAIL\",\n  \"recipient\": \"expert@example.com\",\n  \"body\": \"Following up on our previous conversation — just wanted to check in.\",\n  \"overrideCooldown\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/outreach/send",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "outreach",
+                "send"
+              ]
+            },
+            "description": "Send a message bypassing the 30-day cooldown. Use sparingly."
+          },
+          "response": []
+        }
+      ],
+      "id": "66a8361d-c362-417e-935e-1d57bd1b1f9e",
+      "description": "Send messages to experts across 13 channels.\n\n**Auth:** admin or ops.\n\n**Channels:** PHONE, EMAIL, LINKEDIN, WHATSAPP, RESPONDIO, SMS, IMESSAGE, LINE, WECHAT, VIBER, TELEGRAM, KAKAOTALK, VOICEMAIL\n\n**Cooldown:** 30-day cooldown between outreach to the same expert. Use `overrideCooldown: true` to bypass."
+    },
+    {
+      "name": "Screening",
+      "item": [
+        {
+          "name": "Dispatch Screening",
+          "id": "f4119253-b27b-46c0-a36c-7709bdbb43b4",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": \"{{projectId}}\",\n  \"expertId\": \"{{expertId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/screening/dispatch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "screening",
+                "dispatch"
+              ]
+            },
+            "description": "Sends the project's screening questions to the expert via their preferred channel.\n\n**Response:** `{\"sent\": true/false}`"
+          },
+          "response": []
+        },
+        {
+          "name": "Record Response",
+          "id": "f7fa4331-2349-4481-adef-579ad672d5f4",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": \"{{projectId}}\",\n  \"expertId\": \"{{expertId}}\",\n  \"questionId\": \"{{questionId}}\",\n  \"responseText\": \"I have 8 years of experience in fintech.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/screening/response",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "screening",
+                "response"
+              ]
+            },
+            "description": "Record an expert's answer to a screening question.\n\n**Response:** `{\"accepted\": true}`"
+          },
+          "response": []
+        }
+      ],
+      "id": "c3231d69-a5ba-461b-9b52-5bb6f1feed71",
+      "description": "Dispatch screening questions to experts and record their responses.\n\n**Auth:** admin or ops."
+    },
+    {
+      "name": "Documentation Generator",
+      "item": [
+        {
+          "name": "Generate Documentation",
+          "id": "326ea60b-87c8-4aa3-8e72-f57f43b50e8e",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/documentation/generate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "documentation",
+                "generate"
+              ]
+            },
+            "description": "Enqueues a documentation generation job. Output is written to `docs/generated/`.\n\n**Response:** `{\"accepted\": true, \"jobId\": \"...\"}` (202)"
+          },
+          "response": []
+        }
+      ],
+      "id": "0667e6f1-702d-4fbc-89bc-1ff049795404",
+      "description": "Generate architecture docs, runbooks, state machines, and env checklists.\n\n**Auth:** admin or ops."
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Yay Call Webhook",
+          "id": "1b6cf40b-0713-467a-9a09-159f6a77f5bb",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-yay-signature",
+                "value": "<hmac-sha256-signature>"
+              },
+              {
+                "key": "x-yay-timestamp",
+                "value": "{{$timestamp}}"
+              },
+              {
+                "key": "x-yay-event-id",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"call.ended\",\n  \"callId\": \"call-12345\",\n  \"accountId\": \"acc-001\",\n  \"data\": {\n    \"startedAt\": \"2026-02-18T20:00:00.000Z\",\n    \"endedAt\": \"2026-02-18T20:05:30.000Z\",\n    \"durationSeconds\": 330,\n    \"dialedNumber\": \"+14155551234\",\n    \"terminationReason\": \"normal_clearing\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/yay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "yay"
+              ]
+            },
+            "description": "Receives Yay.com call events.\n\n**Verification:** HMAC-SHA256 signature via `x-yay-signature` header (signed with `YAY_WEBHOOK_SECRET`). Events older than 5 minutes (based on `x-yay-timestamp`) are rejected. Duplicate `x-yay-event-id` values are deduplicated.\n\n**Event types:** call.started, call.ringing, call.answered, call.ended, call.failed, call.recording_ready\n\n**Note:** In production, Yay sends these automatically. This request template is for testing/simulation."
+          },
+          "response": []
+        },
+        {
+          "name": "Sales Navigator Webhook",
+          "id": "d6bbeb6b-0bff-4c7b-8107-e78d44fa394b",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-sales-nav-secret",
+                "value": "<your-sales-nav-webhook-secret>"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": \"{{projectId}}\",\n  \"sourceUrl\": \"https://linkedin.com/sales/search/1\",\n  \"normalizedUrl\": \"https://linkedin.com/sales/search/1\",\n  \"metadata\": {},\n  \"leads\": [\n    {\n      \"firstName\": \"Jane\",\n      \"lastName\": \"Doe\",\n      \"fullName\": \"Jane Doe\",\n      \"companyName\": \"Stripe\",\n      \"jobTitle\": \"VP of Engineering\",\n      \"linkedinUrl\": \"https://linkedin.com/in/janedoe\",\n      \"countryIso\": \"US\",\n      \"emails\": [\"jane.doe@stripe.com\"],\n      \"phones\": [\"+14155551234\"]\n    },\n    {\n      \"firstName\": \"John\",\n      \"lastName\": \"Smith\",\n      \"fullName\": \"John Smith\",\n      \"companyName\": \"Wise\",\n      \"jobTitle\": \"Director of Product\",\n      \"linkedinUrl\": \"https://linkedin.com/in/johnsmith\",\n      \"countryIso\": \"GB\",\n      \"emails\": [\"john.smith@wise.com\"],\n      \"phones\": []\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/sales-nav",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "sales-nav"
+              ]
+            },
+            "description": "Receives LinkedIn Sales Navigator lead data.\n\n**Verification:** The `x-sales-nav-secret` header must match the `SALES_NAV_WEBHOOK_SECRET` env var.\n\n**Payload:** projectId (UUID), sourceUrl, normalizedUrl, optional metadata, and an array of leads. Each lead is enqueued individually for ingestion and enrichment.\n\n**Response:** `{\"accepted\": true}` (202)"
+          },
+          "response": []
+        }
+      ],
+      "id": "6799e595-4e08-4559-8264-7d95c332e1bd",
+      "description": "Webhook endpoints for external integrations. These do NOT use JWT auth — they have their own verification mechanisms."
+    },
+    {
+      "name": "OpenAPI",
+      "item": [
+        {
+          "name": "Get OpenAPI Spec",
+          "id": "f3a33230-b41c-4662-bea6-2b5ac6cedaa3",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/openapi.json",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "openapi.json"
+              ]
+            },
+            "description": "Returns the full OpenAPI 3.1.0 specification as JSON. No auth required.\n\nYou can also import this URL directly into Postman via **Import > Link**."
+          },
+          "response": []
+        }
+      ],
+      "id": "71f816f8-c458-49c6-b917-208c624aca95",
+      "description": "Fetch the machine-readable API specification."
+    },
+    {
+      "name": "Health Status",
+      "id": "5361438c-9ed8-4ec0-abec-c48b40efd929",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:3000/api/v1/system/health",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "3000",
+          "path": [
+            "api",
+            "v1",
+            "system",
+            "health"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Ready",
+      "id": "7b5e98e0-f638-4357-8e64-3cd6f279d4d1",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:3000/api/v1/system/ready",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "3000",
+          "path": [
+            "api",
+            "v1",
+            "system",
+            "ready"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "id": "f34f7f27-982e-440e-866e-f40b01cac0a9",
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "id": "670e8fa1-03ce-4b49-84f2-903ed6da861d",
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "id": "6c8e9682-d0c1-495a-be27-2bdea9578653",
+      "key": "callerToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "id": "ed190bca-a516-434b-9caf-08cc59bc7b9b",
+      "key": "projectId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "id": "57ac3ebb-70bc-4bb0-b9df-c3311326e4f6",
+      "key": "callerId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "id": "658bde14-e848-418b-a81d-fa93ab822fd8",
+      "key": "expertId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "id": "15c0c156-74ed-4533-834b-28afc386b39f",
+      "key": "questionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "id": "75b0a257-1da4-4e7d-ab4f-9bdfd94ec720",
+      "key": "taskId",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

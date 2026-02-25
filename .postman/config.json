@@ -1,0 +1,15 @@
+{
+  "workspace": {
+    "id": "645ef4b9-aff6-443b-8c92-c4a1a8dd0608"
+  },
+  "entities": {
+    "environments": [],
+    "flows": [],
+    "globals": [],
+    "mocks": [],
+    "specs": [],
+    "collections": [
+      "../docs/Expert_Sourcing_Platform.postman_collection.json"
+    ]
+  }
+}
