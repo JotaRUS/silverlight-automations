@@ -109,37 +109,64 @@ cp .env.example .env
 # Edit .env with real credentials
 ```
 
-### Start infrastructure
+### Start Docker and the Four Processes
+
+The platform requires Docker (for Redis and optionally PostgreSQL) plus four terminal processes. Follow these steps in order — each terminal stays open and running.
+
+**Terminal 1 — Start Docker and infrastructure:**
 
 ```bash
-docker compose up -d postgres redis
+# Open Docker Desktop first (macOS)
+open -a Docker
+
+# Wait until Docker is ready, then start Redis (and Postgres if not running locally)
+docker compose up -d redis
+
+# If you don't have a local PostgreSQL, also run:
+# docker compose up -d postgres redis
 ```
 
-### Run database migrations
+Once Redis is running, run database migrations in this same terminal:
 
 ```bash
 npm run db:migrate
 ```
 
-### Start the four processes
-
-Each process runs independently. Open four terminals (all commands run from the repository root):
+**Terminal 2 — API server (port 3000):**
 
 ```bash
-# Terminal 1 — API server (port 3000)
 npm run dev
+```
 
-# Terminal 2 — Background workers
+Wait until you see `server started` in the output before proceeding.
+
+**Terminal 3 — Background workers:**
+
+```bash
 npm run dev:worker
+```
 
-# Terminal 3 — Scheduler
+This starts 14 queue workers that process all async jobs (enrichment, outreach, call validation, etc.).
+
+**Terminal 4 — Scheduler:**
+
+```bash
 npm run dev:scheduler
+```
 
-# Terminal 4 — Frontend (port 3001)
+This runs the maintenance cycle every 60 seconds (performance recalculation, follow-ups, dead letter archival).
+
+**Terminal 5 — Frontend (port 3001):**
+
+```bash
 npm run dev:frontend
 ```
 
+The web UI will be available at `http://localhost:3001`.
+
 ### Validate the setup
+
+With all five terminals running, verify from any terminal:
 
 ```bash
 # Health check (should return {"status":"ok"})
