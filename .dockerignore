@@ -8,9 +8,12 @@ coverage
 !.env.example
 docs
 tests
+frontend
+nginx
 *.md
 .prettierrc
 eslint.config.js
 docker-compose.yml
+docker-compose.prod.yml
 .cursor
 .vscode
