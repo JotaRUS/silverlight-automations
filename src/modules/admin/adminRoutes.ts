@@ -6,6 +6,7 @@ import { authenticate, authorize } from '../../core/auth/authMiddleware';
 import { AppError } from '../../core/errors/appError';
 import { publishRealtimeEvent } from '../../core/realtime/realtimePubSub';
 import { prisma } from '../../db/client';
+import { redisConnection } from '../../queues/redis';
 import { ScreeningService } from '../screening/screeningService';
 
 const leadQuerySchema = z.object({
@@ -24,6 +25,74 @@ const screeningService = new ScreeningService(prisma);
 export const adminRoutes = Router();
 
 adminRoutes.use(authenticate, authorize(['admin', 'ops']));
+
+adminRoutes.get('/dashboard-stats', async (_request, response, next) => {
+  try {
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    const [
+      projectCountNow,
+      projectCountPrev,
+      callerCountNow,
+      callerCountPrev,
+      activeTaskCount,
+      recentEvents,
+      hourlyTaskRows
+    ] = await Promise.all([
+      prisma.project.count({ where: { deletedAt: null } }),
+      prisma.project.count({ where: { deletedAt: null, createdAt: { lt: sevenDaysAgo } } }),
+      prisma.caller.count({ where: { deletedAt: null } }),
+      prisma.caller.count({ where: { deletedAt: null, createdAt: { lt: sevenDaysAgo } } }),
+      prisma.callTask.count({ where: { status: { in: ['ASSIGNED', 'DIALING', 'ACTIVE'] } } }),
+      prisma.systemEvent.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 20
+      }),
+      prisma.$queryRaw<{ bucket: Date; count: bigint }[]>`
+        SELECT date_trunc('hour', "createdAt") AS bucket, COUNT(*)::bigint AS count
+        FROM "CallTask"
+        WHERE "createdAt" >= ${twentyFourHoursAgo}
+        GROUP BY bucket
+        ORDER BY bucket ASC
+      `
+    ]);
+
+    let systemHealth: 'healthy' | 'degraded' | 'down' = 'healthy';
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      await redisConnection.ping();
+    } catch {
+      systemHealth = 'degraded';
+    }
+
+    function trendPercent(current: number, previous: number): string | null {
+      if (previous === 0) return current > 0 ? `+${current} new` : null;
+      const delta = ((current - previous) / previous) * 100;
+      const sign = delta >= 0 ? '+' : '';
+      return `${sign}${delta.toFixed(1)}%`;
+    }
+
+    const hourlyTasks = hourlyTaskRows.map((row) => ({
+      hour: row.bucket.toISOString(),
+      count: Number(row.count)
+    }));
+
+    response.status(200).json({
+      projectCount: projectCountNow,
+      projectTrend: trendPercent(projectCountNow, projectCountPrev),
+      callerCount: callerCountNow,
+      callerTrend: trendPercent(callerCountNow, callerCountPrev),
+      activeTaskCount,
+      systemHealth,
+      recentEvents,
+      hourlyTasks
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 adminRoutes.get('/leads', async (request, response, next) => {
   try {

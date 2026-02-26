@@ -1,5 +1,28 @@
 import { apiRequest } from './apiClient';
 
+export interface DashboardStats {
+  projectCount: number;
+  projectTrend: string | null;
+  callerCount: number;
+  callerTrend: string | null;
+  activeTaskCount: number;
+  systemHealth: 'healthy' | 'degraded' | 'down';
+  recentEvents: {
+    id: string;
+    category: string;
+    entityType: string;
+    entityId: string | null;
+    message: string;
+    payload: Record<string, unknown> | null;
+    createdAt: string;
+  }[];
+  hourlyTasks: { hour: string; count: number }[];
+}
+
+export async function fetchDashboardStats(): Promise<DashboardStats> {
+  return apiRequest<DashboardStats>('/api/v1/admin/dashboard-stats');
+}
+
 export async function fetchLeadExplorer(params?: {
   projectId?: string;
   status?: string;
