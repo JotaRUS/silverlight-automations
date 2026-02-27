@@ -89,6 +89,10 @@ export default function LeadsPage(): JSX.Element {
     setRefreshNonce((v) => v + 1);
     setSocketConnected(true);
   });
+  useSocket('/admin', 'outreach.reply.received', () => {
+    setRefreshNonce((v) => v + 1);
+    setSocketConnected(true);
+  });
 
   const projectsQuery = useQuery({
     queryKey: ['projects'],
@@ -214,7 +218,7 @@ export default function LeadsPage(): JSX.Element {
             {selectedProjectId ? 'No leads for this project yet' : 'No leads in the system yet'}
           </p>
           <p className="mt-1 text-xs text-slate-400">
-            Leads will appear here automatically as the SalesNav scraper sends them in
+            Leads are sourced automatically. The auto-sourcing engine queues enrichment and outreach for active projects.
           </p>
         </Card>
       )}

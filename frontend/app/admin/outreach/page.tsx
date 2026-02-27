@@ -94,6 +94,7 @@ export default function OutreachPage(): JSX.Element {
   const [refreshNonce, setRefreshNonce] = useState(0);
 
   useSocket('/admin', 'outreach.thread.updated', () => setRefreshNonce((v) => v + 1));
+  useSocket('/admin', 'outreach.reply.received', () => setRefreshNonce((v) => v + 1));
 
   const projectsQuery = useQuery({
     queryKey: ['projects'],
@@ -243,16 +244,18 @@ function NewOutreachForm({
 
   const sendMutation = useMutation({
     mutationFn: async () => {
+      const payload: Record<string, string> = { projectId, expertId, channel, recipient };
+      if (body.trim()) payload.body = body;
       return apiRequest('/api/v1/outreach/send', {
         method: 'POST',
-        body: { projectId, expertId, channel, recipient, body }
+        body: payload
       });
     },
     onSuccess: () => onSent(),
     onError: (err) => setError(err instanceof Error ? err.message : 'Send failed')
   });
 
-  const canSubmit = projectId && expertId && channel && recipient && body;
+  const canSubmit = projectId && expertId && channel && recipient;
 
   const handleSubmit = useCallback(() => {
     setError('');
@@ -320,8 +323,11 @@ function NewOutreachForm({
           className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary min-h-[80px] resize-y"
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          placeholder="Write your outreach message..."
+          placeholder="Optional — leave blank to auto-generate based on expert status (new vs existing in network)"
         />
+        <p className="mt-1 text-xs text-slate-400">
+          If left blank, the system will use a project-specific invitation for existing network experts, or a general signup invitation for new experts.
+        </p>
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

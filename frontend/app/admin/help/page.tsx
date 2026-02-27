@@ -120,7 +120,9 @@ export default function HelpPage(): JSX.Element {
           scale. It automates the full pipeline: discovering potential experts from sources like Apollo and
           LinkedIn Sales Navigator, enriching their contact details through multiple data providers, running
           multi-channel outreach (email, phone, WhatsApp, Telegram, and more), managing call campaigns, and
-          screening respondents for qualification.
+          screening respondents for qualification. The system includes an auto-sourcing engine that continuously
+          queues enrichment and outreach in the background until each project reaches its target expert count —
+          no external scraper dependency required.
         </p>
         <div className="flex flex-wrap items-center gap-2 text-xs font-medium py-3">
           {[
@@ -268,11 +270,59 @@ export default function HelpPage(): JSX.Element {
           ))}
         </div>
 
+        <SubHeading>Channel Continuation &amp; Preferred Channel</SubHeading>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          When an expert replies on a specific channel (e.g., WhatsApp), the system automatically records that as
+          their preferred channel. All subsequent messages to that expert will be sent via their preferred channel,
+          as long as the project has the corresponding provider bound. This ensures a natural conversation flow
+          rather than jumping between channels.
+        </p>
+
+        <SubHeading>Auto-Sourcing Engine</SubHeading>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Once a project is created with lead sources, the system&apos;s auto-sourcing engine runs every 5 minutes.
+          It automatically:
+        </p>
+        <ul className="list-disc list-inside text-sm text-slate-600 space-y-1 ml-1">
+          <li>Queues enrichment for new leads (up to 50 per batch)</li>
+          <li>Queues outreach for enriched leads (up to 30 per batch)</li>
+          <li>Detects stalled pipelines and creates alerts</li>
+        </ul>
+        <p className="text-sm text-slate-500 mt-1">
+          This continues until the project reaches its target expert count.
+        </p>
+
+        <SubHeading>Smart Message Composition</SubHeading>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          When sending outreach, the message body is automatically composed based on the expert&apos;s status:
+        </p>
+        <ul className="list-disc list-inside text-sm text-slate-600 space-y-1 ml-1">
+          <li>Experts already in the network receive project-specific invitations</li>
+          <li>New experts receive general signup invitations</li>
+        </ul>
+        <p className="text-sm text-slate-500 mt-1">
+          You can override this by providing a custom message body.
+        </p>
+
+        <SubHeading>Email Region Rules</SubHeading>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          For regions like Canada, UK, Australia, and Europe, only professional/work emails are used for outreach.
+          For other regions, both professional and personal emails may be used. This is enforced automatically.
+        </p>
+
+        <SubHeading>Google Sheets Auto-Export</SubHeading>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          When phone numbers are verified during enrichment, they are automatically exported to the designated
+          Google Sheet (if the project has a Google Sheets provider bound). No manual sync needed.
+        </p>
+
         <SubHeading>Binding Providers to Projects</SubHeading>
         <p className="text-sm text-slate-600 leading-relaxed">
           After creating a provider account, you need to bind it to one or more projects. This tells the system
           which API key to use when working on leads for that project. You can bind providers on the Providers
-          page (select a project, then click &quot;Bind to Project&quot; on the account card).
+          page (select a project, then click &quot;Bind to Project&quot; on the account card). You can also bind
+          providers when creating a new project. The project creation wizard (Step 2: Lead Sources) shows all
+          configured providers as a grid of checkboxes, letting you select which tools to use for the project.
         </p>
       </Card>
 
@@ -708,11 +758,10 @@ export default function HelpPage(): JSX.Element {
 
         <SubHeading>Set up a new project from scratch</SubHeading>
         <ol className="list-decimal list-inside space-y-2 text-sm text-slate-600">
-          <li><strong>Create your provider accounts first.</strong> Go to the Providers page, select each provider type you need, enter the label and credentials, and click Create.</li>
-          <li><strong>Create the project.</strong> Go to Projects and create a new project with a name, target threshold, and geography.</li>
-          <li><strong>Bind providers to the project.</strong> Back on the Providers page, select your project from the &quot;Bind to Project&quot; dropdown, then click &quot;Bind to Project&quot; on each provider account card you want to use.</li>
-          <li><strong>Import leads.</strong> Leads will be imported automatically from your configured sources (Apollo searches, Sales Navigator webhooks).</li>
-          <li><strong>Monitor progress.</strong> Use the Dashboard for an overview, Leads page for individual lead status, and Outreach page for messaging activity.</li>
+          <li><strong>Configure your provider accounts first.</strong> Go to the Providers page, add API keys for the services you need (enrichment, messaging, calling, data sync).</li>
+          <li><strong>Create a new project via the wizard.</strong> Go to Projects, click &quot;New Project&quot;. Step 1: Enter project name, target expert count, geography. Step 2: Select which configured providers to use (checkboxes grouped by Lead Sourcing, Enrichment, Outreach, and Operations). Step 3: Project is created — click &quot;View Leads Live&quot; to watch the pipeline.</li>
+          <li><strong>The auto-sourcing engine takes over.</strong> The system automatically queues enrichment and outreach for your leads every 5 minutes until the target is reached.</li>
+          <li><strong>Monitor progress.</strong> Use the Dashboard for overview, Leads page for pipeline status, and Outreach page for messaging activity.</li>
         </ol>
 
         <SubHeading>Connect your first provider</SubHeading>
@@ -772,6 +821,18 @@ export default function HelpPage(): JSX.Element {
             {
               q: 'How do I deactivate a provider without deleting it?',
               a: 'On the Providers page, find the provider card and click "Deactivate". The account remains in the system but won\'t be used for any operations. You can reactivate it later by clicking "Activate".'
+            },
+            {
+              q: 'How does the auto-sourcing engine work?',
+              a: 'Every 5 minutes, the system checks all active projects. For projects that haven\'t reached their target expert count, it automatically queues enrichment for new leads and outreach for enriched leads. If no leads have been processed in 24 hours, the system creates a stalled pipeline alert.'
+            },
+            {
+              q: 'Why is my outreach going to a different channel than I selected?',
+              a: 'The system respects the expert\'s preferred channel. If an expert previously replied via WhatsApp, future messages will be sent via WhatsApp regardless of the channel you select — as long as the project has a WhatsApp provider bound. This ensures conversation continuity.'
+            },
+            {
+              q: 'Do I need to write outreach messages manually?',
+              a: 'No. If you leave the message body blank when sending outreach, the system automatically composes an appropriate message. Existing network experts receive a project-specific invitation, while new experts receive a general signup invitation. You can always override this with a custom message.'
             }
           ].map((item) => (
             <details key={item.q} className="group border border-slate-200 rounded-lg">

@@ -33,6 +33,7 @@ This manual covers operating the platform via its REST API, background processes
 12. [Operational Recipes](#12-operational-recipes)
 13. [Error Handling](#13-error-handling)
 14. [Troubleshooting](#14-troubleshooting)
+15. [Frontend Web UI](#15-frontend-web-ui)
 
 ---
 
@@ -71,8 +72,8 @@ The platform is composed of three long-running processes backed by PostgreSQL an
                v
       +--------+-----------+
       | Scheduler Process  |
-      | maintenance cycle  |
-      | every 60 seconds   |
+      | 60s maintenance +  |
+      | 5min auto-sourcing |
       +--------------------+
 ```
 
@@ -154,7 +155,7 @@ This starts 14 queue workers that process all async jobs (enrichment, outreach, 
 npm run dev:scheduler
 ```
 
-This runs the maintenance cycle every 60 seconds (performance recalculation, follow-ups, dead letter archival).
+This runs the 60-second maintenance cycle (performance recalculation, follow-ups, dead letter archival) and the 5-minute auto-sourcing loop.
 
 **Terminal 5 — Frontend (port 3001):**
 
@@ -339,6 +340,33 @@ curl -X POST http://localhost:3000/api/v1/projects \
 | `priority`          | integer  | no       | Default 0, min 0                     |
 | `overrideCooldown`  | boolean  | no       | Default false                        |
 | `regionConfig`      | object   | no       | Default {}                           |
+| `apolloProviderAccountId` | UUID | no | Bind Apollo provider account |
+| `salesNavWebhookProviderAccountId` | UUID | no | Bind Sales Nav provider account |
+| `leadmagicProviderAccountId` | UUID | no | Bind LeadMagic provider account |
+| `prospeoProviderAccountId` | UUID | no | Bind Prospeo provider account |
+| `exaProviderAccountId` | UUID | no | Bind Exa provider account |
+| `rocketreachProviderAccountId` | UUID | no | Bind RocketReach provider account |
+| `wizaProviderAccountId` | UUID | no | Bind Wiza provider account |
+| `foragerProviderAccountId` | UUID | no | Bind Forager provider account |
+| `zeliqProviderAccountId` | UUID | no | Bind Zeliq provider account |
+| `contactoutProviderAccountId` | UUID | no | Bind ContactOut provider account |
+| `datagmProviderAccountId` | UUID | no | Bind DataGM provider account |
+| `peopledatalabsProviderAccountId` | UUID | no | Bind PeopleDataLabs provider account |
+| `linkedinProviderAccountId` | UUID | no | Bind LinkedIn provider account |
+| `emailProviderAccountId` | UUID | no | Bind Email provider account |
+| `twilioProviderAccountId` | UUID | no | Bind Twilio provider account |
+| `whatsapp2chatProviderAccountId` | UUID | no | Bind WhatsApp (2Chat) provider account |
+| `respondioProviderAccountId` | UUID | no | Bind Respond.io provider account |
+| `lineProviderAccountId` | UUID | no | Bind LINE provider account |
+| `wechatProviderAccountId` | UUID | no | Bind WeChat provider account |
+| `viberProviderAccountId` | UUID | no | Bind Viber provider account |
+| `telegramProviderAccountId` | UUID | no | Bind Telegram provider account |
+| `kakaotalkProviderAccountId` | UUID | no | Bind KakaoTalk provider account |
+| `voicemailDropProviderAccountId` | UUID | no | Bind Voicemail Drop provider account |
+| `yayProviderAccountId` | UUID | no | Bind Yay provider account |
+| `googleSheetsProviderAccountId` | UUID | no | Bind Google Sheets provider account |
+
+> **Note:** Provider accounts can be bound at creation time or later via `POST /api/v1/providers/:id/bind-project`.
 
 #### Get a project
 
@@ -597,9 +625,30 @@ curl -X POST http://localhost:3000/api/v1/outreach/send \
 
 **Channels:** `PHONE`, `EMAIL`, `LINKEDIN`, `WHATSAPP`, `RESPONDIO`, `SMS`, `IMESSAGE`, `LINE`, `WECHAT`, `VIBER`, `TELEGRAM`, `KAKAOTALK`, `VOICEMAIL`
 
+**Body:** The `body` field is **optional**. If omitted, the system auto-composes the message:
+- For experts already in the network (have outreach threads from other projects): a project-specific invitation.
+- For new experts: a general signup invitation.
+
 **Cooldown:** Experts have a 30-day cooldown between outreach attempts. Set `overrideCooldown: true` to bypass (use sparingly).
 
 Response: `{"accepted": true, "jobId": "..."}` (202). The message is queued for delivery.
+
+#### Preferred channel
+
+If an expert has a `preferredChannel` set (determined from prior inbound replies), the system will use that channel instead of the one specified in the request — provided the project has the corresponding provider bound. The original requested channel is stored as a fallback.
+
+#### Email region filtering
+
+For the `EMAIL` channel, the system automatically filters email addresses by region rules. Experts in CA, GB, AU, and EU countries will only be contacted using professional email addresses — personal emails (e.g., Gmail, Yahoo) are filtered out.
+
+#### Inbound reply handling
+
+When an inbound reply is received (via webhook or manual recording through `handleInboundReply()`):
+
+1. The expert's `preferredChannel` is updated to the channel the reply was received on.
+2. The `OutreachThread` is marked as replied.
+3. The lead status advances to `REPLIED`.
+4. An `outreach.reply.received` realtime event is published to connected clients.
 
 ---
 
@@ -721,13 +770,25 @@ All workers support graceful shutdown on SIGTERM/SIGINT.
 
 ### 5.2 Scheduler Process
 
-Start with `npm run dev:scheduler`. Runs a non-overlapping maintenance cycle every 60 seconds:
+Start with `npm run dev:scheduler`. Runs two recurring cycles:
+
+#### 60-second maintenance cycle
+
+Non-overlapping. Handles operational housekeeping:
 
 1. **Dead letter archival** — Archives `DeadLetterJob` records older than 30 days.
 2. **Performance recalculation** — Enqueues a `performance.recalculate` job for every active caller.
 3. **Call allocation** — Enqueues a `call-allocation.assign-current` job for every active caller.
 4. **Screening follow-ups** — Finds pending/in-progress screening responses not updated in 15+ minutes and enqueues follow-up reminders.
 5. **Signup chase retry** — For experts who received a signup link 24+ hours ago without completing signup, creates new PENDING call tasks (max 3 per expert per day).
+
+#### 5-minute auto-sourcing loop
+
+For every ACTIVE project below its target threshold:
+
+1. **Queue enrichment** — Enqueues enrichment jobs for leads in `NEW` status (batch size 50).
+2. **Queue outreach** — Enqueues outreach jobs for leads in `ENRICHED` status (batch size 30).
+3. **Stall detection** — Detects stalled pipelines (no lead activity in 24 hours) and creates system alerts for operator review.
 
 ---
 
@@ -871,6 +932,7 @@ When a lead is ingested, the enrichment pipeline attempts to find verified conta
 2. **Evaluation** — Results ranked by confidence score. Target threshold: **≥ 0.7**.
 3. **Fallback phase** — If no result meets the threshold, remaining providers are tried sequentially.
 4. **Persistence** — Best result creates `ExpertContact` records (email, phone) on the expert. Lead status moves to `ENRICHED`.
+5. **Google Sheets phone export** — When phone contacts are saved with `VERIFIED` status, a Google Sheets phone export job is automatically queued (if the project has a Google Sheets provider bound).
 
 **Supported enrichment providers:** LeadMagic, Prospeo, Exa, RocketReach, Wiza, Forager, Zeliq, ContactOut, DataGM, PeopleDataLabs.
 
@@ -974,14 +1036,19 @@ All optional. Configure only the channels you intend to use:
 ### Full project lifecycle (end to end)
 
 ```bash
-# 1. Create a project
+# 1. Create a project (provider binding happens here — in the web UI this is
+#    the wizard's Step 2: Lead Sources selection)
 curl -X POST http://localhost:3000/api/v1/projects \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "US Healthcare AI Experts",
     "targetThreshold": 30,
-    "geographyIsoCodes": ["US"]
+    "geographyIsoCodes": ["US"],
+    "apolloProviderAccountId": "<provider-account-uuid>",
+    "emailProviderAccountId": "<provider-account-uuid>",
+    "leadmagicProviderAccountId": "<provider-account-uuid>",
+    "googleSheetsProviderAccountId": "<provider-account-uuid>"
   }'
 # Save the returned projectId
 
@@ -1033,17 +1100,11 @@ curl -X POST http://localhost:3000/api/v1/call-tasks/$TASK_ID/outcome \
   -H "Content-Type: application/json" \
   -d '{"outcome": "INTERESTED_SIGNUP_LINK_SENT"}'
 
-# 7. Send outreach
-curl -X POST http://localhost:3000/api/v1/outreach/send \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "projectId": "'$PROJECT_ID'",
-    "expertId": "'$EXPERT_ID'",
-    "channel": "EMAIL",
-    "recipient": "expert@hospital.org",
-    "body": "We would love to speak with you about our research."
-  }'
+# 7. Enrichment & outreach — handled by the auto-sourcing loop
+# The scheduler automatically queues enrichment for NEW leads (batch 50) and
+# outreach for ENRICHED leads (batch 30) every 5 minutes for active projects
+# below their target threshold. No manual send required.
+# Manual outreach is still available via POST /api/v1/outreach/send if needed.
 
 # 8. Dispatch screening and record response
 curl -X POST http://localhost:3000/api/v1/screening/dispatch \
@@ -1182,3 +1243,51 @@ curl http://localhost:3000/api/v1/callers/$CALLER_ID/performance/latest \
 - `AT_RISK` — dial rate dropping. 5-minute warning before pause.
 - `RESTRICTED_FRAUD` — short calls or timezone mismatches detected. Requires admin review.
 - `WARMUP_GRACE` — 5-minute grace period after starting. Will auto-transition to ACTIVE.
+
+---
+
+## 15. Frontend Web UI
+
+The platform includes a Next.js 14 admin portal at `http://localhost:3001` (start with `npm run dev:frontend`). The frontend proxies API requests to the backend via a rewrite rule in `next.config.mjs`.
+
+### Project creation wizard
+
+Three-step guided flow for creating and configuring projects:
+
+1. **Project details** — Name, description, target threshold, geography, priority.
+2. **Lead sources** — Select and bind provider accounts (Apollo, Sales Nav, enrichment providers, messaging channels, Google Sheets). Provider health is validated before binding.
+3. **Review & create** — Summary of all settings before submission.
+
+### Leads pipeline
+
+Displays all leads for a project with real-time status updates via live polling and socket events. Leads are grouped by pipeline stage (`NEW` → `ENRICHING` → `ENRICHED` → `OUTREACH_PENDING` → `CONTACTED` → `REPLIED` → `CONVERTED`). Supports filtering, search, and bulk actions.
+
+### Outreach monitoring
+
+Tracks all outreach threads and messages per project. Displays delivery status, channel used, and inbound reply content. Reply events update the view in real time via the `outreach.reply.received` event.
+
+### Caller execution interface
+
+Dedicated view for phone agents showing:
+
+- Current assigned expert with full details (name, company, title, contact info).
+- Call history and prior outreach threads across projects.
+- Outcome submission buttons (`INTERESTED_SIGNUP_LINK_SENT`, `RETRYABLE_REJECTION`, `NEVER_CONTACT_AGAIN`).
+- Auto-assignment of the next call task on outcome submission.
+
+### Dashboard
+
+Real-time operational dashboard with:
+
+- Active projects and progress toward target thresholds.
+- Lead pipeline distribution across stages.
+- Caller performance summaries and allocation statuses.
+- Queue depths and processing rates.
+
+### Provider management
+
+Lists all configured provider accounts with connection health checks. Supports adding new provider accounts, testing connectivity, and viewing usage metrics.
+
+### Help center
+
+Built-in guide pages with step-by-step provider setup instructions for each integration (Apollo, Sales Nav, enrichment providers, messaging channels, Yay, Google Sheets).

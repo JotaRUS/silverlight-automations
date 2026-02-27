@@ -8,8 +8,19 @@ import { Card } from '@/components/ui/card';
 import { useSocket } from '@/hooks/useSocket';
 import { fetchCallBoard } from '@/services/adminService';
 
+interface CallTask {
+  id: string;
+  status: string;
+  priorityScore?: number;
+  callerId?: string;
+  expertId?: string;
+  projectId?: string;
+  lead?: { expert?: { fullName?: string; contacts?: { type: string; value: string }[] } };
+  project?: { name?: string };
+}
+
 interface CallBoardResponse {
-  tasks: Record<string, unknown>[];
+  tasks: CallTask[];
   callers: Record<string, unknown>[];
   metrics: Record<string, unknown>[];
 }
@@ -19,14 +30,15 @@ export default function CallAllocationLiveBoardPage(): JSX.Element {
   useSocket('/admin', 'call-allocation.updated', () => setRefreshNonce((value) => value + 1));
   useSocket('/admin', 'caller.performance.updated', () => setRefreshNonce((value) => value + 1));
 
-  const callBoardQuery = useQuery<CallBoardResponse>({
+  const callBoardQuery = useQuery({
     queryKey: ['call-board', refreshNonce],
     queryFn: () => fetchCallBoard()
   });
 
-  const tasks = callBoardQuery.data?.tasks ?? [];
-  const callers = callBoardQuery.data?.callers ?? [];
-  const metrics = callBoardQuery.data?.metrics ?? [];
+  const raw = callBoardQuery.data as CallBoardResponse | undefined;
+  const tasks = raw?.tasks ?? [];
+  const callers = raw?.callers ?? [];
+  const metrics = raw?.metrics ?? [];
 
   return (
     <div className="space-y-6">
@@ -38,9 +50,27 @@ export default function CallAllocationLiveBoardPage(): JSX.Element {
             {tasks
               .filter((task) => task.status === 'PENDING')
               .map((task) => (
-                <div key={String(task.id)} className="rounded border border-slate-200 p-2">
-                  <p>Task: {String(task.id)}</p>
-                  <p className="text-xs text-slate-500">Priority: {String(task.priorityScore)}</p>
+                <div key={task.id} className="rounded border border-slate-200 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="font-medium text-slate-800 truncate">
+                      {task.lead?.expert?.fullName ?? task.expertId ?? 'Unknown expert'}
+                    </p>
+                    <Badge tone="neutral">{task.status}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500 truncate">
+                    {task.project?.name ?? task.projectId ?? '—'}
+                  </p>
+                  {task.lead?.expert?.contacts && task.lead.expert.contacts.length > 0 && (
+                    <p className="mt-0.5 text-xs text-slate-400 truncate">
+                      {task.lead.expert.contacts[0].value}
+                    </p>
+                  )}
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                      <span className="material-symbols-outlined text-xs">priority_high</span>
+                      Priority: {task.priorityScore ?? '—'}
+                    </span>
+                  </div>
                 </div>
               ))}
           </div>
@@ -51,10 +81,25 @@ export default function CallAllocationLiveBoardPage(): JSX.Element {
             {tasks
               .filter((task) => task.status === 'ASSIGNED' || task.status === 'DIALING')
               .map((task) => (
-                <div key={String(task.id)} className="rounded border border-slate-200 p-2">
-                  <p>Caller: {String(task.callerId ?? '-')}</p>
-                  <p className="text-xs text-slate-500">Task: {String(task.id)}</p>
-                  <Badge tone={task.status === 'DIALING' ? 'warning' : 'neutral'}>{String(task.status)}</Badge>
+                <div key={task.id} className="rounded border border-slate-200 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="font-medium text-slate-800 truncate">
+                      {task.lead?.expert?.fullName ?? task.expertId ?? 'Unknown expert'}
+                    </p>
+                    <Badge tone={task.status === 'DIALING' ? 'warning' : 'neutral'}>{task.status}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500 truncate">
+                    {task.project?.name ?? task.projectId ?? '—'}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Caller: {String(task.callerId ?? '—')}
+                  </p>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                      <span className="material-symbols-outlined text-xs">priority_high</span>
+                      Priority: {task.priorityScore ?? '—'}
+                    </span>
+                  </div>
                 </div>
               ))}
           </div>
