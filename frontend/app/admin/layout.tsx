@@ -39,56 +39,59 @@ export default function AdminLayout({ children }: PropsWithChildren): JSX.Elemen
   return (
     <div className="min-h-screen bg-bg-light">
       {/* Desktop icon sidebar */}
-      <div className="hidden md:block fixed left-0 top-0 bottom-0 w-16 bg-white border-r border-slate-200 z-40 py-6">
-        <div className="flex flex-col items-center gap-6 h-full">
-          <Link href="/admin" className="size-10 bg-primary rounded-lg flex items-center justify-center text-white">
+      <div className="hidden md:block fixed left-0 top-0 bottom-0 w-[4.5rem] bg-white border-r border-slate-200 z-40 py-4 overflow-y-auto">
+        <div className="flex flex-col items-center gap-3 h-full">
+          <Link href="/admin" className="size-10 bg-primary rounded-lg flex items-center justify-center text-white shrink-0">
             <span className="material-symbols-outlined">hub</span>
           </Link>
-          <nav className="flex flex-col gap-2 mt-2">
+          <nav className="flex flex-col gap-1 mt-1">
             {sidebarLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 title={link.label}
                 className={cn(
-                  'p-2 rounded-xl transition-colors',
+                  'flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 transition-colors',
                   isActive(pathname, link.href)
                     ? 'text-primary bg-primary/10'
                     : 'text-slate-400 hover:text-primary hover:bg-slate-50'
                 )}
               >
-                <span className="material-symbols-outlined">{link.icon}</span>
+                <span className="material-symbols-outlined text-xl">{link.icon}</span>
+                <span className="text-[9px] font-semibold leading-tight">{link.label}</span>
               </Link>
             ))}
           </nav>
-          <div className="mt-auto flex flex-col gap-4">
+          <div className="mt-auto flex flex-col gap-1 shrink-0">
             <Link
               href="/admin/help"
               title="Help"
               className={cn(
-                'p-2 rounded-xl transition-colors',
+                'flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 transition-colors',
                 isActive(pathname, '/admin/help')
                   ? 'text-primary bg-primary/10'
                   : 'text-slate-400 hover:text-primary hover:bg-slate-50'
               )}
             >
-              <span className="material-symbols-outlined">help_outline</span>
+              <span className="material-symbols-outlined text-xl">help_outline</span>
+              <span className="text-[9px] font-semibold leading-tight">Help</span>
             </Link>
             <button
-              className="p-2 text-slate-400 hover:text-primary transition-colors"
+              className="flex flex-col items-center gap-0.5 px-1 py-1.5 text-slate-400 hover:text-primary transition-colors"
               title="Logout"
               onClick={() => {
                 void logout().then(() => router.push('/login'));
               }}
             >
-              <span className="material-symbols-outlined">logout</span>
+              <span className="material-symbols-outlined text-xl">logout</span>
+              <span className="text-[9px] font-semibold leading-tight">Logout</span>
             </button>
           </div>
         </div>
       </div>
 
       {/* Header */}
-      <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between md:pl-20">
+      <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between md:pl-[5.5rem]">
         <div className="flex items-center gap-3">
           <div className="size-10 bg-primary rounded-lg flex items-center justify-center text-white md:hidden">
             <span className="material-symbols-outlined">hub</span>
@@ -110,7 +113,7 @@ export default function AdminLayout({ children }: PropsWithChildren): JSX.Elemen
       </header>
 
       {/* Main content */}
-      <main className="md:pl-16 pb-20 md:pb-0">
+      <main className="md:pl-[4.5rem] pb-20 md:pb-0">
         <div className="max-w-7xl mx-auto p-4">
           {children}
         </div>
