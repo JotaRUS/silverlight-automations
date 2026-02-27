@@ -27,3 +27,13 @@ export async function updateProject(projectId: string, payload: Partial<ProjectR
     body: payload
   });
 }
+
+export async function addSalesNavSearches(
+  projectId: string,
+  searches: { sourceUrl: string; normalizedUrl: string; metadata?: Record<string, unknown> }[]
+): Promise<{ created: number }> {
+  return apiRequest<{ created: number }>(`/api/v1/projects/${projectId}/sales-nav-searches`, {
+    method: 'POST',
+    body: { searches }
+  });
+}

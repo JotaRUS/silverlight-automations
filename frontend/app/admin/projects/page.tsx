@@ -1,7 +1,9 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import Link from 'next/link';
 
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { listProjects } from '@/services/projectService';
 import type { ProjectStatus } from '@/types/project';
@@ -53,9 +55,17 @@ export default function ProjectsPage(): JSX.Element {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-bold">Projects</h2>
-        <p className="text-sm text-slate-500">All expert sourcing projects and their current status</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold">Projects</h2>
+          <p className="text-sm text-slate-500">All expert sourcing projects and their current status</p>
+        </div>
+        <Link href="/admin/projects/new">
+          <Button>
+            <span className="material-symbols-outlined text-lg mr-1">add</span>
+            New Project
+          </Button>
+        </Link>
       </div>
 
       {error && (
