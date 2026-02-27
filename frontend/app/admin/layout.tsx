@@ -62,6 +62,18 @@ export default function AdminLayout({ children }: PropsWithChildren): JSX.Elemen
             ))}
           </nav>
           <div className="mt-auto flex flex-col gap-4">
+            <Link
+              href="/admin/help"
+              title="Help"
+              className={cn(
+                'p-2 rounded-xl transition-colors',
+                isActive(pathname, '/admin/help')
+                  ? 'text-primary bg-primary/10'
+                  : 'text-slate-400 hover:text-primary hover:bg-slate-50'
+              )}
+            >
+              <span className="material-symbols-outlined">help_outline</span>
+            </Link>
             <button
               className="p-2 text-slate-400 hover:text-primary transition-colors"
               title="Logout"
