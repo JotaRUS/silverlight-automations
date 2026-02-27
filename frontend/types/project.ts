@@ -1,14 +1,20 @@
+export type ProjectStatus = 'ACTIVE' | 'COMPLETED' | 'PAUSED' | 'ARCHIVED';
+
 export interface ProjectRecord {
   id: string;
   name: string;
   description?: string | null;
   targetThreshold: number;
+  signedUpCount: number;
+  completionPercentage: number;
   geographyIsoCodes: string[];
   regionConfig?: Record<string, unknown>;
   priority: number;
   overrideCooldown: boolean;
-  status: 'ACTIVE' | 'COMPLETED' | 'PAUSED' | 'ARCHIVED';
+  status: ProjectStatus;
   enrichmentRoutingConfig?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
   apolloProviderAccountId?: string | null;
   salesNavWebhookProviderAccountId?: string | null;
   leadmagicProviderAccountId?: string | null;
