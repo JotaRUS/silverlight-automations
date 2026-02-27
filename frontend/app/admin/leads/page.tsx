@@ -1,12 +1,12 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { Card } from '@/components/ui/card';
 import { useSocket } from '@/hooks/useSocket';
-import { fetchLeadExplorer } from '@/services/adminService';
+import { deleteLead, fetchLeadExplorer, updateLead } from '@/services/adminService';
 import { listProjects } from '@/services/projectService';
 
 type LeadStatus = 'NEW' | 'ENRICHING' | 'ENRICHED' | 'OUTREACH_PENDING' | 'CONTACTED' | 'REPLIED' | 'DISQUALIFIED' | 'CONVERTED';
@@ -68,14 +68,72 @@ function formatRelative(dateString: string): string {
   return `${days}d ago`;
 }
 
+function LeadActions({
+  lead,
+  onStatusChange,
+  onDelete
+}: {
+  lead: LeadRecord;
+  onStatusChange: (id: string, status: LeadStatus) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+      >
+        <span className="material-symbols-outlined text-xl">more_vert</span>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-8 z-50 w-52 rounded-xl bg-white shadow-lg border border-slate-200 py-1 text-sm">
+            <p className="px-3 py-1.5 text-[10px] font-bold uppercase text-slate-400 tracking-wider">Change Status</p>
+            {PIPELINE_STAGES.map((stage) => (
+              <button
+                key={stage.status}
+                disabled={lead.status === stage.status}
+                onClick={() => {
+                  onStatusChange(lead.id, stage.status);
+                  setOpen(false);
+                }}
+                className={`w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 transition-colors ${lead.status === stage.status ? 'opacity-40 cursor-not-allowed' : ''}`}
+              >
+                <span className={`material-symbols-outlined text-base ${stage.color}`}>{stage.icon}</span>
+                {stage.label}
+              </button>
+            ))}
+            <div className="border-t border-slate-100 my-1" />
+            <button
+              onClick={() => {
+                onDelete(lead.id);
+                setOpen(false);
+              }}
+              className="w-full text-left px-3 py-1.5 flex items-center gap-2 text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <span className="material-symbols-outlined text-base">delete</span>
+              Delete Lead
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function LeadsPage(): JSX.Element {
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const initialProjectId = searchParams.get('projectId') ?? '';
 
   const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
   const [filterStatus, setFilterStatus] = useState<LeadStatus | ''>('');
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [socketConnected, setSocketConnected] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   useSocket('/admin', 'lead.ingested', () => {
     setRefreshNonce((v) => v + 1);
@@ -109,6 +167,31 @@ export default function LeadsPage(): JSX.Element {
     refetchInterval: 10_000
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: LeadStatus }) => updateLead(id, { status }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['leads-pipeline'] });
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteLead(id),
+    onSuccess: () => {
+      setConfirmDelete(null);
+      void queryClient.invalidateQueries({ queryKey: ['leads-pipeline'] });
+    }
+  });
+
+  const handleStatusChange = useCallback(
+    (id: string, status: LeadStatus) => updateMutation.mutate({ id, status }),
+    [updateMutation]
+  );
+
+  const handleDelete = useCallback(
+    (id: string) => setConfirmDelete(id),
+    []
+  );
+
   const leads = (leadsQuery.data?.leads ?? []) as unknown as LeadRecord[];
 
   const stageCounts = useMemo(() => {
@@ -126,6 +209,38 @@ export default function LeadsPage(): JSX.Element {
 
   return (
     <div className="space-y-6">
+      {/* Delete confirmation dialog */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-full bg-red-100 flex items-center justify-center text-red-600">
+                <span className="material-symbols-outlined">warning</span>
+              </div>
+              <div>
+                <h3 className="font-semibold">Delete Lead</h3>
+                <p className="text-sm text-slate-500">This action cannot be undone.</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate(confirmDelete)}
+                disabled={deleteMutation.isPending}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-500 transition-colors disabled:opacity-60"
+              >
+                {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -149,7 +264,7 @@ export default function LeadsPage(): JSX.Element {
       <Card className="flex flex-wrap items-center gap-3">
         <span className="material-symbols-outlined text-slate-400">filter_list</span>
         <select
-          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
           value={selectedProjectId}
           onChange={(e) => setSelectedProjectId(e.target.value)}
         >
@@ -159,7 +274,7 @@ export default function LeadsPage(): JSX.Element {
           ))}
         </select>
         <select
-          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value as LeadStatus | '')}
         >
@@ -223,6 +338,14 @@ export default function LeadsPage(): JSX.Element {
         </Card>
       )}
 
+      {/* Mutation feedback */}
+      {updateMutation.isError && (
+        <Card className="border-red-200 bg-red-50 text-sm text-red-700 flex items-center gap-2">
+          <span className="material-symbols-outlined text-base">error</span>
+          Failed to update: {updateMutation.error instanceof Error ? updateMutation.error.message : 'Unknown error'}
+        </Card>
+      )}
+
       {/* Leads table */}
       {!leadsQuery.isLoading && filteredLeads.length > 0 && (
         <Card className="overflow-hidden p-0">
@@ -237,6 +360,7 @@ export default function LeadsPage(): JSX.Element {
                   <th className="px-4 py-3">Contacts</th>
                   <th className="px-4 py-3">Confidence</th>
                   <th className="px-4 py-3">Added</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -320,6 +444,13 @@ export default function LeadsPage(): JSX.Element {
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
                         {formatRelative(lead.createdAt)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <LeadActions
+                          lead={lead}
+                          onStatusChange={handleStatusChange}
+                          onDelete={handleDelete}
+                        />
                       </td>
                     </tr>
                   );

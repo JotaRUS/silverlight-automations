@@ -105,10 +105,14 @@ export default function ProjectsPage(): JSX.Element {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {projects.map((project) => (
-                  <tr key={project.id} className="hover:bg-slate-50/50 transition-colors">
+                  <tr
+                    key={project.id}
+                    className="hover:bg-slate-50/50 transition-colors cursor-pointer"
+                    onClick={() => window.location.href = `/admin/projects/${project.id}`}
+                  >
                     <td className="px-4 py-3">
                       <div>
-                        <p className="font-medium text-slate-800">{project.name}</p>
+                        <p className="font-medium text-primary hover:underline">{project.name}</p>
                         {project.description && (
                           <p className="mt-0.5 text-xs text-slate-400 line-clamp-1">{project.description}</p>
                         )}

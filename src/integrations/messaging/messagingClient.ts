@@ -5,6 +5,7 @@ import { ProviderCredentialResolver } from '../../core/providers/providerCredent
 import type { ProviderType } from '../../core/providers/providerTypes';
 import { clock } from '../../core/time/clock';
 import { prisma } from '../../db/client';
+import { EmailClient } from './emailClient';
 
 export interface SendMessageInput {
   projectId: string;
@@ -19,8 +20,11 @@ interface ChannelProviderConfig {
   providerType: ProviderType;
   apiKeyHeader?: string;
   isBasicAuth?: boolean;
+  contentType?: string;
+  useSmtp?: boolean;
   endpointBuilder?: (credentials: Record<string, unknown>) => string;
   headerBuilder?: (credentials: Record<string, unknown>) => Record<string, string>;
+  bodyBuilder?: (recipient: string, text: string, credentials: Record<string, unknown>) => unknown;
 }
 
 function credentialString(credentials: Record<string, unknown>, key: string): string {
@@ -31,81 +35,147 @@ function credentialString(credentials: Record<string, unknown>, key: string): st
 const channelProviderConfigs: Partial<Record<Channel, ChannelProviderConfig>> = {
   email: {
     providerType: 'EMAIL_PROVIDER',
-    endpoint: 'https://api.email-provider.example/v1/send',
-    apiKeyHeader: 'authorization'
+    endpoint: 'smtp',
+    useSmtp: true
   },
   linkedin: {
     providerType: 'LINKEDIN',
     endpoint: 'https://api.linkedin.com/v2/messages',
-    apiKeyHeader: 'authorization'
+    apiKeyHeader: 'authorization',
+    bodyBuilder: (recipient, text) => ({
+      recipients: [recipient],
+      body: text,
+      messageType: 'MEMBER_TO_MEMBER'
+    })
   },
   whatsapp: {
     providerType: 'WHATSAPP_2CHAT',
     endpoint: 'https://api.2chat.co/v1/messages',
-    apiKeyHeader: 'x-api-key'
+    apiKeyHeader: 'x-api-key',
+    bodyBuilder: (recipient, text) => ({
+      to_number: recipient,
+      text
+    })
   },
   respondio: {
     providerType: 'RESPONDIO',
     endpoint: 'https://api.respond.io/v2/message',
-    apiKeyHeader: 'authorization'
+    apiKeyHeader: 'authorization',
+    bodyBuilder: (recipient, text) => ({
+      contact_id: recipient,
+      message: { type: 'text', text }
+    })
   },
   sms: {
     providerType: 'TWILIO',
     endpoint: '',
     endpointBuilder: (credentials) =>
       `https://api.twilio.com/2010-04-01/Accounts/${credentialString(credentials, 'accountSid')}/Messages.json`,
-    isBasicAuth: true
+    isBasicAuth: true,
+    contentType: 'application/x-www-form-urlencoded',
+    bodyBuilder: (recipient, text, credentials) => ({
+      To: recipient,
+      From: credentialString(credentials, 'fromNumber'),
+      Body: text
+    })
   },
   imessage: {
     providerType: 'TWILIO',
     endpoint: '',
     endpointBuilder: (credentials) =>
       `https://api.twilio.com/2010-04-01/Accounts/${credentialString(credentials, 'accountSid')}/Messages.json`,
-    isBasicAuth: true
+    isBasicAuth: true,
+    contentType: 'application/x-www-form-urlencoded',
+    bodyBuilder: (recipient, text, credentials) => ({
+      To: recipient,
+      From: credentialString(credentials, 'fromNumber'),
+      Body: text
+    })
   },
   line: {
     providerType: 'LINE',
     endpoint: 'https://api.line.me/v2/bot/message/push',
-    apiKeyHeader: 'authorization'
+    apiKeyHeader: 'authorization',
+    bodyBuilder: (recipient, text) => ({
+      to: recipient,
+      messages: [{ type: 'text', text }]
+    })
   },
   wechat: {
     providerType: 'WECHAT',
     endpoint: 'https://api.wechat.com/v1/message/send',
-    apiKeyHeader: 'authorization'
+    apiKeyHeader: 'authorization',
+    bodyBuilder: (recipient, text) => ({
+      touser: recipient,
+      msgtype: 'text',
+      text: { content: text }
+    })
   },
   viber: {
     providerType: 'VIBER',
     endpoint: 'https://chatapi.viber.com/pa/send_message',
-    apiKeyHeader: 'x-viber-auth-token'
+    apiKeyHeader: 'x-viber-auth-token',
+    bodyBuilder: (recipient, text) => ({
+      receiver: recipient,
+      type: 'text',
+      text
+    })
   },
   telegram: {
     providerType: 'TELEGRAM',
     endpoint: '',
     endpointBuilder: (credentials) =>
-      `https://api.telegram.org/bot${credentialString(credentials, 'botToken')}/sendMessage`
+      `https://api.telegram.org/bot${credentialString(credentials, 'botToken')}/sendMessage`,
+    bodyBuilder: (recipient, text) => ({
+      chat_id: recipient,
+      text
+    })
   },
   kakaotalk: {
     providerType: 'KAKAOTALK',
     endpoint: 'https://kapi.kakao.com/v2/api/talk/memo/default/send',
-    apiKeyHeader: 'authorization'
+    apiKeyHeader: 'authorization',
+    bodyBuilder: (recipient, text) => ({
+      template_object: {
+        object_type: 'text',
+        text,
+        link: {},
+        receiver_uuids: [recipient]
+      }
+    })
   },
   voicemail: {
     providerType: 'VOICEMAIL_DROP',
-    endpoint: 'https://api.voicemail-drop.example/v1/drop',
-    apiKeyHeader: 'x-api-key'
+    endpoint: '',
+    isBasicAuth: true,
+    contentType: 'application/x-www-form-urlencoded',
+    endpointBuilder: (credentials) =>
+      `https://api.twilio.com/2010-04-01/Accounts/${credentialString(credentials, 'accountSid')}/Calls.json`,
+    bodyBuilder: (recipient, text, credentials) => ({
+      To: recipient,
+      From: credentialString(credentials, 'fromNumber'),
+      Twiml: `<Response><Say voice="alice">${text}</Say></Response>`
+    })
   },
   phone: {
     providerType: 'YAY',
     endpoint: 'https://api.yay.com/v1/calls',
-    apiKeyHeader: 'authorization'
+    apiKeyHeader: 'authorization',
+    bodyBuilder: (recipient, _text, credentials) => ({
+      to: recipient,
+      from: credentialString(credentials, 'fromNumber'),
+      type: 'outbound'
+    })
   }
 };
 
 export class MessagingClient {
   private readonly providerCredentialResolver: ProviderCredentialResolver;
+  private readonly emailClient: EmailClient;
 
   public constructor(providerCredentialResolver?: ProviderCredentialResolver) {
     this.providerCredentialResolver = providerCredentialResolver ?? new ProviderCredentialResolver(prisma);
+    this.emailClient = new EmailClient();
   }
 
   private extractProviderMessageId(response: { id?: string; messageId?: string; data?: { id?: string; messageId?: string } }, fallbackPrefix: string): string {
@@ -132,6 +202,11 @@ export class MessagingClient {
       correlationId: input.correlationId,
       fallbackStrategy: 'round_robin'
     });
+
+    if (providerConfig.useSmtp) {
+      return this.sendViaSmtp(input, resolvedCredentials);
+    }
+
     const endpoint = providerConfig.endpointBuilder
       ? providerConfig.endpointBuilder(resolvedCredentials.credentials)
       : providerConfig.endpoint;
@@ -165,16 +240,18 @@ export class MessagingClient {
       });
     }
 
+    const body = providerConfig.bodyBuilder
+      ? providerConfig.bodyBuilder(input.recipient, input.body, resolvedCredentials.credentials)
+      : { recipient: input.recipient, text: input.body };
+
     let response: { id?: string; messageId?: string };
     try {
       response = await requestJson<{ id?: string; messageId?: string }>({
         method: 'POST',
         url: endpoint,
         headers,
-        body: {
-          recipient: input.recipient,
-          text: input.body
-        },
+        body,
+        contentType: providerConfig.contentType,
         provider: `messaging:${input.channel}`,
         operation: 'send-message',
         correlationId: input.correlationId
@@ -200,5 +277,33 @@ export class MessagingClient {
     return {
       providerMessageId
     };
+  }
+
+  private async sendViaSmtp(
+    input: SendMessageInput,
+    resolvedCredentials: { providerAccountId: string; credentials: Record<string, unknown> }
+  ): Promise<{ providerMessageId: string }> {
+    const fromAddress = typeof resolvedCredentials.credentials.from === 'string'
+      ? resolvedCredentials.credentials.from
+      : typeof resolvedCredentials.credentials.user === 'string'
+        ? resolvedCredentials.credentials.user
+        : '';
+
+    try {
+      return await this.emailClient.sendEmail(resolvedCredentials.credentials, {
+        to: input.recipient,
+        from: fromAddress,
+        subject: 'Expert Network Invitation',
+        textBody: input.body,
+        correlationId: input.correlationId
+      });
+    } catch (error) {
+      await this.providerCredentialResolver.markFailure({
+        providerAccountId: resolvedCredentials.providerAccountId,
+        providerType: 'EMAIL_PROVIDER',
+        reason: error instanceof Error ? error.message : 'unknown email error'
+      });
+      throw error;
+    }
   }
 }

@@ -126,7 +126,7 @@ export class LeadIngestionService {
             regionIso: createdLead.regionIso ?? undefined,
             metadata: {
               companyName: job.lead.companyName,
-              source: 'sales_nav'
+              source: job.source ?? 'sales_nav'
             },
             emailHash,
             phoneHash,

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { LeadStatus } from '@prisma/client';
+import { LeadStatus, ThreadStatus, ScreeningStatus } from '@prisma/client';
 
 import { authenticate, authorize } from '../../core/auth/authMiddleware';
 import { AppError } from '../../core/errors/appError';
@@ -16,8 +16,34 @@ const leadQuerySchema = z.object({
   cooldownBlocked: z.enum(['true', 'false']).optional()
 });
 
+const leadUpdateSchema = z.object({
+  status: z.nativeEnum(LeadStatus).optional(),
+  fullName: z.string().min(1).optional(),
+  jobTitle: z.string().optional(),
+  linkedinUrl: z.string().url().optional().or(z.literal('')),
+  regionIso: z.string().optional(),
+  countryIso: z.string().optional()
+});
+
+const leadIdParamsSchema = z.object({
+  leadId: z.string().uuid()
+});
+
+const threadIdParamsSchema = z.object({
+  threadId: z.string().uuid()
+});
+
+const threadUpdateSchema = z.object({
+  status: z.nativeEnum(ThreadStatus)
+});
+
 const screeningActionParamsSchema = z.object({
   responseId: z.string().uuid()
+});
+
+const screeningUpdateSchema = z.object({
+  status: z.nativeEnum(ScreeningStatus).optional(),
+  responseText: z.string().optional()
 });
 
 const screeningService = new ScreeningService(prisma);
@@ -168,6 +194,45 @@ adminRoutes.get('/leads', async (request, response, next) => {
   }
 });
 
+adminRoutes.patch('/leads/:leadId', async (request, response, next) => {
+  try {
+    const params = leadIdParamsSchema.parse(request.params);
+    const body = leadUpdateSchema.safeParse(request.body);
+    if (!body.success) {
+      throw new AppError('Invalid payload', 400, 'invalid_payload', body.error.flatten());
+    }
+    const existing = await prisma.lead.findUnique({ where: { id: params.leadId } });
+    if (!existing || existing.deletedAt) {
+      throw new AppError('Lead not found', 404, 'lead_not_found');
+    }
+    const updated = await prisma.lead.update({
+      where: { id: params.leadId },
+      data: body.data,
+      include: { project: { select: { id: true, name: true } } }
+    });
+    response.status(200).json(updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRoutes.delete('/leads/:leadId', async (request, response, next) => {
+  try {
+    const params = leadIdParamsSchema.parse(request.params);
+    const existing = await prisma.lead.findUnique({ where: { id: params.leadId } });
+    if (!existing || existing.deletedAt) {
+      throw new AppError('Lead not found', 404, 'lead_not_found');
+    }
+    await prisma.lead.update({
+      where: { id: params.leadId },
+      data: { deletedAt: new Date() }
+    });
+    response.status(200).json({ deleted: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 adminRoutes.get('/outreach/threads', async (request, response, next) => {
   try {
     const projectId = typeof request.query.projectId === 'string' ? request.query.projectId : undefined;
@@ -195,6 +260,32 @@ adminRoutes.get('/outreach/threads', async (request, response, next) => {
   }
 });
 
+adminRoutes.patch('/outreach/threads/:threadId', async (request, response, next) => {
+  try {
+    const params = threadIdParamsSchema.parse(request.params);
+    const body = threadUpdateSchema.safeParse(request.body);
+    if (!body.success) {
+      throw new AppError('Invalid payload', 400, 'invalid_payload', body.error.flatten());
+    }
+    const existing = await prisma.outreachThread.findUnique({ where: { id: params.threadId } });
+    if (!existing || existing.deletedAt) {
+      throw new AppError('Thread not found', 404, 'thread_not_found');
+    }
+    const updated = await prisma.outreachThread.update({
+      where: { id: params.threadId },
+      data: { status: body.data.status }
+    });
+    await publishRealtimeEvent({
+      namespace: 'admin',
+      event: 'outreach.thread.updated',
+      data: { threadId: params.threadId, status: body.data.status }
+    });
+    response.status(200).json(updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
 adminRoutes.get('/screening/responses', async (request, response, next) => {
   try {
     const projectId = typeof request.query.projectId === 'string' ? request.query.projectId : undefined;
@@ -214,6 +305,31 @@ adminRoutes.get('/screening/responses', async (request, response, next) => {
       take: 300
     });
     response.status(200).json(responses);
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRoutes.patch('/screening/:responseId', async (request, response, next) => {
+  try {
+    const params = screeningActionParamsSchema.parse(request.params);
+    const body = screeningUpdateSchema.safeParse(request.body);
+    if (!body.success) {
+      throw new AppError('Invalid payload', 400, 'invalid_payload', body.error.flatten());
+    }
+    const existing = await prisma.screeningResponse.findUnique({ where: { id: params.responseId } });
+    if (!existing) {
+      throw new AppError('Screening response not found', 404, 'screening_response_not_found');
+    }
+    const updated = await prisma.screeningResponse.update({
+      where: { id: params.responseId },
+      data: {
+        ...body.data,
+        submittedAt: body.data.responseText ? new Date() : undefined
+      },
+      include: { question: true, expert: true }
+    });
+    response.status(200).json(updated);
   } catch (error) {
     next(error);
   }

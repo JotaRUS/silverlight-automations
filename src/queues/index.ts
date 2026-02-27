@@ -22,6 +22,7 @@ function createQueue(name: QueueName): Queue {
 
 interface QueueRegistry {
   jobTitleDiscoveryQueue: Queue;
+  apolloLeadSourcingQueue: Queue;
   salesNavIngestionQueue: Queue;
   leadIngestionQueue: Queue;
   enrichmentQueue: Queue;
@@ -46,6 +47,7 @@ export function getQueues(): QueueRegistry {
 
   queueRegistry = {
     jobTitleDiscoveryQueue: createQueue(QUEUE_NAMES.JOB_TITLE_DISCOVERY),
+    apolloLeadSourcingQueue: createQueue(QUEUE_NAMES.APOLLO_LEAD_SOURCING),
     salesNavIngestionQueue: createQueue(QUEUE_NAMES.SALES_NAV_INGESTION),
     leadIngestionQueue: createQueue(QUEUE_NAMES.LEAD_INGESTION),
     enrichmentQueue: createQueue(QUEUE_NAMES.ENRICHMENT),
@@ -70,6 +72,7 @@ export async function closeQueues(): Promise<void> {
   }
   const queueList: Queue[] = [
     queueRegistry.jobTitleDiscoveryQueue,
+    queueRegistry.apolloLeadSourcingQueue,
     queueRegistry.salesNavIngestionQueue,
     queueRegistry.leadIngestionQueue,
     queueRegistry.enrichmentQueue,

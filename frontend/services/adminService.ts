@@ -51,8 +51,14 @@ export async function fetchOutreachThreads(projectId?: string): Promise<Record<s
   return apiRequest<Record<string, unknown>[]>(`/api/v1/admin/outreach/threads${suffix}`);
 }
 
-export async function fetchScreeningResponses(projectId?: string): Promise<Record<string, unknown>[]> {
-  const suffix = projectId ? `?projectId=${projectId}` : '';
+export async function fetchScreeningResponses(
+  projectId?: string,
+  status?: string
+): Promise<Record<string, unknown>[]> {
+  const query = new URLSearchParams();
+  if (projectId) query.set('projectId', projectId);
+  if (status) query.set('status', status);
+  const suffix = query.toString() ? `?${query.toString()}` : '';
   return apiRequest<Record<string, unknown>[]>(`/api/v1/admin/screening/responses${suffix}`);
 }
 
@@ -65,6 +71,50 @@ export async function triggerScreeningFollowUp(responseId: string): Promise<void
 export async function escalateScreening(responseId: string): Promise<void> {
   await apiRequest(`/api/v1/admin/screening/${responseId}/escalate`, {
     method: 'POST'
+  });
+}
+
+export async function updateLead(
+  leadId: string,
+  data: { status?: string; fullName?: string; jobTitle?: string; linkedinUrl?: string }
+): Promise<Record<string, unknown>> {
+  return apiRequest<Record<string, unknown>>(`/api/v1/admin/leads/${leadId}`, {
+    method: 'PATCH',
+    body: data
+  });
+}
+
+export async function deleteLead(leadId: string): Promise<void> {
+  await apiRequest(`/api/v1/admin/leads/${leadId}`, { method: 'DELETE' });
+}
+
+export async function updateOutreachThread(
+  threadId: string,
+  data: { status: string }
+): Promise<Record<string, unknown>> {
+  return apiRequest<Record<string, unknown>>(`/api/v1/admin/outreach/threads/${threadId}`, {
+    method: 'PATCH',
+    body: data
+  });
+}
+
+export async function updateScreeningResponse(
+  responseId: string,
+  data: { status?: string; responseText?: string }
+): Promise<Record<string, unknown>> {
+  return apiRequest<Record<string, unknown>>(`/api/v1/admin/screening/${responseId}`, {
+    method: 'PATCH',
+    body: data
+  });
+}
+
+export async function dispatchScreening(data: {
+  projectId: string;
+  expertId: string;
+}): Promise<{ sent: number }> {
+  return apiRequest<{ sent: number }>('/api/v1/screening/dispatch', {
+    method: 'POST',
+    body: data
   });
 }
 

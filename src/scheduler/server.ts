@@ -177,6 +177,7 @@ async function runAutoSourcingLoop(): Promise<void> {
   let totalEnrichmentQueued = 0;
   let totalOutreachQueued = 0;
   let totalStalledProjects = 0;
+  let totalApolloSearchesQueued = 0;
   const timeSlice = clock.now().toISOString().slice(0, 13);
 
   for (const project of incompleteProjects) {
@@ -185,6 +186,9 @@ async function runAutoSourcingLoop(): Promise<void> {
 
     const outreachQueued = await queuePendingOutreach(project.id, project.name, timeSlice);
     totalOutreachQueued += outreachQueued;
+
+    const apolloQueued = await queueApolloSourcingIfNeeded(project, timeSlice);
+    totalApolloSearchesQueued += apolloQueued;
 
     const stalled = await detectStalledSourcing(project);
     if (stalled) {
@@ -197,6 +201,7 @@ async function runAutoSourcingLoop(): Promise<void> {
       incompleteProjects: incompleteProjects.length,
       totalEnrichmentQueued,
       totalOutreachQueued,
+      totalApolloSearchesQueued,
       totalStalledProjects
     },
     'auto-sourcing-loop-completed'
@@ -324,11 +329,71 @@ async function queuePendingOutreach(
   return queued;
 }
 
+async function queueApolloSourcingIfNeeded(
+  project: {
+    id: string;
+    apolloProviderAccountId: string | null;
+    geographyIsoCodes: string[];
+  },
+  timeSlice: string
+): Promise<number> {
+  if (!project.apolloProviderAccountId) {
+    return 0;
+  }
+
+  const pipelineCount = await prisma.lead.count({
+    where: {
+      projectId: project.id,
+      status: { in: ['NEW', 'ENRICHING', 'ENRICHED', 'OUTREACH_PENDING'] },
+      deletedAt: null
+    }
+  });
+
+  if (pipelineCount >= AUTO_SOURCING.ENRICHMENT_BATCH_SIZE) {
+    return 0;
+  }
+
+  const locations = project.geographyIsoCodes.length > 0
+    ? project.geographyIsoCodes
+    : undefined;
+
+  const jobTitles = await prisma.jobTitle.findMany({
+    where: { projectId: project.id },
+    orderBy: { relevanceScore: 'desc' },
+    take: 10,
+    select: { titleNormalized: true }
+  });
+  const personTitles = jobTitles.length > 0
+    ? jobTitles.map((jt) => jt.titleNormalized)
+    : undefined;
+
+  await getQueues().apolloLeadSourcingQueue.add(
+    'apollo-lead-sourcing.search',
+    {
+      correlationId: 'scheduler',
+      data: {
+        projectId: project.id,
+        personLocations: locations,
+        personTitles,
+        maxPages: 2,
+        perPage: 25
+      }
+    },
+    {
+      jobId: buildJobId('apollo-sourcing', project.id, timeSlice)
+    }
+  );
+
+  return 1;
+}
+
 async function detectStalledSourcing(project: {
   id: string;
   name: string;
   signedUpCount: number;
   targetThreshold: number;
+  apolloProviderAccountId: string | null;
+  geographyIsoCodes: string[];
 }): Promise<boolean> {
   const pipelineCount = await prisma.lead.count({
     where: {
@@ -365,7 +430,7 @@ async function detectStalledSourcing(project: {
     }
   });
 
-  if (activeSources === 0) {
+  if (activeSources === 0 && !project.apolloProviderAccountId) {
     return false;
   }
 
@@ -382,10 +447,15 @@ async function detectStalledSourcing(project: {
         targetThreshold: project.targetThreshold,
         activeSources,
         reason:
-          'No leads in pipeline and no recent ingestion. A new sourcing cycle may be needed.'
+          'No leads in pipeline and no recent ingestion. Triggering Apollo sourcing.'
       }
     }
   });
+
+  if (project.apolloProviderAccountId) {
+    const timeSlice = clock.now().toISOString().slice(0, 13);
+    await queueApolloSourcingIfNeeded(project, `${timeSlice}-stalled`);
+  }
 
   return true;
 }

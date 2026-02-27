@@ -2,74 +2,76 @@ import type { Prisma, PrismaClient, Project, ScreeningQuestion } from '@prisma/c
 
 export interface ProjectCreateInput {
   name: string;
-  description?: string;
+  description?: string | null;
   targetThreshold: number;
   geographyIsoCodes: string[];
   priority?: number;
+  status?: 'ACTIVE' | 'COMPLETED' | 'PAUSED' | 'ARCHIVED';
   overrideCooldown?: boolean;
   regionConfig?: Record<string, unknown>;
   enrichmentRoutingConfig?: Record<string, unknown> | null;
-  apolloProviderAccountId?: string;
-  salesNavWebhookProviderAccountId?: string;
-  leadmagicProviderAccountId?: string;
-  prospeoProviderAccountId?: string;
-  exaProviderAccountId?: string;
-  rocketreachProviderAccountId?: string;
-  wizaProviderAccountId?: string;
-  foragerProviderAccountId?: string;
-  zeliqProviderAccountId?: string;
-  contactoutProviderAccountId?: string;
-  datagmProviderAccountId?: string;
-  peopledatalabsProviderAccountId?: string;
-  linkedinProviderAccountId?: string;
-  emailProviderAccountId?: string;
-  twilioProviderAccountId?: string;
-  whatsapp2chatProviderAccountId?: string;
-  respondioProviderAccountId?: string;
-  lineProviderAccountId?: string;
-  wechatProviderAccountId?: string;
-  viberProviderAccountId?: string;
-  telegramProviderAccountId?: string;
-  kakaotalkProviderAccountId?: string;
-  voicemailDropProviderAccountId?: string;
-  yayProviderAccountId?: string;
-  googleSheetsProviderAccountId?: string;
+  apolloProviderAccountId?: string | null;
+  salesNavWebhookProviderAccountId?: string | null;
+  leadmagicProviderAccountId?: string | null;
+  prospeoProviderAccountId?: string | null;
+  exaProviderAccountId?: string | null;
+  rocketreachProviderAccountId?: string | null;
+  wizaProviderAccountId?: string | null;
+  foragerProviderAccountId?: string | null;
+  zeliqProviderAccountId?: string | null;
+  contactoutProviderAccountId?: string | null;
+  datagmProviderAccountId?: string | null;
+  peopledatalabsProviderAccountId?: string | null;
+  linkedinProviderAccountId?: string | null;
+  emailProviderAccountId?: string | null;
+  twilioProviderAccountId?: string | null;
+  whatsapp2chatProviderAccountId?: string | null;
+  respondioProviderAccountId?: string | null;
+  lineProviderAccountId?: string | null;
+  wechatProviderAccountId?: string | null;
+  viberProviderAccountId?: string | null;
+  telegramProviderAccountId?: string | null;
+  kakaotalkProviderAccountId?: string | null;
+  voicemailDropProviderAccountId?: string | null;
+  yayProviderAccountId?: string | null;
+  googleSheetsProviderAccountId?: string | null;
 }
 
 export interface ProjectUpdateInput {
   name?: string;
-  description?: string;
+  description?: string | null;
   targetThreshold?: number;
   geographyIsoCodes?: string[];
   priority?: number;
+  status?: 'ACTIVE' | 'COMPLETED' | 'PAUSED' | 'ARCHIVED';
   overrideCooldown?: boolean;
   regionConfig?: Record<string, unknown>;
   enrichmentRoutingConfig?: Record<string, unknown> | null;
-  apolloProviderAccountId?: string;
-  salesNavWebhookProviderAccountId?: string;
-  leadmagicProviderAccountId?: string;
-  prospeoProviderAccountId?: string;
-  exaProviderAccountId?: string;
-  rocketreachProviderAccountId?: string;
-  wizaProviderAccountId?: string;
-  foragerProviderAccountId?: string;
-  zeliqProviderAccountId?: string;
-  contactoutProviderAccountId?: string;
-  datagmProviderAccountId?: string;
-  peopledatalabsProviderAccountId?: string;
-  linkedinProviderAccountId?: string;
-  emailProviderAccountId?: string;
-  twilioProviderAccountId?: string;
-  whatsapp2chatProviderAccountId?: string;
-  respondioProviderAccountId?: string;
-  lineProviderAccountId?: string;
-  wechatProviderAccountId?: string;
-  viberProviderAccountId?: string;
-  telegramProviderAccountId?: string;
-  kakaotalkProviderAccountId?: string;
-  voicemailDropProviderAccountId?: string;
-  yayProviderAccountId?: string;
-  googleSheetsProviderAccountId?: string;
+  apolloProviderAccountId?: string | null;
+  salesNavWebhookProviderAccountId?: string | null;
+  leadmagicProviderAccountId?: string | null;
+  prospeoProviderAccountId?: string | null;
+  exaProviderAccountId?: string | null;
+  rocketreachProviderAccountId?: string | null;
+  wizaProviderAccountId?: string | null;
+  foragerProviderAccountId?: string | null;
+  zeliqProviderAccountId?: string | null;
+  contactoutProviderAccountId?: string | null;
+  datagmProviderAccountId?: string | null;
+  peopledatalabsProviderAccountId?: string | null;
+  linkedinProviderAccountId?: string | null;
+  emailProviderAccountId?: string | null;
+  twilioProviderAccountId?: string | null;
+  whatsapp2chatProviderAccountId?: string | null;
+  respondioProviderAccountId?: string | null;
+  lineProviderAccountId?: string | null;
+  wechatProviderAccountId?: string | null;
+  viberProviderAccountId?: string | null;
+  telegramProviderAccountId?: string | null;
+  kakaotalkProviderAccountId?: string | null;
+  voicemailDropProviderAccountId?: string | null;
+  yayProviderAccountId?: string | null;
+  googleSheetsProviderAccountId?: string | null;
 }
 
 export interface AttachCompaniesInput {
@@ -111,8 +113,8 @@ export class ProjectsService {
   public constructor(private readonly prismaClient: PrismaClient) {}
 
   private projectProviderBindings(
-    input: Pick<ProjectCreateInput, 'apolloProviderAccountId' | 'salesNavWebhookProviderAccountId' | 'leadmagicProviderAccountId' | 'prospeoProviderAccountId' | 'exaProviderAccountId' | 'rocketreachProviderAccountId' | 'wizaProviderAccountId' | 'foragerProviderAccountId' | 'zeliqProviderAccountId' | 'contactoutProviderAccountId' | 'datagmProviderAccountId' | 'peopledatalabsProviderAccountId' | 'linkedinProviderAccountId' | 'emailProviderAccountId' | 'twilioProviderAccountId' | 'whatsapp2chatProviderAccountId' | 'respondioProviderAccountId' | 'lineProviderAccountId' | 'wechatProviderAccountId' | 'viberProviderAccountId' | 'telegramProviderAccountId' | 'kakaotalkProviderAccountId' | 'voicemailDropProviderAccountId' | 'yayProviderAccountId' | 'googleSheetsProviderAccountId'>
-  ): Pick<ProjectCreateInput, 'apolloProviderAccountId' | 'salesNavWebhookProviderAccountId' | 'leadmagicProviderAccountId' | 'prospeoProviderAccountId' | 'exaProviderAccountId' | 'rocketreachProviderAccountId' | 'wizaProviderAccountId' | 'foragerProviderAccountId' | 'zeliqProviderAccountId' | 'contactoutProviderAccountId' | 'datagmProviderAccountId' | 'peopledatalabsProviderAccountId' | 'linkedinProviderAccountId' | 'emailProviderAccountId' | 'twilioProviderAccountId' | 'whatsapp2chatProviderAccountId' | 'respondioProviderAccountId' | 'lineProviderAccountId' | 'wechatProviderAccountId' | 'viberProviderAccountId' | 'telegramProviderAccountId' | 'kakaotalkProviderAccountId' | 'voicemailDropProviderAccountId' | 'yayProviderAccountId' | 'googleSheetsProviderAccountId'> {
+    input: Partial<Pick<ProjectUpdateInput, 'apolloProviderAccountId' | 'salesNavWebhookProviderAccountId' | 'leadmagicProviderAccountId' | 'prospeoProviderAccountId' | 'exaProviderAccountId' | 'rocketreachProviderAccountId' | 'wizaProviderAccountId' | 'foragerProviderAccountId' | 'zeliqProviderAccountId' | 'contactoutProviderAccountId' | 'datagmProviderAccountId' | 'peopledatalabsProviderAccountId' | 'linkedinProviderAccountId' | 'emailProviderAccountId' | 'twilioProviderAccountId' | 'whatsapp2chatProviderAccountId' | 'respondioProviderAccountId' | 'lineProviderAccountId' | 'wechatProviderAccountId' | 'viberProviderAccountId' | 'telegramProviderAccountId' | 'kakaotalkProviderAccountId' | 'voicemailDropProviderAccountId' | 'yayProviderAccountId' | 'googleSheetsProviderAccountId'>>
+  ): Record<string, string | null | undefined> {
     return {
       apolloProviderAccountId: input.apolloProviderAccountId,
       salesNavWebhookProviderAccountId: input.salesNavWebhookProviderAccountId,
@@ -167,6 +169,7 @@ export class ProjectsService {
         targetThreshold: input.targetThreshold,
         geographyIsoCodes: input.geographyIsoCodes,
         priority: input.priority,
+        status: input.status,
         overrideCooldown: input.overrideCooldown,
         regionConfig: toJsonValue(input.regionConfig),
         enrichmentRoutingConfig: toJsonValue(input.enrichmentRoutingConfig ?? undefined),

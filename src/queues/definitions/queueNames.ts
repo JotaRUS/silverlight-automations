@@ -1,5 +1,6 @@
 export const QUEUE_NAMES = {
   JOB_TITLE_DISCOVERY: 'job-title-discovery',
+  APOLLO_LEAD_SOURCING: 'apollo-lead-sourcing',
   SALES_NAV_INGESTION: 'sales-nav-ingestion',
   LEAD_INGESTION: 'lead-ingestion',
   ENRICHMENT: 'enrichment',

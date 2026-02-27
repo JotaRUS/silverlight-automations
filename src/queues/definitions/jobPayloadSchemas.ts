@@ -29,11 +29,24 @@ export type SalesNavIngestionJob = z.infer<typeof salesNavIngestionJobSchema>;
 
 export const leadIngestionJobSchema = z.object({
   projectId: z.string().uuid(),
-  salesNavSearchId: z.string().uuid(),
+  salesNavSearchId: z.string().uuid().optional(),
+  source: z.enum(['sales_nav', 'apollo', 'manual']).default('sales_nav'),
   lead: salesNavWebhookLeadSchema
 });
 
 export type LeadIngestionJob = z.infer<typeof leadIngestionJobSchema>;
+
+export const apolloLeadSourcingJobSchema = z.object({
+  projectId: z.string().uuid(),
+  personLocations: z.array(z.string()).optional(),
+  personTitles: z.array(z.string()).optional(),
+  personSeniorities: z.array(z.string()).optional(),
+  keywords: z.string().optional(),
+  maxPages: z.number().int().min(1).max(10).optional(),
+  perPage: z.number().int().min(1).max(100).optional()
+});
+
+export type ApolloLeadSourcingJob = z.infer<typeof apolloLeadSourcingJobSchema>;
 
 export const enrichmentJobSchema = z.object({
   leadId: z.string().uuid(),

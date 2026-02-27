@@ -8,6 +8,7 @@ import { createDeadLetterWorker } from '../queues/workers/deadLetterWorker';
 import { createDocumentationWorker } from '../queues/workers/documentationWorker';
 import { createEnrichmentWorker } from '../queues/workers/enrichmentWorker';
 import { createGoogleSheetsSyncWorker } from '../queues/workers/googleSheetsSyncWorker';
+import { createApolloLeadSourcingWorker } from '../queues/workers/apolloLeadSourcingWorker';
 import { createJobTitleDiscoveryWorker } from '../queues/workers/jobTitleDiscoveryWorker';
 import { createLeadIngestionWorker } from '../queues/workers/leadIngestionWorker';
 import { createOutreachWorker } from '../queues/workers/outreachWorker';
@@ -22,6 +23,7 @@ const callAllocationWorker = createCallAllocationWorker();
 const callValidationWorker = createCallValidationWorker();
 const enrichmentWorker = createEnrichmentWorker();
 const outreachWorker = createOutreachWorker();
+const apolloLeadSourcingWorker = createApolloLeadSourcingWorker();
 const salesNavIngestionWorker = createSalesNavIngestionWorker();
 const leadIngestionWorker = createLeadIngestionWorker();
 const jobTitleDiscoveryWorker = createJobTitleDiscoveryWorker();
@@ -47,6 +49,7 @@ async function shutdown(): Promise<void> {
     callValidationWorker.close(),
     enrichmentWorker.close(),
     outreachWorker.close(),
+    apolloLeadSourcingWorker.close(),
     salesNavIngestionWorker.close(),
     leadIngestionWorker.close(),
     jobTitleDiscoveryWorker.close(),

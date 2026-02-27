@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { authenticate, authorize } from '../../core/auth/authMiddleware';
 import { AppError } from '../../core/errors/appError';
 import { prisma } from '../../db/client';
+import { getQueues } from '../../queues';
+import { buildJobId } from '../../queues/jobId';
 import {
   attachCompaniesSchema,
   projectCreateSchema,
@@ -136,6 +138,64 @@ projectsRoutes.patch('/:projectId/screening-questions/:questionId', async (reque
     const payload = parseOrThrow(screeningQuestionUpdateSchema, request.body);
     const question = await projectsService.updateScreeningQuestion(params.questionId, payload);
     response.status(200).json(question);
+  } catch (error) {
+    next(error);
+  }
+});
+
+const apolloSearchBodySchema = z.object({
+  personLocations: z.array(z.string()).optional(),
+  personTitles: z.array(z.string()).optional(),
+  personSeniorities: z.array(z.string()).optional(),
+  keywords: z.string().optional(),
+  maxPages: z.number().int().min(1).max(10).optional(),
+  perPage: z.number().int().min(1).max(100).optional()
+});
+
+projectsRoutes.post('/:projectId/apollo-search', async (request, response, next) => {
+  try {
+    const params = parseOrThrow(pathParamsSchema, request.params);
+    const body = parseOrThrow(apolloSearchBodySchema, request.body);
+    const project = await projectsService.getProject(params.projectId);
+    if (!project) {
+      throw new AppError('Project not found', 404, 'project_not_found');
+    }
+    if (!project.apolloProviderAccountId) {
+      throw new AppError(
+        'No Apollo provider bound to this project',
+        422,
+        'no_apollo_provider'
+      );
+    }
+
+    const locations = body.personLocations?.length
+      ? body.personLocations
+      : (project.geographyIsoCodes?.length ? project.geographyIsoCodes : undefined);
+
+    const jobId = buildJobId(
+      'apollo-search',
+      params.projectId,
+      new Date().toISOString().slice(0, 16)
+    );
+
+    await getQueues().apolloLeadSourcingQueue.add(
+      'apollo-lead-sourcing.search',
+      {
+        correlationId: request.headers['x-correlation-id'] as string || 'api',
+        data: {
+          projectId: params.projectId,
+          personLocations: locations,
+          personTitles: body.personTitles,
+          personSeniorities: body.personSeniorities,
+          keywords: body.keywords,
+          maxPages: body.maxPages,
+          perPage: body.perPage
+        }
+      },
+      { jobId }
+    );
+
+    response.status(202).json({ message: 'Apollo search queued', jobId });
   } catch (error) {
     next(error);
   }

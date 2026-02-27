@@ -8,24 +8,35 @@ interface JsonRequestOptions {
   url: string;
   headers?: Record<string, string>;
   body?: unknown;
+  contentType?: string;
   provider: string;
   operation: string;
   correlationId: string;
 }
 
 export async function requestJson<TResponse>(options: JsonRequestOptions): Promise<TResponse> {
-  const encodedBody =
-    typeof options.body === 'string'
-      ? options.body
-      : options.body !== undefined
-        ? JSON.stringify(options.body)
-        : undefined;
+  const isFormEncoded = options.contentType === 'application/x-www-form-urlencoded';
+
+  let encodedBody: string | undefined;
+  if (isFormEncoded && options.body && typeof options.body === 'object') {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(options.body as Record<string, unknown>)) {
+      if (value !== undefined && value !== null) {
+        params.append(key, String(value));
+      }
+    }
+    encodedBody = params.toString();
+  } else if (typeof options.body === 'string') {
+    encodedBody = options.body;
+  } else if (options.body !== undefined) {
+    encodedBody = JSON.stringify(options.body);
+  }
 
   const headers: Record<string, string> = {
     ...(options.headers ?? {})
   };
   if (!headers['content-type'] && encodedBody) {
-    headers['content-type'] = 'application/json';
+    headers['content-type'] = options.contentType ?? 'application/json';
   }
 
   const startedAt = clock.now().getTime();

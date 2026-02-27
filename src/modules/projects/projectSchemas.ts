@@ -18,43 +18,46 @@ const enrichmentProviderTypeSchema = providerTypeSchema.refine(
   }
 );
 
+const optionalUuidOrNull = z.string().uuid().optional().nullable();
+
 const providerBindingSchema = z
   .object({
-    apolloProviderAccountId: z.string().uuid().optional(),
-    salesNavWebhookProviderAccountId: z.string().uuid().optional(),
-    leadmagicProviderAccountId: z.string().uuid().optional(),
-    prospeoProviderAccountId: z.string().uuid().optional(),
-    exaProviderAccountId: z.string().uuid().optional(),
-    rocketreachProviderAccountId: z.string().uuid().optional(),
-    wizaProviderAccountId: z.string().uuid().optional(),
-    foragerProviderAccountId: z.string().uuid().optional(),
-    zeliqProviderAccountId: z.string().uuid().optional(),
-    contactoutProviderAccountId: z.string().uuid().optional(),
-    datagmProviderAccountId: z.string().uuid().optional(),
-    peopledatalabsProviderAccountId: z.string().uuid().optional(),
-    linkedinProviderAccountId: z.string().uuid().optional(),
-    emailProviderAccountId: z.string().uuid().optional(),
-    twilioProviderAccountId: z.string().uuid().optional(),
-    whatsapp2chatProviderAccountId: z.string().uuid().optional(),
-    respondioProviderAccountId: z.string().uuid().optional(),
-    lineProviderAccountId: z.string().uuid().optional(),
-    wechatProviderAccountId: z.string().uuid().optional(),
-    viberProviderAccountId: z.string().uuid().optional(),
-    telegramProviderAccountId: z.string().uuid().optional(),
-    kakaotalkProviderAccountId: z.string().uuid().optional(),
-    voicemailDropProviderAccountId: z.string().uuid().optional(),
-    yayProviderAccountId: z.string().uuid().optional(),
-    googleSheetsProviderAccountId: z.string().uuid().optional()
+    apolloProviderAccountId: optionalUuidOrNull,
+    salesNavWebhookProviderAccountId: optionalUuidOrNull,
+    leadmagicProviderAccountId: optionalUuidOrNull,
+    prospeoProviderAccountId: optionalUuidOrNull,
+    exaProviderAccountId: optionalUuidOrNull,
+    rocketreachProviderAccountId: optionalUuidOrNull,
+    wizaProviderAccountId: optionalUuidOrNull,
+    foragerProviderAccountId: optionalUuidOrNull,
+    zeliqProviderAccountId: optionalUuidOrNull,
+    contactoutProviderAccountId: optionalUuidOrNull,
+    datagmProviderAccountId: optionalUuidOrNull,
+    peopledatalabsProviderAccountId: optionalUuidOrNull,
+    linkedinProviderAccountId: optionalUuidOrNull,
+    emailProviderAccountId: optionalUuidOrNull,
+    twilioProviderAccountId: optionalUuidOrNull,
+    whatsapp2chatProviderAccountId: optionalUuidOrNull,
+    respondioProviderAccountId: optionalUuidOrNull,
+    lineProviderAccountId: optionalUuidOrNull,
+    wechatProviderAccountId: optionalUuidOrNull,
+    viberProviderAccountId: optionalUuidOrNull,
+    telegramProviderAccountId: optionalUuidOrNull,
+    kakaotalkProviderAccountId: optionalUuidOrNull,
+    voicemailDropProviderAccountId: optionalUuidOrNull,
+    yayProviderAccountId: optionalUuidOrNull,
+    googleSheetsProviderAccountId: optionalUuidOrNull
   })
   .strict();
 
 export const projectCreateSchema = z
   .object({
     name: z.string().min(1),
-    description: z.string().optional(),
+    description: z.string().optional().nullable(),
     targetThreshold: z.number().int().positive(),
     geographyIsoCodes: z.array(z.string().length(2)).min(1),
     priority: z.number().int().min(0).default(0),
+    status: z.enum(['ACTIVE', 'COMPLETED', 'PAUSED', 'ARCHIVED']).optional(),
     overrideCooldown: z.boolean().default(false),
     regionConfig: z.record(z.unknown()).default({}),
     enrichmentRoutingConfig: z
