@@ -1,21 +1,30 @@
-import type { AuthRole, AuthUser } from '@/types/auth';
+import type { AuthUser } from '@/types/auth';
 
 import { apiRequest, setCsrfToken } from './apiClient';
 
-export async function login(payload: { userId: string; role: AuthRole }): Promise<AuthUser> {
-  const response = await apiRequest<{ authenticated: boolean; userId: string; role: AuthRole }>(
-    '/api/v1/auth/login',
-    {
-      method: 'POST',
-      body: payload
-    }
-  );
+interface LoginResponse {
+  authenticated: boolean;
+  userId: string;
+  role: 'admin' | 'ops' | 'caller';
+  name: string;
+  email: string;
+  csrfToken: string;
+}
+
+export async function login(payload: { email: string; password: string }): Promise<AuthUser> {
+  const response = await apiRequest<LoginResponse>('/api/v1/auth/login', {
+    method: 'POST',
+    body: payload
+  });
   if (!response.authenticated) {
     throw new Error('Login failed');
   }
+  setCsrfToken(response.csrfToken);
   return {
     userId: response.userId,
-    role: response.role
+    role: response.role,
+    name: response.name,
+    email: response.email
   };
 }
 

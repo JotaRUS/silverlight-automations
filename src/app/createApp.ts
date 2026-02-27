@@ -23,6 +23,7 @@ import { outreachRoutes } from '../modules/outreach/outreachRoutes';
 import { providerAccountRoutes } from '../modules/providers/providerAccountRoutes';
 import { projectsRoutes } from '../modules/projects/projectsRoutes';
 import { screeningRoutes } from '../modules/screening/screeningRoutes';
+import { userRoutes } from '../modules/users/userRoutes';
 
 export function createApp(): Express {
   const app = express();
@@ -71,14 +72,24 @@ export function createApp(): Express {
   app.use(`${API_PREFIX}/outreach`, outreachRoutes);
   app.use(`${API_PREFIX}/providers`, providerAccountRoutes);
   app.use(`${API_PREFIX}/screening`, screeningRoutes);
+  app.use(`${API_PREFIX}/users`, userRoutes);
   app.use('/webhooks', webhookRoutes);
 
-  app.get(`${API_PREFIX}/auth/me`, authenticate, (request, response) => {
-    const authRequest = request as RequestWithAuth;
-    response.status(200).json({
-      userId: authRequest.auth?.userId,
-      role: authRequest.auth?.role
-    });
+  app.get(`${API_PREFIX}/auth/me`, authenticate, async (request, response, next) => {
+    try {
+      const authRequest = request as RequestWithAuth;
+      const caller = await import('../db/client').then((m) =>
+        m.prisma.caller.findUnique({ where: { id: authRequest.auth?.userId } })
+      );
+      response.status(200).json({
+        userId: authRequest.auth?.userId,
+        role: authRequest.auth?.role,
+        name: caller?.name ?? null,
+        email: caller?.email ?? null
+      });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.get(`${API_PREFIX}/admin/ping`, authenticate, authorize(['admin']), (_request, response) => {

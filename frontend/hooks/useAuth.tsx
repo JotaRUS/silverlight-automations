@@ -2,13 +2,13 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 
-import type { AuthRole, AuthUser } from '@/types/auth';
+import type { AuthUser } from '@/types/auth';
 import { fetchCsrfToken, fetchMe, login as loginRequest, logout as logoutRequest } from '@/services/authService';
 
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  login: (payload: { userId: string; role: AuthRole }) => Promise<void>;
+  login: (payload: { email: string; password: string }) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -40,8 +40,8 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
       user,
       loading,
       login: async (payload) => {
-        await loginRequest(payload);
-        await refresh();
+        const authedUser = await loginRequest(payload);
+        setUser(authedUser);
       },
       logout: async () => {
         await logoutRequest();

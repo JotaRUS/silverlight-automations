@@ -585,10 +585,18 @@ model ScreeningResponse {
   @@index([projectId, expertId, status], map: "idx_screening_progress")
 }
 
+enum AuthRole {
+  ADMIN
+  OPS
+  CALLER
+}
+
 model Caller {
   id                      String                    @id @default(uuid()) @db.Uuid
   email                   String                    @unique
   name                    String
+  passwordHash            String?
+  role                    AuthRole                  @default(CALLER)
   timezone                String
   languageCodes           String[]
   regionIsoCodes          String[]

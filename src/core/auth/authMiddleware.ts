@@ -41,14 +41,26 @@ function isCsrfExemptPath(path: string): boolean {
   return path.startsWith('/api/v1/auth/login') || path.startsWith('/api/v1/auth/logout');
 }
 
-export function authenticate(request: Request, _response: Response, next: NextFunction): void {
+export function authenticate(request: Request, response: Response, next: NextFunction): void {
   const cookies = parseCookieHeader(request.header('cookie'));
   const token = cookies.access_token;
   if (!token) {
     throw new AppError('Unauthorized', 401, 'missing_auth_cookie');
   }
 
-  const payload = verifyAccessToken(token);
+  let payload;
+  try {
+    payload = verifyAccessToken(token);
+  } catch {
+    response.clearCookie('access_token', {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/'
+    });
+    throw new AppError('Unauthorized', 401, 'invalid_or_expired_token');
+  }
+
   (request as RequestWithAuth).auth = {
     userId: payload.sub,
     role: payload.role

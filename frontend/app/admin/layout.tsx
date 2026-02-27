@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import type { PropsWithChildren } from 'react';
+import { useEffect, type PropsWithChildren } from 'react';
 
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
@@ -16,7 +16,8 @@ const sidebarLinks = [
   { href: '/admin/screening', icon: 'fact_check', label: 'Screening' },
   { href: '/admin/calls', icon: 'podium', label: 'Calls' },
   { href: '/admin/ranking', icon: 'bar_chart', label: 'Ranking' },
-  { href: '/admin/observability', icon: 'sensors', label: 'Observability' }
+  { href: '/admin/observability', icon: 'sensors', label: 'Observability' },
+  { href: '/admin/users', icon: 'group', label: 'Users' }
 ];
 
 const mobileLinks = [
@@ -34,7 +35,25 @@ function isActive(pathname: string, href: string): boolean {
 export default function AdminLayout({ children }: PropsWithChildren): JSX.Element {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout, user } = useAuth();
+  const { logout, user, loading } = useAuth();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      window.location.href = '/login';
+    }
+  }, [loading, user]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-bg-light">
+        <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-bg-light">
@@ -107,7 +126,7 @@ export default function AdminLayout({ children }: PropsWithChildren): JSX.Elemen
             <span className="absolute top-2 right-2 size-2 bg-red-500 rounded-full border-2 border-white" />
           </button>
           <div className="size-8 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden border border-primary/30 text-primary text-xs font-bold">
-            {user?.userId?.charAt(0)?.toUpperCase() ?? 'A'}
+            {user?.name?.charAt(0)?.toUpperCase() ?? user?.email?.charAt(0)?.toUpperCase() ?? 'A'}
           </div>
         </div>
       </header>
