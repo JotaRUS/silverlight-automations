@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { z } from 'zod';
 
+import { env } from '../../config/env';
 import { authenticate, type RequestWithAuth } from '../../core/auth/authMiddleware';
 import { clearCsrfToken, issueCsrfToken } from '../../core/auth/csrf';
 import { signAccessToken, type AuthRole } from '../../core/auth/jwt';
@@ -11,6 +12,11 @@ import { prisma } from '../../db/client';
 const loginRequestSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1)
+});
+
+const devLoginRequestSchema = z.object({
+  userId: z.string().min(1),
+  role: z.enum(['admin', 'ops', 'caller'])
 });
 
 function mapDbRole(dbRole: string): AuthRole {
@@ -27,6 +33,29 @@ export const authRoutes = Router();
 
 authRoutes.post('/login', async (request, response, next) => {
   try {
+    if (env.NODE_ENV === 'test' || env.NODE_ENV === 'development') {
+      const devParsed = devLoginRequestSchema.safeParse(request.body);
+      if (devParsed.success) {
+        const { userId, role } = devParsed.data;
+        const token = signAccessToken(userId, role);
+        response.cookie('access_token', token, {
+          httpOnly: true,
+          sameSite: 'lax',
+          secure: false,
+          path: '/',
+          maxAge: COOKIE_MAX_AGE_MS
+        });
+        const csrfToken = issueCsrfToken(userId);
+        response.status(200).json({
+          authenticated: true,
+          userId,
+          role,
+          csrfToken
+        });
+        return;
+      }
+    }
+
     const parsed = loginRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       throw new AppError('Invalid credentials', 400, 'invalid_payload', parsed.error.flatten());

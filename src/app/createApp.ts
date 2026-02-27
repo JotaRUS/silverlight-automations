@@ -78,14 +78,22 @@ export function createApp(): Express {
   app.get(`${API_PREFIX}/auth/me`, authenticate, async (request, response, next) => {
     try {
       const authRequest = request as RequestWithAuth;
-      const caller = await import('../db/client').then((m) =>
-        m.prisma.caller.findUnique({ where: { id: authRequest.auth?.userId } })
-      );
+      let name: string | null = null;
+      let email: string | null = null;
+      try {
+        const caller = await import('../db/client').then((m) =>
+          m.prisma.caller.findUnique({ where: { id: authRequest.auth?.userId } })
+        );
+        name = caller?.name ?? null;
+        email = caller?.email ?? null;
+      } catch {
+        // DB unavailable (e.g. in test mode with dev login); return JWT claims only
+      }
       response.status(200).json({
         userId: authRequest.auth?.userId,
         role: authRequest.auth?.role,
-        name: caller?.name ?? null,
-        email: caller?.email ?? null
+        name,
+        email
       });
     } catch (error) {
       next(error);

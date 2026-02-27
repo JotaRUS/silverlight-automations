@@ -77,10 +77,10 @@ describe('caller flow', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Task ID: task-1')).toBeInTheDocument();
+      expect(screen.getByText('Task task-1')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('INTERESTED_SIGNUP_LINK_SENT'));
+    fireEvent.click(screen.getByText('Expert Interested'));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/v1/call-tasks/task-1/outcome',

@@ -12,6 +12,10 @@ vi.mock('../../src/db/transactions/withSerializableTransaction', () => ({
   }
 }));
 
+vi.mock('../../src/core/realtime/realtimePubSub', () => ({
+  publishRealtimeEvent: vi.fn().mockResolvedValue(undefined)
+}));
+
 interface MockBundle {
   prisma: PrismaClient;
   tx: {
@@ -80,6 +84,13 @@ describe('CallAllocationService', () => {
       id: 'task-1',
       status: 'ASSIGNED',
       callerId: 'caller-1'
+    });
+    (prisma.callTask.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'task-1',
+      status: 'ASSIGNED',
+      callerId: 'caller-1',
+      expert: { contacts: [], callLogs: [], outreachThreads: [] },
+      project: { name: 'Test Project', geographyIsoCodes: ['US'] }
     });
 
     const service = new CallAllocationService(prisma);

@@ -29,8 +29,8 @@ describe('auth service flow', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const authUser = await login({
-      userId: 'admin-1',
-      role: 'admin'
+      email: 'admin@example.com',
+      password: 'password123'
     });
     const csrfToken = await fetchCsrfToken();
 
