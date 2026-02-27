@@ -35,11 +35,16 @@ const apolloPeopleSearchFullPersonSchema = z.object({
   organization: apolloOrganizationSchema,
   city: z.string().nullable().optional(),
   state: z.string().nullable().optional(),
-  country: z.string().nullable().optional()
+  country: z.string().nullable().optional(),
+  has_email: z.boolean().optional(),
+  has_city: z.boolean().optional(),
+  has_state: z.boolean().optional(),
+  has_country: z.boolean().optional()
 });
 
 const apolloPeopleSearchFullResponseSchema = z.object({
   people: z.array(apolloPeopleSearchFullPersonSchema).default([]),
+  total_entries: z.number().int().optional(),
   pagination: z.object({
     page: z.number().int().optional(),
     per_page: z.number().int().optional(),
@@ -124,6 +129,21 @@ export class ApolloClient {
     throw error;
   }
 
+  private buildSearchQueryString(params: Record<string, unknown>): string {
+    const parts: string[] = [];
+    for (const [key, value] of Object.entries(params)) {
+      if (value === undefined || value === null) continue;
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          parts.push(`${encodeURIComponent(`${key}[]`)}=${encodeURIComponent(String(item))}`);
+        }
+      } else {
+        parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
+      }
+    }
+    return parts.join('&');
+  }
+
   public async searchPeople(input: ApolloPeopleSearchInput): Promise<ApolloPeopleSearchResult> {
     const { apiKey, providerAccountId } = await this.resolveApiKey(input.projectId, input.correlationId);
 
@@ -133,31 +153,31 @@ export class ApolloClient {
     let totalEntries = 0;
 
     for (let page = 1; page <= maxPages; page += 1) {
-      const body: Record<string, unknown> = {
+      const queryParams: Record<string, unknown> = {
         page,
         per_page: perPage
       };
 
       if (input.personLocations?.length) {
-        body.person_locations = input.personLocations;
+        queryParams.person_locations = input.personLocations;
       }
       if (input.personTitles?.length) {
-        body.person_titles = input.personTitles;
+        queryParams.person_titles = input.personTitles;
       }
       if (input.personSeniorities?.length) {
-        body.person_seniorities = input.personSeniorities;
+        queryParams.person_seniorities = input.personSeniorities;
       }
       if (input.keywords) {
-        body.q_keywords = input.keywords;
+        queryParams.q_keywords = input.keywords;
       }
 
+      const qs = this.buildSearchQueryString(queryParams);
       let response: unknown;
       try {
         response = await requestJson<unknown>({
           method: 'POST',
-          url: 'https://api.apollo.io/api/v1/people/search',
+          url: `https://api.apollo.io/api/v1/mixed_people/api_search?${qs}`,
           headers: { 'x-api-key': apiKey },
-          body,
           provider: 'apollo',
           operation: 'people-search',
           correlationId: input.correlationId
@@ -167,7 +187,7 @@ export class ApolloClient {
       }
 
       const parsed = apolloPeopleSearchFullResponseSchema.parse(response);
-      totalEntries = parsed.pagination?.total_entries ?? 0;
+      totalEntries = parsed.total_entries ?? parsed.pagination?.total_entries ?? 0;
 
       for (const person of parsed.people) {
         const firstName = person.first_name ?? null;
@@ -203,19 +223,20 @@ export class ApolloClient {
     const titles = new Set<string>();
 
     for (let page = 1; page <= maxPages; page += 1) {
+      const qs = this.buildSearchQueryString({
+        page,
+        q_organization_domains_list: [input.companyName],
+        person_locations: [input.geographyIsoCode],
+        per_page: 100
+      });
+
       let response: unknown;
       try {
         response = await requestJson<unknown>({
           method: 'POST',
-          url: 'https://api.apollo.io/api/v1/people/search',
+          url: `https://api.apollo.io/api/v1/mixed_people/api_search?${qs}`,
           headers: {
             'x-api-key': apiKey
-          },
-          body: {
-            page,
-            q_organization_names: [input.companyName],
-            person_locations: [input.geographyIsoCode],
-            per_page: 100
           },
           provider: 'apollo',
           operation: 'people-search',

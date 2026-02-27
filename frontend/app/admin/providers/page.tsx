@@ -98,6 +98,69 @@ function buildEmptyCredentials(pt: ProviderType): Record<string, string> {
   return result;
 }
 
+function UpdateCredentialsForm({
+  accountId,
+  providerType: pt,
+  onDone
+}: {
+  accountId: string;
+  providerType: ProviderType;
+  onDone: () => void;
+}): JSX.Element {
+  const queryClient = useQueryClient();
+  const fields = CREDENTIAL_FIELDS[pt];
+  const [creds, setCreds] = useState<Record<string, string>>(() => buildEmptyCredentials(pt));
+  const [error, setError] = useState('');
+
+  const allFilled = fields.every((f) => (creds[f.key] ?? '').trim().length > 0);
+
+  const mutation = useMutation({
+    mutationFn: () => updateProviderAccount(accountId, { credentials: creds }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
+      onDone();
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : 'Update failed')
+  });
+
+  return (
+    <div className="mt-3 space-y-2 rounded-md border border-indigo-200 bg-indigo-50/50 p-3">
+      <p className="text-sm font-medium text-indigo-700">Update Credentials</p>
+      {fields.map((field) => (
+        <div key={field.key}>
+          <label className="mb-1 block text-xs text-slate-600">{field.label}</label>
+          {field.type === 'textarea' ? (
+            <textarea
+              value={creds[field.key] ?? ''}
+              onChange={(e) => setCreds((p) => ({ ...p, [field.key]: e.target.value }))}
+              placeholder={field.placeholder}
+              rows={3}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
+            />
+          ) : (
+            <Input
+              type={field.type ?? 'text'}
+              value={creds[field.key] ?? ''}
+              onChange={(e) => setCreds((p) => ({ ...p, [field.key]: e.target.value }))}
+              placeholder={field.placeholder}
+            />
+          )}
+        </div>
+      ))}
+      {error ? <p className="text-xs text-red-600">{error}</p> : null}
+      <div className="flex gap-2">
+        <Button
+          onClick={() => mutation.mutate()}
+          disabled={mutation.isPending || !allFilled}
+        >
+          {mutation.isPending ? 'Saving...' : 'Save Credentials'}
+        </Button>
+        <Button variant="secondary" onClick={onDone}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
 export default function ProviderAccountsPage(): JSX.Element {
   const queryClient = useQueryClient();
   const [providerType, setProviderType] = useState<ProviderType>('APOLLO');
@@ -105,6 +168,7 @@ export default function ProviderAccountsPage(): JSX.Element {
   const [credentials, setCredentials] = useState<Record<string, string>>(() => buildEmptyCredentials('APOLLO'));
   const [projectId, setProjectId] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [editingCredentials, setEditingCredentials] = useState<string | null>(null);
 
   const handleProviderTypeChange = useCallback((newType: ProviderType) => {
     setProviderType(newType);
@@ -276,6 +340,12 @@ export default function ProviderAccountsPage(): JSX.Element {
                     {account.isActive ? 'Deactivate' : 'Activate'}
                   </Button>
                   <Button
+                    variant="secondary"
+                    onClick={() => setEditingCredentials(editingCredentials === account.id ? null : account.id)}
+                  >
+                    Update Credentials
+                  </Button>
+                  <Button
                     onClick={() => {
                       if (!selectedProjectId) {
                         return;
@@ -286,6 +356,13 @@ export default function ProviderAccountsPage(): JSX.Element {
                     Bind to Project
                   </Button>
                 </div>
+                {editingCredentials === account.id ? (
+                  <UpdateCredentialsForm
+                    accountId={account.id}
+                    providerType={account.providerType as ProviderType}
+                    onDone={() => setEditingCredentials(null)}
+                  />
+                ) : null}
               </div>
             ))}
           </div>
