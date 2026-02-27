@@ -62,7 +62,7 @@ export default function ProjectsPage(): JSX.Element {
         </div>
         <Link href="/admin/projects/new">
           <Button>
-            <span className="material-symbols-outlined text-lg mr-1">add</span>
+            <span className="material-symbols-outlined text-base">add</span>
             New Project
           </Button>
         </Link>

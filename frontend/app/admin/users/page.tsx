@@ -154,7 +154,7 @@ export default function UsersPage(): JSX.Element {
         </div>
         {formMode === 'idle' && (
           <Button onClick={openCreate}>
-            <span className="material-symbols-outlined text-lg mr-1">person_add</span>
+            <span className="material-symbols-outlined text-base">person_add</span>
             Add User
           </Button>
         )}

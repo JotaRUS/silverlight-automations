@@ -311,7 +311,7 @@ export default function NewProjectWizardPage(): JSX.Element {
               disabled={!name || selectedGeos.length === 0 || createMutation.isPending}
             >
               {createMutation.isPending ? 'Creating...' : 'Create & Continue'}
-              <span className="material-symbols-outlined text-lg ml-1">arrow_forward</span>
+              <span className="material-symbols-outlined text-base">arrow_forward</span>
             </Button>
           </div>
         </Card>
@@ -426,7 +426,7 @@ export default function NewProjectWizardPage(): JSX.Element {
               disabled={selectedCount === 0 || bindMutation.isPending}
             >
               {bindMutation.isPending ? 'Saving...' : `Bind ${selectedCount} Source${selectedCount !== 1 ? 's' : ''} & Continue`}
-              <span className="material-symbols-outlined text-lg ml-1">arrow_forward</span>
+              <span className="material-symbols-outlined text-base">arrow_forward</span>
             </Button>
           </div>
         </Card>
@@ -452,7 +452,7 @@ export default function NewProjectWizardPage(): JSX.Element {
               Back to Projects
             </Button>
             <Button onClick={goToLeads}>
-              <span className="material-symbols-outlined text-lg mr-1">visibility</span>
+              <span className="material-symbols-outlined text-base">visibility</span>
               View Leads Live
             </Button>
           </div>

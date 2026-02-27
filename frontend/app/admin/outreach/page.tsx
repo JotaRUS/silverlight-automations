@@ -117,7 +117,7 @@ export default function OutreachPage(): JSX.Element {
           <p className="text-sm text-slate-500">Manage and monitor expert outreach campaigns</p>
         </div>
         <Button onClick={() => setShowNewOutreach((v) => !v)}>
-          <span className="material-symbols-outlined text-lg mr-1">add</span>
+          <span className="material-symbols-outlined text-base">add</span>
           New Outreach
         </Button>
       </div>
