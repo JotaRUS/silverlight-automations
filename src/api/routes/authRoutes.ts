@@ -85,6 +85,68 @@ authRoutes.post('/logout', authenticate, (request, response) => {
   });
 });
 
+const profileUpdateSchema = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    currentPassword: z.string().min(1).optional(),
+    newPassword: z.string().min(6).max(128).optional()
+  })
+  .refine(
+    (v) => !(v.newPassword && !v.currentPassword),
+    { message: 'Current password is required to set a new password', path: ['currentPassword'] }
+  );
+
+authRoutes.patch('/profile', authenticate, async (request, response, next) => {
+  try {
+    const auth = (request as RequestWithAuth).auth;
+    if (!auth?.userId) {
+      throw new AppError('Unauthorized', 401, 'unauthorized');
+    }
+
+    const parsed = profileUpdateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      throw new AppError('Invalid payload', 400, 'invalid_payload', parsed.error.flatten());
+    }
+
+    const caller = await prisma.caller.findUnique({ where: { id: auth.userId } });
+    if (!caller) {
+      throw new AppError('User not found', 404, 'user_not_found');
+    }
+
+    const updateData: Record<string, unknown> = {};
+
+    if (parsed.data.name) {
+      updateData.name = parsed.data.name;
+    }
+
+    if (parsed.data.newPassword) {
+      const valid = await bcrypt.compare(parsed.data.currentPassword!, caller.passwordHash!);
+      if (!valid) {
+        throw new AppError('Current password is incorrect', 400, 'invalid_current_password');
+      }
+      updateData.passwordHash = await bcrypt.hash(parsed.data.newPassword, 12);
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      throw new AppError('Nothing to update', 400, 'empty_update');
+    }
+
+    const updated = await prisma.caller.update({
+      where: { id: auth.userId },
+      data: updateData
+    });
+
+    response.status(200).json({
+      userId: updated.id,
+      name: updated.name,
+      email: updated.email,
+      role: mapDbRole(updated.role)
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 authRoutes.get('/csrf', authenticate, (request, response) => {
   const auth = (request as RequestWithAuth).auth;
   if (!auth?.userId) {

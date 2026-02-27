@@ -1,11 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, type PropsWithChildren } from 'react';
+import { usePathname } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState, type PropsWithChildren } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
+import { updateProfile } from '@/services/authService';
 
 const sidebarLinks = [
   { href: '/admin', icon: 'grid_view', label: 'Dashboard' },
@@ -34,14 +37,92 @@ function isActive(pathname: string, href: string): boolean {
 
 export default function AdminLayout({ children }: PropsWithChildren): JSX.Element {
   const pathname = usePathname();
-  const router = useRouter();
-  const { logout, user, loading } = useAuth();
+  const { logout, user, loading, refresh } = useAuth();
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+
+  const [formName, setFormName] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [formSuccess, setFormSuccess] = useState('');
 
   useEffect(() => {
     if (!loading && !user) {
       window.location.href = '/login';
     }
   }, [loading, user]);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent): void {
+      if (detailsRef.current && !detailsRef.current.contains(e.target as Node)) {
+        detailsRef.current.open = false;
+      }
+    }
+    document.addEventListener('click', onClickOutside);
+    return () => document.removeEventListener('click', onClickOutside);
+  }, []);
+
+  const closeMenu = useCallback(() => {
+    if (detailsRef.current) detailsRef.current.open = false;
+  }, []);
+
+  const openSettings = useCallback(() => {
+    closeMenu();
+    setFormName(user?.name ?? '');
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setFormError('');
+    setFormSuccess('');
+    setSettingsOpen(true);
+  }, [user]);
+
+  const handleLogout = useCallback(() => {
+    closeMenu();
+    void logout().then(() => {
+      window.location.href = '/login';
+    });
+  }, [logout]);
+
+  const handleSave = async (): Promise<void> => {
+    setFormError('');
+    setFormSuccess('');
+    if (newPassword && newPassword !== confirmPassword) {
+      setFormError('New passwords do not match');
+      return;
+    }
+    const payload: Record<string, string> = {};
+    if (formName && formName !== user?.name) payload.name = formName;
+    if (newPassword) {
+      if (!currentPassword) {
+        setFormError('Current password is required to change password');
+        return;
+      }
+      payload.currentPassword = currentPassword;
+      payload.newPassword = newPassword;
+    }
+    if (Object.keys(payload).length === 0) {
+      setFormError('No changes to save');
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateProfile(payload);
+      await refresh();
+      setFormSuccess('Profile updated');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -52,8 +133,10 @@ export default function AdminLayout({ children }: PropsWithChildren): JSX.Elemen
   }
 
   if (!user) {
-    return null;
+    return <div />;
   }
+
+  const initial = user.name?.charAt(0)?.toUpperCase() ?? user.email?.charAt(0)?.toUpperCase() ?? 'A';
 
   return (
     <div className="min-h-screen bg-bg-light">
@@ -98,9 +181,7 @@ export default function AdminLayout({ children }: PropsWithChildren): JSX.Elemen
             <button
               className="flex flex-col items-center gap-0.5 px-1 py-1.5 text-slate-400 hover:text-primary transition-colors"
               title="Logout"
-              onClick={() => {
-                void logout().then(() => router.push('/login'));
-              }}
+              onClick={handleLogout}
             >
               <span className="material-symbols-outlined text-xl">logout</span>
               <span className="text-[9px] font-semibold leading-tight">Logout</span>
@@ -125,9 +206,33 @@ export default function AdminLayout({ children }: PropsWithChildren): JSX.Elemen
             <span className="material-symbols-outlined">notifications</span>
             <span className="absolute top-2 right-2 size-2 bg-red-500 rounded-full border-2 border-white" />
           </button>
-          <div className="size-8 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden border border-primary/30 text-primary text-xs font-bold">
-            {user?.name?.charAt(0)?.toUpperCase() ?? user?.email?.charAt(0)?.toUpperCase() ?? 'A'}
-          </div>
+          <details ref={detailsRef} className="relative">
+            <summary
+              className="size-8 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden border border-primary/30 text-primary text-xs font-bold cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all list-none [&::-webkit-details-marker]:hidden"
+            >
+              {initial}
+            </summary>
+            <div className="absolute right-0 top-10 w-56 rounded-xl border border-slate-200 bg-white shadow-lg py-1 z-[9999]">
+              <div className="px-3 py-2 border-b border-slate-100">
+                <p className="text-sm font-semibold text-slate-800 truncate">{user.name}</p>
+                <p className="text-xs text-slate-500 truncate">{user.email}</p>
+              </div>
+              <button
+                onClick={openSettings}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg text-slate-400">settings</span>
+                Settings
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">logout</span>
+                Log out
+              </button>
+            </div>
+          </details>
         </div>
       </header>
 
@@ -154,6 +259,53 @@ export default function AdminLayout({ children }: PropsWithChildren): JSX.Elemen
           </Link>
         ))}
       </nav>
+
+      {/* Settings modal */}
+      {settingsOpen && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-xl mx-4">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <h2 className="text-lg font-semibold">Account Settings</h2>
+              <button onClick={() => setSettingsOpen(false)} className="rounded-lg p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
+                <Input value={user.email ?? ''} disabled className="bg-slate-50 text-slate-500 cursor-not-allowed" />
+                <p className="mt-1 text-xs text-slate-400">Email cannot be changed</p>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Name</label>
+                <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Your name" />
+              </div>
+              <hr className="border-slate-100" />
+              <p className="text-sm font-medium text-slate-700">Change Password</p>
+              <div>
+                <label className="mb-1 block text-sm text-slate-600">Current Password</label>
+                <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="••••••••" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-slate-600">New Password</label>
+                <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min 6 characters" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-slate-600">Confirm New Password</label>
+                <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Repeat new password" />
+              </div>
+              {formError && <p className="text-sm text-red-600">{formError}</p>}
+              {formSuccess && <p className="text-sm text-emerald-600">{formSuccess}</p>}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3">
+              <Button onClick={() => setSettingsOpen(false)} className="bg-slate-100 text-slate-700 hover:bg-slate-200">Cancel</Button>
+              <Button onClick={() => void handleSave()} disabled={saving}>
+                {saving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

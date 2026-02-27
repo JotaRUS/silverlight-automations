@@ -44,3 +44,14 @@ export async function fetchCsrfToken(): Promise<string> {
 export async function fetchMe(): Promise<AuthUser> {
   return apiRequest<AuthUser>('/api/v1/auth/me');
 }
+
+export async function updateProfile(payload: {
+  name?: string;
+  currentPassword?: string;
+  newPassword?: string;
+}): Promise<AuthUser> {
+  return apiRequest<AuthUser>('/api/v1/auth/profile', {
+    method: 'PATCH',
+    body: payload
+  });
+}
