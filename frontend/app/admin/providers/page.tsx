@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -45,13 +45,75 @@ const providerTypes: ProviderType[] = [
   'GOOGLE_SHEETS'
 ];
 
+interface CredentialFieldDef {
+  key: string;
+  label: string;
+  type?: 'text' | 'password' | 'textarea';
+  placeholder?: string;
+}
+
+const CREDENTIAL_FIELDS: Record<ProviderType, CredentialFieldDef[]> = {
+  APOLLO: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  SALES_NAV_WEBHOOK: [{ key: 'webhookSecret', label: 'Webhook Secret', type: 'password', placeholder: 'Enter webhook secret' }],
+  LEADMAGIC: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  PROSPEO: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  EXA: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  ROCKETREACH: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  WIZA: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  FORAGER: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  ZELIQ: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  CONTACTOUT: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  DATAGM: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  PEOPLEDATALABS: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  LINKEDIN: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  EMAIL_PROVIDER: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  TWILIO: [
+    { key: 'accountSid', label: 'Account SID', type: 'text', placeholder: 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' },
+    { key: 'authToken', label: 'Auth Token', type: 'password', placeholder: 'Enter auth token' }
+  ],
+  WHATSAPP_2CHAT: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  RESPONDIO: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  LINE: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  WECHAT: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  VIBER: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  TELEGRAM: [{ key: 'botToken', label: 'Bot Token', type: 'password', placeholder: 'Enter bot token' }],
+  KAKAOTALK: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  VOICEMAIL_DROP: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  YAY: [
+    { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' },
+    { key: 'webhookSecret', label: 'Webhook Secret', type: 'password', placeholder: 'Enter webhook secret' }
+  ],
+  GOOGLE_SHEETS: [
+    { key: 'spreadsheetId', label: 'Spreadsheet ID', type: 'text', placeholder: 'e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms' },
+    { key: 'serviceAccountJson', label: 'Service Account JSON', type: 'textarea', placeholder: 'Paste service account JSON here' }
+  ]
+};
+
+function buildEmptyCredentials(pt: ProviderType): Record<string, string> {
+  const fields = CREDENTIAL_FIELDS[pt];
+  const result: Record<string, string> = {};
+  for (const field of fields) {
+    result[field.key] = '';
+  }
+  return result;
+}
+
 export default function ProviderAccountsPage(): JSX.Element {
   const queryClient = useQueryClient();
   const [providerType, setProviderType] = useState<ProviderType>('APOLLO');
   const [accountLabel, setAccountLabel] = useState('');
-  const [credentialsJson, setCredentialsJson] = useState('{\n  "apiKey": ""\n}');
+  const [credentials, setCredentials] = useState<Record<string, string>>(() => buildEmptyCredentials('APOLLO'));
   const [projectId, setProjectId] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+
+  const handleProviderTypeChange = useCallback((newType: ProviderType) => {
+    setProviderType(newType);
+    setCredentials(buildEmptyCredentials(newType));
+  }, []);
+
+  const setCredentialField = useCallback((key: string, value: string) => {
+    setCredentials((prev) => ({ ...prev, [key]: value }));
+  }, []);
 
   const providerAccountsQuery = useQuery({
     queryKey: ['provider-accounts'],
@@ -62,18 +124,21 @@ export default function ProviderAccountsPage(): JSX.Element {
     queryFn: () => listProjects()
   });
 
+  const activeFields = CREDENTIAL_FIELDS[providerType];
+  const allFieldsFilled = activeFields.every((f) => (credentials[f.key] ?? '').trim().length > 0);
+
   const createMutation = useMutation({
     mutationFn: async () => {
-      const parsedCredentials = JSON.parse(credentialsJson) as Record<string, unknown>;
       return createProviderAccount({
         providerType,
         accountLabel,
-        credentials: parsedCredentials
+        credentials
       });
     },
     onSuccess: () => {
       setErrorMessage('');
       setAccountLabel('');
+      setCredentials(buildEmptyCredentials(providerType));
       void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
     },
     onError: (error) => {
@@ -98,10 +163,10 @@ export default function ProviderAccountsPage(): JSX.Element {
         <h1 className="text-lg font-semibold">Provider Accounts</h1>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
-            <label className="mb-1 block text-sm">Provider Type</label>
+            <label className="mb-1 block text-sm font-medium">Provider Type</label>
             <select
               value={providerType}
-              onChange={(event) => setProviderType(event.target.value as ProviderType)}
+              onChange={(event) => handleProviderTypeChange(event.target.value as ProviderType)}
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             >
               {providerTypes.map((type) => (
@@ -112,21 +177,45 @@ export default function ProviderAccountsPage(): JSX.Element {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-sm">Account Label</label>
-            <Input value={accountLabel} onChange={(event) => setAccountLabel(event.target.value)} />
+            <label className="mb-1 block text-sm font-medium">Account Label</label>
+            <Input
+              value={accountLabel}
+              onChange={(event) => setAccountLabel(event.target.value)}
+              placeholder="e.g. Production, Staging, Team-A"
+            />
           </div>
         </div>
-        <div>
-          <label className="mb-1 block text-sm">Credentials JSON (masked on save)</label>
-          <textarea
-            value={credentialsJson}
-            onChange={(event) => setCredentialsJson(event.target.value)}
-            rows={6}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
-          />
+
+        <div className="space-y-3">
+          <p className="text-sm font-medium">Credentials <span className="text-xs font-normal text-slate-500">(encrypted at rest)</span></p>
+          {activeFields.map((field) => (
+            <div key={field.key}>
+              <label className="mb-1 block text-sm text-slate-600">{field.label}</label>
+              {field.type === 'textarea' ? (
+                <textarea
+                  value={credentials[field.key] ?? ''}
+                  onChange={(event) => setCredentialField(field.key, event.target.value)}
+                  placeholder={field.placeholder}
+                  rows={4}
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
+                />
+              ) : (
+                <Input
+                  type={field.type ?? 'text'}
+                  value={credentials[field.key] ?? ''}
+                  onChange={(event) => setCredentialField(field.key, event.target.value)}
+                  placeholder={field.placeholder}
+                />
+              )}
+            </div>
+          ))}
         </div>
+
         {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
-        <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending || !accountLabel}>
+        <Button
+          onClick={() => createMutation.mutate()}
+          disabled={createMutation.isPending || !accountLabel || !allFieldsFilled}
+        >
           {createMutation.isPending ? 'Creating...' : 'Create Provider Account'}
         </Button>
       </Card>

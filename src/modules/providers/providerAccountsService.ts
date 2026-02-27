@@ -105,6 +105,16 @@ export class ProviderAccountsService {
   }
 
   public async create(input: ProviderAccountCreateInput, createdByAdminId: string): Promise<ProviderAccountSanitizedView> {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(createdByAdminId)) {
+      throw new AppError(
+        'Invalid admin identity — you must log in with a valid Caller UUID',
+        400,
+        'invalid_admin_identity',
+        { createdByAdminId }
+      );
+    }
+
     const creator = await this.prismaClient.caller.findUnique({
       where: {
         id: createdByAdminId
