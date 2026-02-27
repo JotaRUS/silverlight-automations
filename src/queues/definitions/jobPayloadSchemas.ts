@@ -82,7 +82,7 @@ export const outreachMessageJobSchema = z.object({
     'VOICEMAIL'
   ]),
   recipient: z.string().min(1),
-  body: z.string().min(1),
+  body: z.string().min(1).optional(),
   overrideCooldown: z.boolean().default(false)
 });
 

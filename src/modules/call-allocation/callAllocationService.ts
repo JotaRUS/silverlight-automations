@@ -31,7 +31,7 @@ export class CallAllocationService {
     return caller;
   }
 
-  public async fetchOrAssignCurrentTask(callerId: string): Promise<CallTask | null> {
+  public async fetchOrAssignCurrentTask(callerId: string) {
     const caller = await this.getCallerOrThrow(callerId);
     if (!['ACTIVE', 'WARMUP_GRACE', 'AT_RISK'].includes(caller.allocationStatus)) {
       return null;
@@ -143,7 +143,45 @@ export class CallAllocationService {
       });
     }
 
-    return task;
+    if (!task) {
+      return null;
+    }
+
+    return this.prismaClient.callTask.findUnique({
+      where: { id: task.id },
+      include: {
+        expert: {
+          include: {
+            contacts: {
+              where: { deletedAt: null },
+              orderBy: { isPrimary: 'desc' }
+            },
+            callLogs: {
+              orderBy: { createdAt: 'desc' },
+              take: 20,
+              include: {
+                callTask: {
+                  select: { callOutcome: true, status: true }
+                }
+              }
+            },
+            outreachThreads: {
+              orderBy: { updatedAt: 'desc' },
+              take: 10,
+              include: {
+                messages: {
+                  orderBy: { sentAt: 'desc' },
+                  take: 5
+                }
+              }
+            }
+          }
+        },
+        project: {
+          select: { name: true, geographyIsoCodes: true }
+        }
+      }
+    });
   }
 
   public async listOperatorTasks(input?: {

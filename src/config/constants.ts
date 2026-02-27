@@ -19,3 +19,10 @@ export const JOB_NAMES = {
   YAY_CALL_EVENT: 'yay.call-event',
   DEAD_LETTER_ARCHIVAL: 'dead-letter.archival'
 } as const;
+
+export const AUTO_SOURCING = {
+  INTERVAL_MS: 5 * 60 * 1000,
+  ENRICHMENT_BATCH_SIZE: 50,
+  OUTREACH_BATCH_SIZE: 30,
+  STALE_PIPELINE_HOURS: 24
+} as const;

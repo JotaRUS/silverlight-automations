@@ -45,7 +45,7 @@ adminRoutes.get('/dashboard-stats', async (_request, response, next) => {
       prisma.project.count({ where: { deletedAt: null, createdAt: { lt: sevenDaysAgo } } }),
       prisma.caller.count({ where: { deletedAt: null } }),
       prisma.caller.count({ where: { deletedAt: null, createdAt: { lt: sevenDaysAgo } } }),
-      prisma.callTask.count({ where: { status: { in: ['ASSIGNED', 'DIALING', 'ACTIVE'] } } }),
+      prisma.callTask.count({ where: { status: { in: ['ASSIGNED', 'DIALING'] } } }),
       prisma.systemEvent.findMany({
         orderBy: { createdAt: 'desc' },
         take: 20

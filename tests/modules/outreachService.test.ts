@@ -13,6 +13,12 @@ function createPrismaMock(): PrismaClient {
     },
     outreachMessage: {
       create: vi.fn()
+    },
+    expert: {
+      findUnique: vi.fn()
+    },
+    expertContact: {
+      findMany: vi.fn().mockResolvedValue([])
     }
   } as unknown as PrismaClient;
 }

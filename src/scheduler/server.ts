@@ -1,4 +1,5 @@
 import { subDays } from './timeUtils';
+import { AUTO_SOURCING } from '../config/constants';
 import { logger } from '../core/logging/logger';
 import { installFatalProcessHandlers } from '../core/process/fatalHandlers';
 import { clock } from '../core/time/clock';
@@ -10,6 +11,7 @@ import { buildJobId } from '../queues/jobId';
 
 const deadLetterRepository = new DeadLetterJobRepository(prisma);
 const SCHEDULER_INTERVAL_MS = 60 * 1000;
+let lastAutoSourcingRunMs = 0;
 
 let schedulerHandle: NodeJS.Timeout | undefined;
 let running = false;
@@ -152,6 +154,240 @@ async function runScheduledMaintenance(): Promise<void> {
     },
     'scheduler-maintenance-run-completed'
   );
+
+  const nowMs = clock.now().getTime();
+  if (nowMs - lastAutoSourcingRunMs >= AUTO_SOURCING.INTERVAL_MS) {
+    lastAutoSourcingRunMs = nowMs;
+    await runAutoSourcingLoop();
+  }
+}
+
+async function runAutoSourcingLoop(): Promise<void> {
+  const activeProjects = await prisma.project.findMany({
+    where: { status: 'ACTIVE' }
+  });
+  const incompleteProjects = activeProjects.filter(
+    (p) => p.signedUpCount < p.targetThreshold
+  );
+
+  if (incompleteProjects.length === 0) {
+    return;
+  }
+
+  let totalEnrichmentQueued = 0;
+  let totalOutreachQueued = 0;
+  let totalStalledProjects = 0;
+  const timeSlice = clock.now().toISOString().slice(0, 13);
+
+  for (const project of incompleteProjects) {
+    const enrichmentQueued = await queuePendingEnrichment(project.id, timeSlice);
+    totalEnrichmentQueued += enrichmentQueued;
+
+    const outreachQueued = await queuePendingOutreach(project.id, project.name, timeSlice);
+    totalOutreachQueued += outreachQueued;
+
+    const stalled = await detectStalledSourcing(project);
+    if (stalled) {
+      totalStalledProjects += 1;
+    }
+  }
+
+  logger.info(
+    {
+      incompleteProjects: incompleteProjects.length,
+      totalEnrichmentQueued,
+      totalOutreachQueued,
+      totalStalledProjects
+    },
+    'auto-sourcing-loop-completed'
+  );
+}
+
+async function queuePendingEnrichment(projectId: string, timeSlice: string): Promise<number> {
+  const newLeads = await prisma.lead.findMany({
+    where: {
+      projectId,
+      status: 'NEW',
+      deletedAt: null
+    },
+    take: AUTO_SOURCING.ENRICHMENT_BATCH_SIZE
+  });
+
+  for (const lead of newLeads) {
+    const metadata = (lead.metadata ?? {}) as Record<string, unknown>;
+    const companyName = typeof metadata.companyName === 'string' ? metadata.companyName : undefined;
+    const emails = Array.isArray(metadata.emails)
+      ? (metadata.emails as unknown[]).filter((e): e is string => typeof e === 'string')
+      : [];
+    const phones = Array.isArray(metadata.phones)
+      ? (metadata.phones as unknown[]).filter((p): p is string => typeof p === 'string')
+      : [];
+
+    await getQueues().enrichmentQueue.add(
+      'enrichment.run',
+      {
+        correlationId: 'scheduler',
+        data: {
+          leadId: lead.id,
+          projectId,
+          fullName: lead.fullName ?? undefined,
+          companyName,
+          linkedinUrl: lead.linkedinUrl ?? undefined,
+          countryIso:
+            lead.countryIso && lead.countryIso.length === 2 ? lead.countryIso : undefined,
+          emails,
+          phones
+        }
+      },
+      {
+        jobId: buildJobId('enrichment', lead.id, timeSlice)
+      }
+    );
+  }
+
+  return newLeads.length;
+}
+
+async function queuePendingOutreach(
+  projectId: string,
+  projectName: string,
+  timeSlice: string
+): Promise<number> {
+  const enrichedLeads = await prisma.lead.findMany({
+    where: {
+      projectId,
+      status: 'ENRICHED',
+      expertId: { not: null },
+      deletedAt: null
+    },
+    take: AUTO_SOURCING.OUTREACH_BATCH_SIZE
+  });
+
+  let queued = 0;
+  for (const lead of enrichedLeads) {
+    if (!lead.expertId) {
+      continue;
+    }
+
+    const existingThread = await prisma.outreachThread.findFirst({
+      where: {
+        projectId,
+        expertId: lead.expertId
+      },
+      select: { id: true }
+    });
+    if (existingThread) {
+      continue;
+    }
+
+    const contact = await prisma.expertContact.findFirst({
+      where: {
+        expertId: lead.expertId,
+        verificationStatus: 'VERIFIED',
+        type: { in: ['EMAIL', 'PHONE'] },
+        deletedAt: null
+      },
+      orderBy: { type: 'asc' }
+    });
+    if (!contact) {
+      continue;
+    }
+
+    const channel = contact.type === 'EMAIL' ? 'EMAIL' : 'PHONE';
+
+    await getQueues().outreachQueue.add(
+      'outreach.send',
+      {
+        correlationId: 'scheduler',
+        data: {
+          projectId,
+          expertId: lead.expertId,
+          channel,
+          recipient: contact.value,
+          body: `Invitation to participate as an expert in ${projectName}. We believe your expertise would be valuable for this project.`,
+          overrideCooldown: false
+        }
+      },
+      {
+        jobId: buildJobId('outreach', projectId, lead.expertId, timeSlice)
+      }
+    );
+
+    await prisma.lead.update({
+      where: { id: lead.id },
+      data: { status: 'OUTREACH_PENDING' }
+    });
+
+    queued += 1;
+  }
+
+  return queued;
+}
+
+async function detectStalledSourcing(project: {
+  id: string;
+  name: string;
+  signedUpCount: number;
+  targetThreshold: number;
+}): Promise<boolean> {
+  const pipelineCount = await prisma.lead.count({
+    where: {
+      projectId: project.id,
+      status: { in: ['NEW', 'ENRICHING', 'ENRICHED', 'OUTREACH_PENDING'] },
+      deletedAt: null
+    }
+  });
+
+  if (pipelineCount > 0) {
+    return false;
+  }
+
+  const staleCutoff = new Date(
+    clock.now().getTime() - AUTO_SOURCING.STALE_PIPELINE_HOURS * 60 * 60 * 1000
+  );
+  const recentLeadCount = await prisma.lead.count({
+    where: {
+      projectId: project.id,
+      createdAt: { gte: staleCutoff },
+      deletedAt: null
+    }
+  });
+
+  if (recentLeadCount > 0) {
+    return false;
+  }
+
+  const activeSources = await prisma.salesNavSearch.count({
+    where: {
+      projectId: project.id,
+      isActive: true,
+      deletedAt: null
+    }
+  });
+
+  if (activeSources === 0) {
+    return false;
+  }
+
+  await prisma.systemEvent.create({
+    data: {
+      category: 'SYSTEM',
+      entityType: 'project',
+      entityId: project.id,
+      message: 'auto_sourcing_pipeline_stalled',
+      payload: {
+        projectId: project.id,
+        projectName: project.name,
+        signedUpCount: project.signedUpCount,
+        targetThreshold: project.targetThreshold,
+        activeSources,
+        reason:
+          'No leads in pipeline and no recent ingestion. A new sourcing cycle may be needed.'
+      }
+    }
+  });
+
+  return true;
 }
 
 async function shutdown(): Promise<void> {

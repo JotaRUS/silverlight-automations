@@ -15,6 +15,9 @@ import type {
   EnrichmentRequest,
   EnrichmentResult
 } from '../../integrations/enrichment/types';
+import { getQueues } from '../../queues';
+import { buildJobId } from '../../queues/jobId';
+import { GOOGLE_SHEETS_TABS } from '../google-sheets-sync/googleSheetsTabMapping';
 import { normalizeEmail, normalizePhone } from './enrichmentValidators';
 
 export interface EnrichmentJobInput {
@@ -299,6 +302,61 @@ export class EnrichmentService {
           confidenceScore: bestResult.confidenceScore
         }
       });
+    }
+
+    await this.queuePhoneExports(lead.expertId, normalizedPhones, job.projectId, correlationId);
+  }
+
+  private async queuePhoneExports(
+    expertId: string,
+    phones: string[],
+    projectId: string,
+    correlationId: string
+  ): Promise<void> {
+    if (phones.length === 0) {
+      return;
+    }
+
+    const expert = await this.prismaClient.expert.findUnique({
+      where: { id: expertId }
+    });
+    if (!expert) {
+      return;
+    }
+
+    const hasGoogleSheets = await this.prismaClient.project.findUnique({
+      where: { id: projectId },
+      select: { googleSheetsProviderAccountId: true }
+    });
+    if (!hasGoogleSheets?.googleSheetsProviderAccountId) {
+      return;
+    }
+
+    for (const phone of phones) {
+      await getQueues().googleSheetsSyncQueue.add(
+        'google-sheets-sync.phone-export',
+        {
+          correlationId,
+          data: {
+            projectId,
+            tabName: GOOGLE_SHEETS_TABS.PHONE_EXPORT,
+            entityType: 'expert_contact_phone',
+            entityId: `${expert.id}::${phone}`,
+            entityPayload: {
+              expertId: expert.id,
+              fullName: expert.fullName,
+              countryIso: expert.countryIso ?? '',
+              phone,
+              phoneLabel: 'MOBILE',
+              verificationStatus: 'VERIFIED',
+              projectId
+            }
+          }
+        },
+        {
+          jobId: buildJobId('gsheets-phone-export', expert.id, phone)
+        }
+      );
     }
   }
 }
