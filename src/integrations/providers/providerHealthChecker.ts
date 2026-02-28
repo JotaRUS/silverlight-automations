@@ -1,5 +1,6 @@
 import { createSign } from 'node:crypto';
 
+import { AppError } from '../../core/errors/appError';
 import { requestJson } from '../../core/http/httpJsonClient';
 import type { ProviderType } from '../../core/providers/providerTypes';
 
@@ -45,6 +46,28 @@ function credentialString(credentials: Record<string, unknown>, key: string): st
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'unknown';
+}
+
+function salesNavOauthErrorMessage(error: unknown): string {
+  if (
+    error instanceof AppError &&
+    error.errorCode === 'provider_request_failed' &&
+    typeof error.details === 'object' &&
+    error.details !== null
+  ) {
+    const details = error.details as { statusCode?: unknown };
+    const statusCode = typeof details.statusCode === 'number' ? details.statusCode : undefined;
+    if (statusCode === 400 || statusCode === 401) {
+      return 'LinkedIn OAuth token exchange failed. Verify Client ID/Client Secret and app auth settings.';
+    }
+    if (statusCode === 403) {
+      return 'LinkedIn rejected the OAuth token request. Confirm app permissions and product access.';
+    }
+    if (statusCode !== undefined) {
+      return `LinkedIn OAuth token request failed (HTTP ${statusCode}).`;
+    }
+  }
+  return `OAuth token request failed: ${errorMessage(error)}`;
 }
 
 function base64Url(value: string): string {
@@ -192,7 +215,7 @@ export async function runProviderHealthCheck(
         healthy: false,
         details: {
           phase: 'oauth_token',
-          reason: errorMessage(error)
+          reason: salesNavOauthErrorMessage(error)
         }
       };
     }
@@ -220,14 +243,27 @@ export async function runProviderHealthCheck(
     const responseText = await leadSyncResponse.text().catch(() => '');
     const responseSnippet = responseText.slice(0, 300);
 
-    const healthy =
-      leadSyncResponse.status >= 200 &&
-      leadSyncResponse.status < 500;
+    let healthy = false;
+    let reason = `Lead Sync probe failed (HTTP ${leadSyncResponse.status}).`;
+    if (leadSyncResponse.status >= 200 && leadSyncResponse.status < 300) {
+      healthy = true;
+      reason = 'Lead Sync endpoint reachable.';
+    } else if (leadSyncResponse.status === 400) {
+      // Expected when finder params are incomplete; still confirms endpoint access + auth.
+      healthy = true;
+      reason = 'Lead Sync endpoint reachable (request validation failed as expected for probe).';
+    } else if (leadSyncResponse.status === 401) {
+      reason = 'Lead Sync authentication failed (invalid/expired bearer token).';
+    } else if (leadSyncResponse.status === 403) {
+      reason =
+        'Lead Sync access denied. Your app may still be under review or missing Lead Sync permissions/roles.';
+    }
 
     return {
       healthy,
       details: {
         phase: 'lead_sync_probe',
+        reason,
         statusCode: leadSyncResponse.status,
         statusText: leadSyncResponse.statusText,
         responseSnippet

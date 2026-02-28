@@ -101,6 +101,21 @@ function buildEmptyCredentials(pt: ProviderType): Record<string, string> {
   return result;
 }
 
+function formatHealthMessage(raw: string | null): string {
+  if (!raw) {
+    return 'Provider marked as unhealthy.';
+  }
+  try {
+    const parsed = JSON.parse(raw) as { reason?: unknown };
+    if (typeof parsed.reason === 'string' && parsed.reason.trim().length > 0) {
+      return parsed.reason;
+    }
+  } catch {
+    // keep plain-string message
+  }
+  return raw;
+}
+
 function UpdateCredentialsForm({
   accountId,
   providerType: pt,
@@ -322,7 +337,7 @@ export default function ProviderAccountsPage(): JSX.Element {
                 </p>
                 <p className="text-xs text-slate-500">
                   Health: {account.lastHealthStatus ?? 'unknown'}{' '}
-                  {account.lastHealthError ? `(${account.lastHealthError})` : ''}
+                  {account.lastHealthError ? `(${formatHealthMessage(account.lastHealthError)})` : ''}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button
@@ -342,7 +357,7 @@ export default function ProviderAccountsPage(): JSX.Element {
                             }));
                             return;
                           }
-                          const reason = updated.lastHealthError ?? 'Provider marked as unhealthy.';
+                          const reason = formatHealthMessage(updated.lastHealthError);
                           setAccountActionFeedback((prev) => ({
                             ...prev,
                             [account.id]: {

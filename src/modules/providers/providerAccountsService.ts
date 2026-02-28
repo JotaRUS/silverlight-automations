@@ -47,6 +47,23 @@ function toJsonValue(value: Record<string, unknown> | undefined): Prisma.InputJs
   return value as Prisma.InputJsonValue | undefined;
 }
 
+function healthErrorMessageFromDetails(details: unknown): string {
+  if (typeof details === 'object' && details !== null && 'reason' in details) {
+    const reason = (details as { reason?: unknown }).reason;
+    if (typeof reason === 'string' && reason.trim().length > 0) {
+      return reason;
+    }
+  }
+  if (typeof details === 'string' && details.trim().length > 0) {
+    return details;
+  }
+  try {
+    return JSON.stringify(details);
+  } catch {
+    return 'Health check reported unhealthy status';
+  }
+}
+
 function sanitizeAccount(account: ProviderAccount, credentials: Record<string, unknown>): ProviderAccountSanitizedView {
   return {
     id: account.id,
@@ -234,16 +251,9 @@ export class ProviderAccountsService {
           lastHealthStatus: checkResult.healthy ? 'healthy' : 'unhealthy',
           lastHealthError: checkResult.healthy
             ? null
-            : (() => {
-                if (!checkResult.details) {
-                  return 'Health check reported unhealthy status';
-                }
-                try {
-                  return JSON.stringify(checkResult.details);
-                } catch {
-                  return 'Health check reported unhealthy status';
-                }
-              })()
+            : healthErrorMessageFromDetails(
+                checkResult.details ?? 'Health check reported unhealthy status'
+              )
         }
       });
       return sanitizeAccount(updated, parsedCredentials);
