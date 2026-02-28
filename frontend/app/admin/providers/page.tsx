@@ -172,6 +172,9 @@ export default function ProviderAccountsPage(): JSX.Element {
   const [projectId, setProjectId] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [editingCredentials, setEditingCredentials] = useState<string | null>(null);
+  const [accountActionFeedback, setAccountActionFeedback] = useState<
+    Record<string, { tone: 'success' | 'error'; message: string }>
+  >({});
 
   const handleProviderTypeChange = useCallback((newType: ProviderType) => {
     setProviderType(newType);
@@ -325,9 +328,41 @@ export default function ProviderAccountsPage(): JSX.Element {
                   <Button
                     variant="secondary"
                     onClick={() => {
-                      void testProviderConnection(account.id).then(() =>
-                        queryClient.invalidateQueries({ queryKey: ['provider-accounts'] })
-                      );
+                      void (async () => {
+                        try {
+                          const updated = await testProviderConnection(account.id);
+                          await queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
+                          if (updated.lastHealthStatus === 'healthy') {
+                            setAccountActionFeedback((prev) => ({
+                              ...prev,
+                              [account.id]: {
+                                tone: 'success',
+                                message: 'Connection is healthy.'
+                              }
+                            }));
+                            return;
+                          }
+                          const reason = updated.lastHealthError ?? 'Provider marked as unhealthy.';
+                          setAccountActionFeedback((prev) => ({
+                            ...prev,
+                            [account.id]: {
+                              tone: 'error',
+                              message: `Connection check completed: ${reason}`
+                            }
+                          }));
+                        } catch (error) {
+                          setAccountActionFeedback((prev) => ({
+                            ...prev,
+                            [account.id]: {
+                              tone: 'error',
+                              message:
+                                error instanceof Error
+                                  ? error.message
+                                  : 'Connection check failed.'
+                            }
+                          }));
+                        }
+                      })();
                     }}
                   >
                     Test Connection
@@ -335,9 +370,32 @@ export default function ProviderAccountsPage(): JSX.Element {
                   <Button
                     variant="secondary"
                     onClick={() => {
-                      void updateProviderAccount(account.id, {
-                        isActive: !account.isActive
-                      }).then(() => queryClient.invalidateQueries({ queryKey: ['provider-accounts'] }));
+                      void (async () => {
+                        try {
+                          await updateProviderAccount(account.id, {
+                            isActive: !account.isActive
+                          });
+                          await queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
+                          setAccountActionFeedback((prev) => ({
+                            ...prev,
+                            [account.id]: {
+                              tone: 'success',
+                              message: `Account ${account.isActive ? 'deactivated' : 'activated'}.`
+                            }
+                          }));
+                        } catch (error) {
+                          setAccountActionFeedback((prev) => ({
+                            ...prev,
+                            [account.id]: {
+                              tone: 'error',
+                              message:
+                                error instanceof Error
+                                  ? error.message
+                                  : 'Unable to update account status.'
+                            }
+                          }));
+                        }
+                      })();
                     }}
                   >
                     {account.isActive ? 'Deactivate' : 'Activate'}
@@ -353,12 +411,45 @@ export default function ProviderAccountsPage(): JSX.Element {
                       if (!selectedProjectId) {
                         return;
                       }
-                      void bindProviderToProject(account.id, selectedProjectId);
+                      void (async () => {
+                        try {
+                          await bindProviderToProject(account.id, selectedProjectId);
+                          setAccountActionFeedback((prev) => ({
+                            ...prev,
+                            [account.id]: {
+                              tone: 'success',
+                              message: 'Provider bound to project.'
+                            }
+                          }));
+                        } catch (error) {
+                          setAccountActionFeedback((prev) => ({
+                            ...prev,
+                            [account.id]: {
+                              tone: 'error',
+                              message:
+                                error instanceof Error
+                                  ? error.message
+                                  : 'Unable to bind provider to project.'
+                            }
+                          }));
+                        }
+                      })();
                     }}
                   >
                     Bind to Project
                   </Button>
                 </div>
+                {accountActionFeedback[account.id] ? (
+                  <p
+                    className={`mt-2 text-xs ${
+                      accountActionFeedback[account.id].tone === 'success'
+                        ? 'text-emerald-700'
+                        : 'text-red-600'
+                    }`}
+                  >
+                    {accountActionFeedback[account.id].message}
+                  </p>
+                ) : null}
                 {editingCredentials === account.id ? (
                   <UpdateCredentialsForm
                     accountId={account.id}

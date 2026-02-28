@@ -43,6 +43,10 @@ function credentialString(credentials: Record<string, unknown>, key: string): st
   return typeof value === 'string' ? value : '';
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'unknown';
+}
+
 function base64Url(value: string): string {
   return Buffer.from(value).toString('base64url');
 }
@@ -167,23 +171,67 @@ export async function runProviderHealthCheck(
   if (input.providerType === 'SALES_NAV_WEBHOOK') {
     const clientId = credentialString(input.credentials, 'clientId');
     const clientSecret = credentialString(input.credentials, 'clientSecret');
-    const response = await requestJson<{ access_token?: string }>({
-      method: 'POST',
-      url: 'https://www.linkedin.com/oauth/v2/accessToken',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'client_credentials',
-        client_id: clientId,
-        client_secret: clientSecret
-      }).toString(),
-      provider: 'sales-nav',
-      operation: 'health-check',
-      correlationId: input.correlationId
+    let token = '';
+    try {
+      const response = await requestJson<{ access_token?: string }>({
+        method: 'POST',
+        url: 'https://www.linkedin.com/oauth/v2/accessToken',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'client_credentials',
+          client_id: clientId,
+          client_secret: clientSecret
+        }).toString(),
+        provider: 'sales-nav',
+        operation: 'health-token',
+        correlationId: input.correlationId
+      });
+      token = response.access_token ?? '';
+    } catch (error) {
+      return {
+        healthy: false,
+        details: {
+          phase: 'oauth_token',
+          reason: errorMessage(error)
+        }
+      };
+    }
+
+    if (!token) {
+      return {
+        healthy: false,
+        details: {
+          phase: 'oauth_token',
+          reason: 'empty_access_token'
+        }
+      };
+    }
+
+    // Probe a Lead Sync REST endpoint to verify actual API reachability.
+    // 400/403 still indicates endpoint reached (for example, product review pending or missing owner filters).
+    const leadSyncResponse = await fetch('https://api.linkedin.com/rest/leadForms?q=owner', {
+      method: 'GET',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'Linkedin-Version': '202602',
+        'X-Restli-Protocol-Version': '2.0.0'
+      }
     });
-    const token = response.access_token ?? '';
+    const responseText = await leadSyncResponse.text().catch(() => '');
+    const responseSnippet = responseText.slice(0, 300);
+
+    const healthy =
+      leadSyncResponse.status >= 200 &&
+      leadSyncResponse.status < 500;
+
     return {
-      healthy: Boolean(token),
-      details: { tokenLength: token.length }
+      healthy,
+      details: {
+        phase: 'lead_sync_probe',
+        statusCode: leadSyncResponse.status,
+        statusText: leadSyncResponse.statusText,
+        responseSnippet
+      }
     };
   }
 

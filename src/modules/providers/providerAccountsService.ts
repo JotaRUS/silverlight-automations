@@ -232,7 +232,18 @@ export class ProviderAccountsService {
         data: {
           lastHealthCheckAt: clock.now(),
           lastHealthStatus: checkResult.healthy ? 'healthy' : 'unhealthy',
-          lastHealthError: null
+          lastHealthError: checkResult.healthy
+            ? null
+            : (() => {
+                if (!checkResult.details) {
+                  return 'Health check reported unhealthy status';
+                }
+                try {
+                  return JSON.stringify(checkResult.details);
+                } catch {
+                  return 'Health check reported unhealthy status';
+                }
+              })()
         }
       });
       return sanitizeAccount(updated, parsedCredentials);
@@ -248,12 +259,7 @@ export class ProviderAccountsService {
           lastHealthError: errorMessage
         }
       });
-      throw new AppError('Provider health check failed', 422, 'provider_health_check_failed', {
-        providerAccountId: account.id,
-        providerType: account.providerType,
-        reason: errorMessage,
-        account: sanitizeAccount(updated, parsedCredentials)
-      });
+      return sanitizeAccount(updated, parsedCredentials);
     }
   }
 
