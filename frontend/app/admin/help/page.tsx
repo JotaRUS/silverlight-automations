@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 import { Card } from '@/components/ui/card';
 
 const tocSections = [
@@ -468,6 +470,17 @@ export default function HelpPage(): JSX.Element {
           (e.g. &quot;Production&quot; or &quot;Team-A&quot;), fill in the credential fields, and click <strong>Create
           Provider Account</strong>. Your credentials are encrypted the moment you save.
         </p>
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-slate-700">
+          <p className="font-medium text-slate-800">Need full provider docs?</p>
+          <p className="mt-1 text-slate-600">
+            We now maintain dedicated setup pages for every provider (one page per provider), including
+            OAuth/webhook requirements, validation checklists, and official references.
+          </p>
+          <Link href="/admin/help/providers" className="mt-2 inline-flex items-center gap-1 text-primary font-medium hover:underline">
+            Open Provider Setup Directory
+            <span className="material-symbols-outlined text-sm">open_in_new</span>
+          </Link>
+        </div>
 
         {/* -- Sourcing -- */}
         <SubHeading>Sourcing</SubHeading>
