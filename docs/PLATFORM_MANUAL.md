@@ -726,8 +726,11 @@ Events are deduplicated, persisted as raw call logs, and enqueued to the `yay-ca
 POST /webhooks/sales-nav
 ```
 
-**Verification:** Static secret via header:
-- `x-sales-nav-secret` must match the `SALES_NAV_WEBHOOK_SECRET` env var.
+**Verification:** OAuth 2.0 Client Credentials flow. Credentials (Client ID + Client Secret) are stored as encrypted provider credentials in the provider account bound to the project. The webhook endpoint accepts either:
+- `Authorization: Bearer <access_token>` — access token obtained via OAuth 2.0 Client Credentials from LinkedIn's token endpoint
+- `x-sales-nav-client-id` — Client ID header (used to look up the bound provider account and validate the request)
+
+Credentials are obtained from the [LinkedIn Developer Portal](https://www.linkedin.com/developers/) (App → Auth tab). The platform uses the OAuth 2.0 Client Credentials flow to obtain access tokens for webhook verification.
 
 **Payload:** Contains a `projectId`, search URL, and an array of `leads` (name, company, title, LinkedIn URL, contact info). Leads are enqueued individually for ingestion and enrichment.
 
@@ -1006,7 +1009,7 @@ Channel names are normalized automatically (e.g., `kakao`, `kaokao` → `kakaota
 | Variable                   | Required | Description                           |
 |----------------------------|----------|---------------------------------------|
 | `APOLLO_API_KEY`           | no       | Apollo.io API key                     |
-| `SALES_NAV_WEBHOOK_SECRET` | yes      | Secret for Sales Nav webhook header   |
+| Sales Nav (OAuth)          | no       | Client ID + Client Secret stored as encrypted provider credentials (see Provider management). OAuth 2.0 Client Credentials flow to LinkedIn's token endpoint. Configure via Admin → Providers. |
 
 ### Enrichment providers
 
@@ -1224,7 +1227,9 @@ docker compose logs redis
 - Events older than 5 minutes are rejected; check clock sync
 
 **Sales Nav webhooks:**
-- Verify `SALES_NAV_WEBHOOK_SECRET` matches the `x-sales-nav-secret` header being sent
+- Verify the project has a Sales Nav provider account bound with valid Client ID + Client Secret
+- Ensure credentials are configured in the LinkedIn Developer Portal (App → Auth tab)
+- The webhook accepts `Authorization: Bearer <token>` or `x-sales-nav-client-id` header; tokens are obtained via OAuth 2.0 Client Credentials flow
 
 ### Jobs stuck in queues
 

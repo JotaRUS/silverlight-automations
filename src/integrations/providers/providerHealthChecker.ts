@@ -9,6 +9,24 @@ function buildBearerHeaders(token: string): Record<string, string> {
   };
 }
 
+function buildProviderApiHeaders(providerType: ProviderType, apiKey: string): Record<string, string> {
+  switch (providerType) {
+    case 'LEADMAGIC':
+    case 'ZELIQ':
+    case 'DATAGM':
+    case 'PEOPLEDATALABS':
+      return { 'x-api-key': apiKey };
+    case 'PROSPEO':
+      return { 'X-KEY': apiKey };
+    case 'ROCKETREACH':
+      return { 'Api-Key': apiKey };
+    case 'CONTACTOUT':
+      return { token: apiKey };
+    default:
+      return buildBearerHeaders(apiKey);
+  }
+}
+
 interface HealthCheckResult {
   healthy: boolean;
   details?: Record<string, unknown>;
@@ -146,19 +164,41 @@ export async function runProviderHealthCheck(
     };
   }
 
+  if (input.providerType === 'SALES_NAV_WEBHOOK') {
+    const clientId = credentialString(input.credentials, 'clientId');
+    const clientSecret = credentialString(input.credentials, 'clientSecret');
+    const response = await requestJson<{ access_token?: string }>({
+      method: 'POST',
+      url: 'https://www.linkedin.com/oauth/v2/accessToken',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: clientId,
+        client_secret: clientSecret
+      }).toString(),
+      provider: 'sales-nav',
+      operation: 'health-check',
+      correlationId: input.correlationId
+    });
+    const token = response.access_token ?? '';
+    return {
+      healthy: Boolean(token),
+      details: { tokenLength: token.length }
+    };
+  }
+
   const apiKey = credentialString(input.credentials, 'apiKey');
   const genericHealthUrls: Partial<Record<ProviderType, string>> = {
     APOLLO: 'https://api.apollo.io/v1/auth/health',
-    SALES_NAV_WEBHOOK: 'https://www.linkedin.com',
-    LEADMAGIC: 'https://api.leadmagic.io/v1/enrich',
-    PROSPEO: 'https://api.prospeo.io/v1/enrichment',
-    EXA: 'https://api.exa.ai/enrich',
-    ROCKETREACH: 'https://api.rocketreach.co/v2/person/lookup',
-    WIZA: 'https://wiza.co/api/v1/enrichment',
-    FORAGER: 'https://api.forager.ai/v1/enrichment',
-    ZELIQ: 'https://api.zeliq.com/v1/enrich',
-    CONTACTOUT: 'https://api.contactout.com/v1/enrich',
-    DATAGM: 'https://api.datagm.com/v1/enrich',
+    LEADMAGIC: 'https://api.leadmagic.io/v1/people/email-finder',
+    PROSPEO: 'https://api.prospeo.io/enrich-person',
+    EXA: 'https://api.exa.ai/websets/v0/websets/{webset}/enrichments',
+    ROCKETREACH: 'https://api.rocketreach.co/api/v2/person/lookup',
+    WIZA: 'https://api.wiza.co/v1/enrich',
+    FORAGER: 'https://api-v2.forager.ai/api/{account_id}/datastorage/person_detail_lookup/',
+    ZELIQ: 'https://api.zeliq.com/api/contact/enrich/email',
+    CONTACTOUT: 'https://api.contactout.com/v1/linkedin/enrich',
+    DATAGM: 'https://gateway.datagma.net/api/ingress/v2/full',
     PEOPLEDATALABS: 'https://api.peopledatalabs.com/v5/person/enrich',
     LINKEDIN: 'https://api.linkedin.com/v2/me',
     EMAIL_PROVIDER: 'https://api.email-provider.example/v1/health',
@@ -181,7 +221,7 @@ export async function runProviderHealthCheck(
   await requestJson({
     method: 'GET',
     url: endpoint,
-    headers: buildBearerHeaders(apiKey),
+    headers: buildProviderApiHeaders(input.providerType, apiKey),
     provider: `provider:${input.providerType.toLowerCase()}`,
     operation: 'health-check',
     correlationId: input.correlationId

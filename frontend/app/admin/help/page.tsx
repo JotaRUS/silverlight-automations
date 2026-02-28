@@ -358,15 +358,20 @@ export default function HelpPage(): JSX.Element {
             notes="You must be an account admin to create API keys. API access depends on your Apollo pricing plan."
           />
           <ProviderGuide
-            name="Sales Nav Webhook"
-            role="LinkedIn Sales Navigator lead ingestion via webhooks"
-            fields={['Webhook Secret']}
+            name="Sales Navigator"
+            role="LinkedIn Sales Navigator lead ingestion via OAuth 2.0"
+            fields={['Client ID', 'Client Secret']}
             steps={[
-              'Set up a webhook in your LinkedIn Sales Navigator integration.',
-              'When configuring the webhook, you will be given (or will set) a webhook secret for payload verification.',
-              'Copy that secret and paste it into the Webhook Secret field.'
+              'Go to the LinkedIn Developer Portal at developer.linkedin.com.',
+              'Create a new application (or use an existing one) with Sales Navigator API access.',
+              'Open the Auth tab in your app settings.',
+              'Copy the Client ID and generate or copy the Client Secret (primary secret).',
+              'Paste both values into the corresponding fields in the Providers page.'
             ]}
-            notes="This provider receives incoming webhook payloads from Sales Navigator. The secret is used to verify that incoming payloads are authentic."
+            links={[
+              { label: 'LinkedIn Developer Portal', url: 'https://developer.linkedin.com/' }
+            ]}
+            notes="Sales Navigator uses LinkedIn OAuth 2.0 Client Credentials Flow. Configure your Client ID and Client Secret from your LinkedIn Developer Portal app (Auth tab)."
           />
         </div>
 

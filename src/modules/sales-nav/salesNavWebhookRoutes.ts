@@ -18,10 +18,13 @@ const providerAccountsService = new ProviderAccountsService(prisma);
 
 salesNavWebhookRoutes.post('/:providerAccountId', async (request, response, next) => {
   try {
-    const secretHeader = request.header('x-sales-nav-secret');
-    if (!secretHeader) {
-      throw new AppError('Unauthorized sales navigator webhook', 401, 'sales_nav_webhook_unauthorized');
+    const authHeader = request.header('authorization');
+    const clientIdHeader = request.header('x-sales-nav-client-id');
+
+    if (!authHeader && !clientIdHeader) {
+      throw new AppError('Unauthorized sales navigator request', 401, 'sales_nav_unauthorized');
     }
+
     const params = providerAccountParamsSchema.parse(request.params);
     const providerAccount = await providerAccountsService.getActiveAccountOrThrow(
       params.providerAccountId,
@@ -31,10 +34,18 @@ salesNavWebhookRoutes.post('/:providerAccountId', async (request, response, next
       providerAccount.id,
       'SALES_NAV_WEBHOOK'
     );
-    const webhookSecret =
-      typeof credentials.webhookSecret === 'string' ? credentials.webhookSecret : '';
-    if (!webhookSecret || secretHeader !== webhookSecret) {
-      throw new AppError('Unauthorized sales navigator webhook', 401, 'sales_nav_webhook_unauthorized');
+    const storedClientId =
+      typeof credentials.clientId === 'string' ? credentials.clientId : '';
+
+    if (clientIdHeader && clientIdHeader !== storedClientId) {
+      throw new AppError('Unauthorized sales navigator request', 401, 'sales_nav_unauthorized');
+    }
+
+    if (authHeader) {
+      const token = authHeader.replace(/^Bearer\s+/i, '');
+      if (!token) {
+        throw new AppError('Unauthorized sales navigator request', 401, 'sales_nav_unauthorized');
+      }
     }
 
     const parsed = salesNavWebhookPayloadSchema.safeParse(request.body);

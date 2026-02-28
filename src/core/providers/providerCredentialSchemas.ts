@@ -7,8 +7,9 @@ const singleApiKeySchema = z.object({
   apiKey: z.string().min(1)
 });
 
-const webhookSecretSchema = z.object({
-  webhookSecret: z.string().min(1)
+const salesNavCredentialSchema = z.object({
+  clientId: z.string().min(1),
+  clientSecret: z.string().min(1)
 });
 
 const twilioCredentialSchema = z.object({
@@ -34,7 +35,7 @@ const googleSheetsCredentialSchema = z.object({
 
 const providerCredentialParsers: Record<ProviderType, z.ZodType<Record<string, unknown>>> = {
   APOLLO: singleApiKeySchema,
-  SALES_NAV_WEBHOOK: webhookSecretSchema,
+  SALES_NAV_WEBHOOK: salesNavCredentialSchema,
   LEADMAGIC: singleApiKeySchema,
   PROSPEO: singleApiKeySchema,
   EXA: singleApiKeySchema,

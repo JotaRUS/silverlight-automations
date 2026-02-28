@@ -54,7 +54,10 @@ interface CredentialFieldDef {
 
 const CREDENTIAL_FIELDS: Record<ProviderType, CredentialFieldDef[]> = {
   APOLLO: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
-  SALES_NAV_WEBHOOK: [{ key: 'webhookSecret', label: 'Webhook Secret', type: 'password', placeholder: 'Enter webhook secret' }],
+  SALES_NAV_WEBHOOK: [
+    { key: 'clientId', label: 'Client ID', type: 'text', placeholder: 'e.g. 77vlauv23ezc0v' },
+    { key: 'clientSecret', label: 'Client Secret', type: 'password', placeholder: 'Enter primary client secret' }
+  ],
   LEADMAGIC: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   PROSPEO: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   EXA: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],

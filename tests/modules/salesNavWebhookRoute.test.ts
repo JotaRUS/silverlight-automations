@@ -24,6 +24,6 @@ describe('sales nav webhook route', () => {
 
     expect(response.status).toBe(401);
     const body = webhookErrorResponseSchema.parse(response.body);
-    expect(body.error.code).toBe('sales_nav_webhook_unauthorized');
+    expect(body.error.code).toBe('sales_nav_unauthorized');
   });
 });

@@ -242,7 +242,7 @@ Tasks are assigned within a serializable transaction:
 
 **Lead Sourcing**
 - `APOLLO` — Apollo.io lead search
-- `SALES_NAV_WEBHOOK` — LinkedIn Sales Navigator webhook ingestion
+- `SALES_NAV_WEBHOOK` — LinkedIn Sales Navigator (OAuth 2.0 Client Credentials — Client ID + Client Secret)
 
 **Data Enrichment** (10 providers)
 - `LEADMAGIC`, `PROSPEO`, `EXA`, `ROCKETREACH`, `WIZA`, `FORAGER`, `ZELIQ`, `CONTACTOUT`, `DATAGM`, `PEOPLEDATALABS`
