@@ -4,7 +4,10 @@ import { Card } from '@/components/ui/card';
 
 const tocSections = [
   { id: 'overview', label: 'Platform Overview' },
+  { id: 'latest', label: 'Latest Changes' },
   { id: 'navigation', label: 'Navigating the Portal' },
+  { id: 'users', label: 'Users & Access' },
+  { id: 'project-updates', label: 'Project Operations Updates' },
   { id: 'concepts', label: 'Key Concepts' },
   { id: 'providers', label: 'Provider Setup Guides' },
   { id: 'workflows', label: 'Common Workflows' },
@@ -149,6 +152,55 @@ export default function HelpPage(): JSX.Element {
       </Card>
 
       {/* ------------------------------------------------------------------ */}
+      {/* SECTION 1B — LATEST CHANGES                                        */}
+      {/* ------------------------------------------------------------------ */}
+      <Card className="space-y-4">
+        <SectionHeading id="latest">Latest Changes</SectionHeading>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          The admin portal was recently expanded with user management, account settings, richer project controls,
+          and stronger provider onboarding flows. If you used an older version of this platform, these are the
+          key updates to know:
+        </p>
+        <div className="space-y-3">
+          {[
+            {
+              icon: 'group',
+              title: 'Users module',
+              desc: 'A dedicated Users page now supports creating, editing, and deleting ADMIN / OPS / CALLER accounts.'
+            },
+            {
+              icon: 'manage_accounts',
+              title: 'Account settings',
+              desc: 'The profile menu in the top-right now includes Account Settings, where users can update display name and password.'
+            },
+            {
+              icon: 'work',
+              title: 'Project wizard + edit upgrades',
+              desc: 'Project setup now includes guided provider selection, and project edit pages support status, geography, priority, provider bindings, and cooldown controls.'
+            },
+            {
+              icon: 'monitoring',
+              title: 'Operational views improved',
+              desc: 'Leads, Outreach, and Screening pages include cleaner status summaries, filter-first layouts, and action menus for quick updates.'
+            },
+            {
+              icon: 'key',
+              title: 'Provider setup expanded',
+              desc: 'Provider management now includes Sales Navigator OAuth credentials, health checks, activation toggles, and credential rotation from account cards.'
+            }
+          ].map((item) => (
+            <div key={item.title} className="flex gap-3 items-start">
+              <span className="material-symbols-outlined text-primary text-xl mt-0.5 shrink-0">{item.icon}</span>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">{item.title}</p>
+                <p className="text-sm text-slate-500">{item.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* ------------------------------------------------------------------ */}
       {/* SECTION 2 — NAVIGATING THE PORTAL                                  */}
       {/* ------------------------------------------------------------------ */}
       <Card className="space-y-4">
@@ -194,6 +246,10 @@ export default function HelpPage(): JSX.Element {
             {
               icon: 'sensors', name: 'Observability',
               desc: 'System health monitoring. View the dead-letter queue for failed background jobs, webhook processing logs, fraud detection flags, and system events.'
+            },
+            {
+              icon: 'group', name: 'Users',
+              desc: 'Admin-only account management. Create new users, edit roles/timezones, rotate passwords, and deactivate team access by deleting accounts.'
             }
           ].map((item) => (
             <div key={item.name} className="flex gap-3 items-start">
@@ -205,6 +261,81 @@ export default function HelpPage(): JSX.Element {
             </div>
           ))}
         </div>
+      </Card>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* SECTION 2B — USERS & ACCESS                                        */}
+      {/* ------------------------------------------------------------------ */}
+      <Card className="space-y-4">
+        <SectionHeading id="users">Users &amp; Access</SectionHeading>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Authentication now uses email + password accounts. Access is role-based and enforced at the API layer.
+          Use this section to manage who can administer the platform and how they authenticate.
+        </p>
+
+        <SubHeading>Roles and scope</SubHeading>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+          {[
+            { role: 'ADMIN', scope: 'Full platform administration, including user management.' },
+            { role: 'OPS', scope: 'Operations workflows: projects, leads, outreach, screening, calls.' },
+            { role: 'CALLER', scope: 'Caller-facing execution flows; limited admin capabilities.' }
+          ].map((item) => (
+            <div key={item.role} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="font-semibold text-slate-800">{item.role}</p>
+              <p className="mt-1 text-slate-500 leading-relaxed">{item.scope}</p>
+            </div>
+          ))}
+        </div>
+
+        <SubHeading>Manage users (Admins)</SubHeading>
+        <ol className="list-decimal list-inside space-y-2 text-sm text-slate-600">
+          <li>Open <strong>Users</strong> from the left sidebar.</li>
+          <li>Click <strong>Add User</strong> to create a new account with role and timezone.</li>
+          <li>Use the edit icon to update email, name, password, role, or timezone.</li>
+          <li>Use delete to remove access. You cannot delete your own currently signed-in account.</li>
+        </ol>
+
+        <SubHeading>Update your own profile</SubHeading>
+        <ol className="list-decimal list-inside space-y-2 text-sm text-slate-600">
+          <li>Click your avatar in the top-right header.</li>
+          <li>Select <strong>Settings</strong>.</li>
+          <li>Update your display name, and optionally set a new password.</li>
+          <li>When changing password, enter your current password for verification.</li>
+        </ol>
+      </Card>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* SECTION 2C — PROJECT OPERATIONS UPDATES                            */}
+      {/* ------------------------------------------------------------------ */}
+      <Card className="space-y-4">
+        <SectionHeading id="project-updates">Project Operations Updates</SectionHeading>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Project configuration has been upgraded across creation, editing, and list monitoring so operators can
+          control sourcing campaigns with fewer clicks.
+        </p>
+
+        <SubHeading>Project list improvements</SubHeading>
+        <ul className="list-disc list-inside text-sm text-slate-600 space-y-1 ml-1">
+          <li>Status badges for Active / Paused / Completed / Archived.</li>
+          <li>Progress bars with completion percentage and signed-up vs target context.</li>
+          <li>Priority indicators and region badges directly in the table.</li>
+          <li>Clickable rows for fast navigation to project edit screens.</li>
+        </ul>
+
+        <SubHeading>Wizard flow updates</SubHeading>
+        <ul className="list-disc list-inside text-sm text-slate-600 space-y-1 ml-1">
+          <li>Step 1 captures project details (name, target, geography, priority).</li>
+          <li>Step 2 presents configured provider accounts grouped by function.</li>
+          <li>Only one account per provider type can be selected per project.</li>
+          <li>You can bind selected providers immediately or skip and bind later.</li>
+        </ul>
+
+        <SubHeading>Edit project controls</SubHeading>
+        <ul className="list-disc list-inside text-sm text-slate-600 space-y-1 ml-1">
+          <li>Update status, geography, threshold, priority, and cooldown override in one screen.</li>
+          <li>Adjust provider bindings via the same matrix used in creation.</li>
+          <li>Use quick links to jump from project edit into Leads and Outreach views.</li>
+        </ul>
       </Card>
 
       {/* ------------------------------------------------------------------ */}
@@ -786,6 +917,22 @@ export default function HelpPage(): JSX.Element {
           <li>Click on a thread to see the full conversation history, including sent messages and any replies.</li>
           <li>Check the Dashboard activity feed for a real-time view of outreach events across all projects.</li>
         </ol>
+
+        <SubHeading>Manage users and roles</SubHeading>
+        <ol className="list-decimal list-inside space-y-2 text-sm text-slate-600">
+          <li>Go to the <strong>Users</strong> page (admins only).</li>
+          <li>Click <strong>Add User</strong>, then provide email, name, password, role, and timezone.</li>
+          <li>Use the edit action to update role or reset credentials for existing users.</li>
+          <li>Use delete to remove access (except your own currently authenticated account).</li>
+        </ol>
+
+        <SubHeading>Update your profile and password</SubHeading>
+        <ol className="list-decimal list-inside space-y-2 text-sm text-slate-600">
+          <li>Open the avatar menu in the top-right corner.</li>
+          <li>Select <strong>Settings</strong>.</li>
+          <li>Edit your name, and optionally set a new password.</li>
+          <li>Enter your current password when changing to a new one, then save.</li>
+        </ol>
       </Card>
 
       {/* ------------------------------------------------------------------ */}
@@ -801,7 +948,7 @@ export default function HelpPage(): JSX.Element {
             },
             {
               q: 'I can\'t create a provider account',
-              a: 'Make sure you are logged in with a valid Caller UUID (not a plain username like "admin-user"). The system requires your login identity to match an existing record in the Callers table. Ask your administrator to set up your caller record first.'
+              a: 'Provider management requires admin-level access. Make sure you are signed in with an account that has permission to manage providers, and that all required credential fields are filled in for the selected provider type.'
             },
             {
               q: 'What does "encrypted at rest" mean?',
@@ -824,6 +971,10 @@ export default function HelpPage(): JSX.Element {
               a: 'Yes. A single provider account (e.g. one Apollo API key) can be bound to multiple projects. The system handles rate limiting and rotation automatically.'
             },
             {
+              q: 'Why can\'t I select two provider accounts of the same type in a project?',
+              a: 'Projects allow one bound account per provider type (for example one APOLLO account and one LEADMAGIC account). In the project wizard and project edit pages, selecting a second account of the same type automatically replaces the previous selection.'
+            },
+            {
               q: 'How do I deactivate a provider without deleting it?',
               a: 'On the Providers page, find the provider card and click "Deactivate". The account remains in the system but won\'t be used for any operations. You can reactivate it later by clicking "Activate".'
             },
@@ -838,6 +989,14 @@ export default function HelpPage(): JSX.Element {
             {
               q: 'Do I need to write outreach messages manually?',
               a: 'No. If you leave the message body blank when sending outreach, the system automatically composes an appropriate message. Existing network experts receive a project-specific invitation, while new experts receive a general signup invitation. You can always override this with a custom message.'
+            },
+            {
+              q: 'How do I change my password?',
+              a: 'Open the avatar menu in the header, click "Settings", and fill in Current Password + New Password + Confirm New Password. Password updates require the current password for verification.'
+            },
+            {
+              q: 'Why does project setup show no providers to select?',
+              a: 'The project wizard only shows active provider accounts with saved credentials. First add provider accounts on the Providers page, then return to the project wizard. If an account appears unhealthy, use "Test Connection" and update credentials if needed.'
             }
           ].map((item) => (
             <details key={item.q} className="group border border-slate-200 rounded-lg">
