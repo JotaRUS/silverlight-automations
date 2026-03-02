@@ -556,15 +556,87 @@ export async function runProviderHealthCheck(
     };
   }
 
+  if (input.providerType === 'WIZA') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const response = await fetch('https://wiza.co/api/meta/credits', {
+      method: 'GET',
+      headers: { authorization: `Bearer ${apiKey}` }
+    });
+    const text = await response.text().catch(() => '');
+    logger.info({ provider: 'wiza', statusCode: response.status, responseSnippet: text.slice(0, 300) }, 'wiza-health-check-response');
+    if (response.status === 200) return { healthy: true, details: { statusCode: 200, reason: 'Wiza reachable and API key accepted.' } };
+    if (response.status === 401) return { healthy: false, details: { statusCode: 401, reason: 'Wiza rejected the API key.' } };
+    return { healthy: false, details: { statusCode: response.status, reason: `Wiza health probe failed (HTTP ${response.status}).` } };
+  }
+
+  if (input.providerType === 'FORAGER') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const response = await fetch('https://api-v2.forager.ai/api/users/current/', {
+      method: 'GET',
+      headers: { 'X-API-KEY': apiKey }
+    });
+    const text = await response.text().catch(() => '');
+    logger.info({ provider: 'forager', statusCode: response.status, responseSnippet: text.slice(0, 300) }, 'forager-health-check-response');
+    if (response.status === 200) return { healthy: true, details: { statusCode: 200, reason: 'Forager reachable and API key accepted.' } };
+    if (response.status === 401 || response.status === 403) return { healthy: false, details: { statusCode: response.status, reason: 'Forager rejected the API key.' } };
+    return { healthy: false, details: { statusCode: response.status, reason: `Forager health probe failed (HTTP ${response.status}).` } };
+  }
+
+  if (input.providerType === 'ZELIQ') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const response = await fetch('https://api.zeliq.com/api/credits/balance', {
+      method: 'GET',
+      headers: { 'x-api-key': apiKey }
+    });
+    const text = await response.text().catch(() => '');
+    logger.info({ provider: 'zeliq', statusCode: response.status, responseSnippet: text.slice(0, 300) }, 'zeliq-health-check-response');
+    if (response.status === 200) return { healthy: true, details: { statusCode: 200, reason: 'Zeliq reachable and API key accepted.' } };
+    if (response.status === 401) return { healthy: false, details: { statusCode: 401, reason: 'Zeliq rejected the API key.' } };
+    return { healthy: false, details: { statusCode: response.status, reason: `Zeliq health probe failed (HTTP ${response.status}).` } };
+  }
+
+  if (input.providerType === 'CONTACTOUT') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const period = new Date().toISOString().slice(0, 7);
+    const response = await fetch(`https://api.contactout.com/v1/stats?period=${period}`, {
+      method: 'GET',
+      headers: { token: apiKey, authorization: 'basic' }
+    });
+    const text = await response.text().catch(() => '');
+    logger.info({ provider: 'contactout', statusCode: response.status, responseSnippet: text.slice(0, 300) }, 'contactout-health-check-response');
+    if (response.status === 200) return { healthy: true, details: { statusCode: 200, reason: 'ContactOut reachable and API key accepted.' } };
+    if (response.status === 401 || response.status === 403) return { healthy: false, details: { statusCode: response.status, reason: 'ContactOut rejected the API key.' } };
+    return { healthy: false, details: { statusCode: response.status, reason: `ContactOut health probe failed (HTTP ${response.status}).` } };
+  }
+
+  if (input.providerType === 'DATAGM') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const response = await fetch(`https://gateway.datagma.net/api/ingress/v1/mine?apiId=${encodeURIComponent(apiKey)}`, {
+      method: 'GET'
+    });
+    const text = await response.text().catch(() => '');
+    logger.info({ provider: 'datagma', statusCode: response.status, responseSnippet: text.slice(0, 300) }, 'datagma-health-check-response');
+    if (response.status === 200) return { healthy: true, details: { statusCode: 200, reason: 'Datagma reachable and API key accepted.' } };
+    if (response.status === 401 || response.status === 403) return { healthy: false, details: { statusCode: response.status, reason: 'Datagma rejected the API key.' } };
+    return { healthy: false, details: { statusCode: response.status, reason: `Datagma health probe failed (HTTP ${response.status}).` } };
+  }
+
+  if (input.providerType === 'PEOPLEDATALABS') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const response = await fetch('https://sandbox.api.peopledatalabs.com/v5/person/enrich?profile=linkedin.com/in/seanthorne', {
+      method: 'GET',
+      headers: { 'X-Api-Key': apiKey }
+    });
+    const text = await response.text().catch(() => '');
+    logger.info({ provider: 'peopledatalabs', statusCode: response.status, responseSnippet: text.slice(0, 300) }, 'pdl-health-check-response');
+    if (response.status === 200) return { healthy: true, details: { statusCode: 200, reason: 'PeopleDataLabs reachable and API key accepted (sandbox).' } };
+    if (response.status === 401 || response.status === 403) return { healthy: false, details: { statusCode: response.status, reason: 'PeopleDataLabs rejected the API key.' } };
+    return { healthy: false, details: { statusCode: response.status, reason: `PeopleDataLabs health probe failed (HTTP ${response.status}).` } };
+  }
+
   const apiKey = credentialString(input.credentials, 'apiKey');
   const genericHealthUrls: Partial<Record<ProviderType, string>> = {
     APOLLO: 'https://api.apollo.io/v1/auth/health',
-    WIZA: 'https://api.wiza.co/v1/enrich',
-    FORAGER: 'https://api-v2.forager.ai/api/{account_id}/datastorage/person_detail_lookup/',
-    ZELIQ: 'https://api.zeliq.com/api/contact/enrich/email',
-    CONTACTOUT: 'https://api.contactout.com/v1/linkedin/enrich',
-    DATAGM: 'https://gateway.datagma.net/api/ingress/v2/full',
-    PEOPLEDATALABS: 'https://api.peopledatalabs.com/v5/person/enrich',
     LINKEDIN: 'https://api.linkedin.com/v2/me',
     EMAIL_PROVIDER: 'https://api.email-provider.example/v1/health',
     WHATSAPP_2CHAT: 'https://api.2chat.co/v1/messages',

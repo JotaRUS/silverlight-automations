@@ -8,6 +8,8 @@ interface GenericEnrichmentClientInput {
   apiKey?: string;
   apiKeyHeader?: string;
   method?: 'GET' | 'POST';
+  apiKeyInUrl?: boolean;
+  apiKeyUrlParam?: string;
   buildRequestUrl?: (baseEndpoint: string, request: EnrichmentRequest) => string;
   buildRequestBody?: (request: EnrichmentRequest) => unknown;
   extractResponse?: (response: unknown) => { emails: string[]; phones: string[] };
@@ -70,6 +72,8 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
   private readonly apiKey?: string;
   private readonly apiKeyHeader: string;
   private readonly method: 'GET' | 'POST';
+  private readonly apiKeyInUrl: boolean;
+  private readonly apiKeyUrlParam: string;
   private readonly customBuildRequestUrl?: (baseEndpoint: string, request: EnrichmentRequest) => string;
   private readonly buildRequestBody?: (request: EnrichmentRequest) => unknown;
   private readonly customExtractResponse?: (response: unknown) => { emails: string[]; phones: string[] };
@@ -80,6 +84,8 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
     this.apiKey = input.apiKey;
     this.apiKeyHeader = input.apiKeyHeader ?? 'authorization';
     this.method = input.method ?? 'POST';
+    this.apiKeyInUrl = input.apiKeyInUrl ?? false;
+    this.apiKeyUrlParam = input.apiKeyUrlParam ?? 'apiId';
     this.customBuildRequestUrl = input.buildRequestUrl;
     this.buildRequestBody = input.buildRequestBody;
     this.customExtractResponse = input.extractResponse;
@@ -93,15 +99,22 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
     }
 
     const headers: Record<string, string> = {};
-    if (this.apiKeyHeader === 'authorization') {
-      headers.authorization = `Bearer ${this.apiKey}`;
-    } else {
-      headers[this.apiKeyHeader] = this.apiKey;
+    if (!this.apiKeyInUrl) {
+      if (this.apiKeyHeader === 'authorization') {
+        headers.authorization = `Bearer ${this.apiKey}`;
+      } else {
+        headers[this.apiKeyHeader] = this.apiKey;
+      }
     }
 
-    const url = this.customBuildRequestUrl
+    let url = this.customBuildRequestUrl
       ? this.customBuildRequestUrl(this.endpoint, request)
       : this.endpoint;
+
+    if (this.apiKeyInUrl && this.apiKey) {
+      const separator = url.includes('?') ? '&' : '?';
+      url = `${url}${separator}${encodeURIComponent(this.apiKeyUrlParam)}=${encodeURIComponent(this.apiKey)}`;
+    }
     const body = this.method === 'GET'
       ? undefined
       : (this.buildRequestBody ? this.buildRequestBody(request) : request);
