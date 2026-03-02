@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 
+import { logger } from '../logging/logger';
 import type { AuthRole } from './jwt';
 import { verifyCsrfToken } from './csrf';
 import { AppError } from '../errors/appError';
@@ -69,11 +70,19 @@ export function authenticate(request: Request, response: Response, next: NextFun
   if (isMutatingMethod(request.method) && !isCsrfExemptPath(request.path)) {
     const csrfToken = request.header('x-csrf-token');
     if (!csrfToken) {
-      throw new AppError('Forbidden', 403, 'missing_csrf_token');
+      logger.warn(
+        { path: request.path, method: request.method, userId: payload.sub },
+        'auth-403-missing-csrf'
+      );
+      throw new AppError('Forbidden: CSRF token required', 403, 'missing_csrf_token');
     }
     const isValid = verifyCsrfToken(payload.sub, csrfToken);
     if (!isValid) {
-      throw new AppError('Forbidden', 403, 'invalid_csrf_token');
+      logger.warn(
+        { path: request.path, method: request.method, userId: payload.sub },
+        'auth-403-invalid-csrf'
+      );
+      throw new AppError('Forbidden: Invalid CSRF token', 403, 'invalid_csrf_token');
     }
   }
 
@@ -87,7 +96,21 @@ export function authorize(roles: AuthRole[]): (request: Request, response: Respo
       throw new AppError('Unauthorized', 401, 'unauthorized');
     }
     if (!roles.includes(authRequest.auth.role)) {
-      throw new AppError('Forbidden', 403, 'forbidden');
+      logger.warn(
+        {
+          path: request.path,
+          method: request.method,
+          userId: authRequest.auth.userId,
+          role: authRequest.auth.role,
+          requiredRoles: roles
+        },
+        'auth-403-forbidden-role'
+      );
+      throw new AppError(
+        `Forbidden: role "${authRequest.auth.role}" cannot perform this action (required: ${roles.join(', ')})`,
+        403,
+        'forbidden'
+      );
     }
     next();
   };

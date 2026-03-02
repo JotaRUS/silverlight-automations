@@ -197,6 +197,73 @@ export async function runProviderHealthCheck(
     };
   }
 
+  if (input.providerType === 'PROSPEO') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const endpoint = 'https://api.prospeo.io/account-information';
+
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: { 'X-KEY': apiKey }
+    });
+
+    const responseText = await response.text().catch(() => '');
+    let responseJson: unknown = null;
+    try {
+      responseJson = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      responseJson = null;
+    }
+    const responseSnippet = responseText.slice(0, 500);
+
+    logger.info(
+      {
+        provider: 'prospeo',
+        operation: 'health-check',
+        correlationId: input.correlationId,
+        statusCode: response.status,
+        endpoint,
+        responseSnippet
+      },
+      'prospeo-health-check-response'
+    );
+
+    if (response.status === 200) {
+      const body = responseJson as { error?: boolean; response?: { remaining_credits?: number; current_plan?: string } } | null;
+      return {
+        healthy: true,
+        details: {
+          statusCode: 200,
+          endpoint,
+          reason: 'Prospeo reachable and API key accepted.',
+          plan: body?.response?.current_plan,
+          remainingCredits: body?.response?.remaining_credits
+        }
+      };
+    }
+
+    if (response.status === 401) {
+      return {
+        healthy: false,
+        details: {
+          statusCode: 401,
+          endpoint,
+          reason: 'Prospeo rejected the API key (INVALID_API_KEY).',
+          responseBody: responseJson ?? responseSnippet
+        }
+      };
+    }
+
+    return {
+      healthy: false,
+      details: {
+        statusCode: response.status,
+        endpoint,
+        reason: `Prospeo health probe failed (HTTP ${response.status}).`,
+        responseBody: responseJson ?? responseSnippet
+      }
+    };
+  }
+
   if (input.providerType === 'TWILIO') {
     const accountSid = credentialString(input.credentials, 'accountSid');
     const authToken = credentialString(input.credentials, 'authToken');
@@ -349,7 +416,6 @@ export async function runProviderHealthCheck(
   const apiKey = credentialString(input.credentials, 'apiKey');
   const genericHealthUrls: Partial<Record<ProviderType, string>> = {
     APOLLO: 'https://api.apollo.io/v1/auth/health',
-    PROSPEO: 'https://api.prospeo.io/enrich-person',
     EXA: 'https://api.exa.ai/websets/v0/websets/{webset}/enrichments',
     ROCKETREACH: 'https://api.rocketreach.co/api/v2/person/lookup',
     WIZA: 'https://api.wiza.co/v1/enrich',

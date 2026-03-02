@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { listProjects } from '@/services/projectService';
+import { ApiError } from '@/services/apiClient';
 import {
   bindProviderToProject,
   createProviderAccount,
@@ -227,7 +228,9 @@ export default function ProviderAccountsPage(): JSX.Element {
       void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
     },
     onError: (error) => {
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to create provider account');
+      const msg = error instanceof Error ? error.message : 'Unable to create provider account';
+      const code = error instanceof ApiError ? ` (code: ${error.code})` : '';
+      setErrorMessage(`${msg}${code}`);
     }
   });
 

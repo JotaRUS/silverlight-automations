@@ -332,12 +332,21 @@ async function queuePendingOutreach(
 async function queueApolloSourcingIfNeeded(
   project: {
     id: string;
+    targetThreshold: number;
     apolloProviderAccountId: string | null;
     geographyIsoCodes: string[];
   },
   timeSlice: string
 ): Promise<number> {
   if (!project.apolloProviderAccountId) {
+    return 0;
+  }
+
+  const totalLeadCount = await prisma.lead.count({
+    where: { projectId: project.id, deletedAt: null }
+  });
+  const leadCap = Math.max(project.targetThreshold * 5, AUTO_SOURCING.ENRICHMENT_BATCH_SIZE);
+  if (totalLeadCount >= leadCap) {
     return 0;
   }
 

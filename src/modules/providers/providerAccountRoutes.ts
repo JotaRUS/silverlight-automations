@@ -41,7 +41,7 @@ providerAccountRoutes.get('/', authorize(['admin', 'ops']), async (request, resp
   }
 });
 
-providerAccountRoutes.post('/', authorize(['admin']), async (request, response, next) => {
+providerAccountRoutes.post('/', authorize(['admin', 'ops']), async (request, response, next) => {
   try {
     const payload = parseOrThrow(providerAccountCreateSchema, request.body);
     const auth = (request as RequestWithAuth).auth;
@@ -65,7 +65,7 @@ providerAccountRoutes.get('/:providerAccountId', authorize(['admin', 'ops']), as
   }
 });
 
-providerAccountRoutes.patch('/:providerAccountId', authorize(['admin']), async (request, response, next) => {
+providerAccountRoutes.patch('/:providerAccountId', authorize(['admin', 'ops']), async (request, response, next) => {
   try {
     const params = parseOrThrow(providerAccountPathParamsSchema, request.params);
     const payload = parseOrThrow(providerAccountUpdateSchema, request.body);

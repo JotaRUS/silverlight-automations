@@ -7,6 +7,8 @@ interface GenericEnrichmentClientInput {
   endpoint: string;
   apiKey?: string;
   apiKeyHeader?: string;
+  buildRequestBody?: (request: EnrichmentRequest) => unknown;
+  extractResponse?: (response: unknown) => { emails: string[]; phones: string[] };
 }
 
 function toStringArray(value: unknown): string[] {
@@ -65,12 +67,16 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
   private readonly endpoint: string;
   private readonly apiKey?: string;
   private readonly apiKeyHeader: string;
+  private readonly buildRequestBody?: (request: EnrichmentRequest) => unknown;
+  private readonly customExtractResponse?: (response: unknown) => { emails: string[]; phones: string[] };
 
   public constructor(input: GenericEnrichmentClientInput) {
     this.providerName = input.providerName;
     this.endpoint = input.endpoint;
     this.apiKey = input.apiKey;
     this.apiKeyHeader = input.apiKeyHeader ?? 'authorization';
+    this.buildRequestBody = input.buildRequestBody;
+    this.customExtractResponse = input.extractResponse;
   }
 
   public async enrich(request: EnrichmentRequest, correlationId: string): Promise<EnrichmentResult> {
@@ -87,15 +93,29 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
       headers[this.apiKeyHeader] = this.apiKey;
     }
 
+    const body = this.buildRequestBody ? this.buildRequestBody(request) : request;
+
     const response = await requestJson<unknown>({
       method: 'POST',
       url: this.endpoint,
       headers,
-      body: request,
+      body,
       provider: this.providerName,
       operation: 'enrich',
       correlationId
     });
+
+    if (this.customExtractResponse) {
+      const { emails, phones } = this.customExtractResponse(response);
+      const confidenceScore = emails.length > 0 || phones.length > 0 ? 0.8 : 0;
+      return {
+        provider: this.providerName,
+        emails,
+        phones,
+        confidenceScore,
+        rawPayload: response
+      };
+    }
 
     const parsed = (response ?? {}) as Record<string, unknown>;
     const emails = extractArrayFromKnownPaths(parsed, [

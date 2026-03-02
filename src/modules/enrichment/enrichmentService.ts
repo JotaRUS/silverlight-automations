@@ -42,8 +42,7 @@ interface ResolvedAwareProviderClient extends EnrichmentProviderClient {
 class DynamicResolvedEnrichmentProviderClient implements ResolvedAwareProviderClient {
   public readonly providerName: string;
   public readonly providerType: ProviderType;
-  private readonly endpoint: string;
-  private readonly apiKeyHeader: string;
+  private readonly definition: EnrichmentProviderDefinition;
   private readonly providerCredentialResolver: ProviderCredentialResolver;
 
   public constructor(
@@ -52,8 +51,7 @@ class DynamicResolvedEnrichmentProviderClient implements ResolvedAwareProviderCl
   ) {
     this.providerName = definition.providerName;
     this.providerType = definition.providerType;
-    this.endpoint = definition.endpoint;
-    this.apiKeyHeader = definition.apiKeyHeader;
+    this.definition = definition;
     this.providerCredentialResolver = providerCredentialResolver;
   }
 
@@ -81,9 +79,11 @@ class DynamicResolvedEnrichmentProviderClient implements ResolvedAwareProviderCl
 
     const client = new GenericEnrichmentClient({
       providerName: this.providerName,
-      endpoint: this.endpoint,
+      endpoint: this.definition.endpoint,
       apiKey,
-      apiKeyHeader: this.apiKeyHeader
+      apiKeyHeader: this.definition.apiKeyHeader,
+      buildRequestBody: this.definition.buildRequestBody,
+      extractResponse: this.definition.extractResponse
     });
     try {
       return await client.enrich(request, correlationId);
