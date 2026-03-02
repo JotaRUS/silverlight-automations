@@ -258,7 +258,32 @@ export class ProviderAccountsService {
       });
       return sanitizeAccount(updated, parsedCredentials);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'unknown';
+      let errorMessage = error instanceof Error ? error.message : 'unknown';
+      if (
+        error instanceof AppError &&
+        error.errorCode === 'provider_request_failed' &&
+        typeof error.details === 'object' &&
+        error.details !== null
+      ) {
+        const details = error.details as {
+          statusCode?: unknown;
+          provider?: unknown;
+          operation?: unknown;
+          responseBody?: unknown;
+        };
+        const statusCode =
+          typeof details.statusCode === 'number' ? ` (HTTP ${details.statusCode})` : '';
+        let bodySnippet = '';
+        if (details.responseBody !== undefined) {
+          try {
+            const serialized = JSON.stringify(details.responseBody);
+            bodySnippet = serialized ? ` | response=${serialized.slice(0, 300)}` : '';
+          } catch {
+            bodySnippet = '';
+          }
+        }
+        errorMessage = `Provider request failed${statusCode}${bodySnippet}`;
+      }
       const updated = await this.prismaClient.providerAccount.update({
         where: {
           id: account.id

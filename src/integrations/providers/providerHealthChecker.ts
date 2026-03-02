@@ -2,6 +2,7 @@ import { createSign } from 'node:crypto';
 
 import { AppError } from '../../core/errors/appError';
 import { requestJson } from '../../core/http/httpJsonClient';
+import { logger } from '../../core/logging/logger';
 import type { ProviderType } from '../../core/providers/providerTypes';
 
 function buildBearerHeaders(token: string): Record<string, string> {
@@ -122,6 +123,80 @@ async function getGoogleAccessToken(
 export async function runProviderHealthCheck(
   input: ProviderHealthCheckInput
 ): Promise<HealthCheckResult> {
+  if (input.providerType === 'LEADMAGIC') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const endpoint = 'https://api.leadmagic.io/v1/people/email-finder';
+    const payload = {
+      first_name: 'Test',
+      last_name: 'User',
+      domain: 'example.com'
+    };
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const responseText = await response.text().catch(() => '');
+    let responseJson: unknown = null;
+    try {
+      responseJson = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      responseJson = null;
+    }
+    const responseSnippet = responseText.slice(0, 500);
+
+    logger.info(
+      {
+        provider: 'leadmagic',
+        operation: 'health-check',
+        correlationId: input.correlationId,
+        statusCode: response.status,
+        endpoint,
+        responseSnippet
+      },
+      'leadmagic-health-check-response'
+    );
+
+    // For connection checks, any non-auth/non-forbidden response confirms key + endpoint reachability.
+    if (response.status >= 200 && response.status < 300) {
+      return {
+        healthy: true,
+        details: {
+          statusCode: response.status,
+          endpoint,
+          reason: 'Leadmagic reachable and API key accepted.'
+        }
+      };
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return {
+        healthy: false,
+        details: {
+          statusCode: response.status,
+          endpoint,
+          reason: 'Leadmagic rejected the API key (unauthorized/forbidden).',
+          responseBody: responseJson ?? responseSnippet
+        }
+      };
+    }
+
+    return {
+      healthy: false,
+      details: {
+        statusCode: response.status,
+        endpoint,
+        reason: `Leadmagic health probe failed (HTTP ${response.status}).`,
+        responseBody: responseJson ?? responseSnippet
+      }
+    };
+  }
+
   if (input.providerType === 'TWILIO') {
     const accountSid = credentialString(input.credentials, 'accountSid');
     const authToken = credentialString(input.credentials, 'authToken');
@@ -274,7 +349,6 @@ export async function runProviderHealthCheck(
   const apiKey = credentialString(input.credentials, 'apiKey');
   const genericHealthUrls: Partial<Record<ProviderType, string>> = {
     APOLLO: 'https://api.apollo.io/v1/auth/health',
-    LEADMAGIC: 'https://api.leadmagic.io/v1/people/email-finder',
     PROSPEO: 'https://api.prospeo.io/enrich-person',
     EXA: 'https://api.exa.ai/websets/v0/websets/{webset}/enrichments',
     ROCKETREACH: 'https://api.rocketreach.co/api/v2/person/lookup',

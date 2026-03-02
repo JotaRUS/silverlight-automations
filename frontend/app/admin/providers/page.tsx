@@ -339,6 +339,16 @@ export default function ProviderAccountsPage(): JSX.Element {
                   Health: {account.lastHealthStatus ?? 'unknown'}{' '}
                   {account.lastHealthError ? `(${formatHealthMessage(account.lastHealthError)})` : ''}
                 </p>
+                {account.lastHealthError ? (
+                  <details className="mt-2 rounded border border-slate-200 bg-slate-50 p-2">
+                    <summary className="cursor-pointer text-xs font-medium text-slate-700">
+                      Health Debug Details
+                    </summary>
+                    <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words text-[11px] text-slate-600">
+                      {account.lastHealthError}
+                    </pre>
+                  </details>
+                ) : null}
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button
                     variant="secondary"
