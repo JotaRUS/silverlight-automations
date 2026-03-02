@@ -82,8 +82,68 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
   {
     providerType: 'EXA',
     providerName: 'EXA',
-    endpoint: 'https://api.exa.ai/websets/v0/websets/{webset}/enrichments',
-    apiKeyHeader: 'x-api-key'
+    endpoint: 'https://api.exa.ai/search',
+    apiKeyHeader: 'x-api-key',
+    buildRequestBody: (request) => {
+      const queryParts: string[] = [];
+      if (request.fullName) {
+        queryParts.push(request.fullName);
+      }
+      if (request.companyName) {
+        queryParts.push(request.companyName);
+      }
+      if (request.linkedinUrl) {
+        queryParts.push(request.linkedinUrl);
+      }
+      return {
+        query: queryParts.join(' ') || 'unknown person',
+        type: 'auto',
+        num_results: 3,
+        category: 'people',
+        contents: {
+          highlights: { max_characters: 4000 }
+        }
+      };
+    },
+    extractResponse: (response) => {
+      const parsed = (response ?? {}) as Record<string, unknown>;
+      const emails: string[] = [];
+      const phones: string[] = [];
+      const results = parsed.results as Array<Record<string, unknown>> | undefined;
+      if (!results?.length) {
+        return { emails, phones };
+      }
+      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+      const phoneRegex = /\+?1?\s*[-.(]?\d{3}[-.)]\s*\d{3}[-.]?\d{4}/g;
+      for (const result of results) {
+        const textSources = [
+          result.text,
+          result.highlights,
+          result.title,
+          result.author
+        ];
+        for (const src of textSources) {
+          const text = typeof src === 'string' ? src : Array.isArray(src) ? src.join(' ') : '';
+          if (!text) continue;
+          const foundEmails = text.match(emailRegex);
+          if (foundEmails) {
+            for (const e of foundEmails) emails.push(e.toLowerCase());
+          }
+          const foundPhones = text.match(phoneRegex);
+          if (foundPhones) {
+            for (const p of foundPhones) phones.push(p.replace(/[^\d+]/g, ''));
+          }
+        }
+        const url = typeof result.url === 'string' ? result.url : '';
+        if (url.includes('linkedin.com/in/') && !emails.length) {
+          // LinkedIn URL found but no email extracted - still valuable for downstream matching
+        }
+      }
+      return {
+        emails: [...new Set(emails)],
+        phones: [...new Set(phones)]
+      };
+    }
   },
   {
     providerType: 'ROCKETREACH',

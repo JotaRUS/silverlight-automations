@@ -11,6 +11,7 @@
     "dev:worker": "tsx watch src/workers/server.ts",
     "dev:scheduler": "tsx watch src/scheduler/server.ts",
     "dev:frontend": "npm --prefix frontend run dev",
+    "dev:restart": "bash scripts/dev-restart.sh",
     "start": "node dist/app/server.js",
     "start:worker": "node dist/workers/server.js",
     "start:scheduler": "node dist/scheduler/server.js",

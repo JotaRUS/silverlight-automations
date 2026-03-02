@@ -197,6 +197,80 @@ export async function runProviderHealthCheck(
     };
   }
 
+  if (input.providerType === 'EXA') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const endpoint = 'https://api.exa.ai/search';
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        query: 'test health check',
+        type: 'auto',
+        num_results: 1
+      })
+    });
+
+    const responseText = await response.text().catch(() => '');
+    let responseJson: unknown = null;
+    try {
+      responseJson = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      responseJson = null;
+    }
+    const responseSnippet = responseText.slice(0, 500);
+
+    logger.info(
+      {
+        provider: 'exa',
+        operation: 'health-check',
+        correlationId: input.correlationId,
+        statusCode: response.status,
+        endpoint,
+        responseSnippet
+      },
+      'exa-health-check-response'
+    );
+
+    if (response.status === 200) {
+      const body = responseJson as { results?: unknown[] } | null;
+      return {
+        healthy: true,
+        details: {
+          statusCode: 200,
+          endpoint,
+          reason: 'Exa reachable and API key accepted.',
+          resultCount: body?.results?.length ?? 0
+        }
+      };
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return {
+        healthy: false,
+        details: {
+          statusCode: response.status,
+          endpoint,
+          reason: 'Exa rejected the API key.',
+          responseBody: responseJson ?? responseSnippet
+        }
+      };
+    }
+
+    return {
+      healthy: false,
+      details: {
+        statusCode: response.status,
+        endpoint,
+        reason: `Exa health probe failed (HTTP ${response.status}).`,
+        responseBody: responseJson ?? responseSnippet
+      }
+    };
+  }
+
   if (input.providerType === 'PROSPEO') {
     const apiKey = credentialString(input.credentials, 'apiKey');
     const endpoint = 'https://api.prospeo.io/account-information';
@@ -416,7 +490,6 @@ export async function runProviderHealthCheck(
   const apiKey = credentialString(input.credentials, 'apiKey');
   const genericHealthUrls: Partial<Record<ProviderType, string>> = {
     APOLLO: 'https://api.apollo.io/v1/auth/health',
-    EXA: 'https://api.exa.ai/websets/v0/websets/{webset}/enrichments',
     ROCKETREACH: 'https://api.rocketreach.co/api/v2/person/lookup',
     WIZA: 'https://api.wiza.co/v1/enrich',
     FORAGER: 'https://api-v2.forager.ai/api/{account_id}/datastorage/person_detail_lookup/',
