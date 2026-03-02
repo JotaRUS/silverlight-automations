@@ -1,0 +1,87 @@
+name: Deploy Main To VM
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy via SSH
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy on VM
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          command_timeout: 30m
+          script: |
+            set -euo pipefail
+
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            if [ -z "${DEPLOY_PATH}" ]; then
+              echo "DEPLOY_PATH secret is required"
+              exit 1
+            fi
+
+            cd "${DEPLOY_PATH}"
+
+            echo "==> Pull latest main"
+            git fetch --all --prune
+            git checkout main
+            git pull --ff-only origin main
+
+            echo "==> Ensure infra services are running"
+            docker compose up -d postgres redis
+
+            echo "==> Install and build backend"
+            npm ci
+            npx prisma migrate deploy
+            npm run build
+
+            echo "==> Install and build frontend"
+            cd frontend
+            npm ci --legacy-peer-deps
+            npm run build
+            cd ..
+
+            echo "==> Restart backend services with PM2"
+            if pm2 describe api >/dev/null 2>&1; then
+              pm2 restart api --update-env
+            else
+              pm2 start dist/app/server.js --name api
+            fi
+
+            if pm2 describe worker >/dev/null 2>&1; then
+              pm2 restart worker --update-env
+            else
+              pm2 start dist/workers/server.js --name worker
+            fi
+
+            if pm2 describe scheduler >/dev/null 2>&1; then
+              pm2 restart scheduler --update-env
+            else
+              pm2 start dist/scheduler/server.js --name scheduler
+            fi
+
+            if pm2 describe frontend >/dev/null 2>&1; then
+              pm2 restart frontend --update-env
+            else
+              pm2 start npm --name frontend -- run start
+            fi
+
+            pm2 save
+
+            echo "==> Deployment complete"
+            pm2 status
