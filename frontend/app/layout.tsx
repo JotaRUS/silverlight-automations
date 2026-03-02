@@ -6,9 +6,37 @@ import { AuthProvider } from '@/hooks/useAuth';
 import './globals.css';
 import { AppProviders } from './providers';
 
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://silverlight-automations.siblingssoftware.com.ar';
+
 export const metadata: Metadata = {
-  title: 'Expert Sourcing Admin',
-  description: 'Operations UI for sourcing automation'
+  title: 'Silverlight — Expert Sourcing Platform',
+  description:
+    'Automated expert sourcing, outreach and screening platform. Find, enrich and engage the right experts at scale.',
+  metadataBase: new URL(BASE_URL),
+  openGraph: {
+    title: 'Silverlight — Expert Sourcing Platform',
+    description:
+      'Automated expert sourcing, outreach and screening platform. Find, enrich and engage the right experts at scale.',
+    url: BASE_URL,
+    siteName: 'Silverlight',
+    images: [
+      {
+        url: '/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'Silverlight Expert Sourcing Platform'
+      }
+    ],
+    locale: 'en_US',
+    type: 'website'
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Silverlight — Expert Sourcing Platform',
+    description:
+      'Automated expert sourcing, outreach and screening platform. Find, enrich and engage the right experts at scale.',
+    images: ['/og-image.png']
+  }
 };
 
 export default function RootLayout({ children }: PropsWithChildren): JSX.Element {

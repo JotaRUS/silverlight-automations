@@ -27,9 +27,11 @@ import { userRoutes } from '../modules/users/userRoutes';
 
 export function createApp(): Express {
   const app = express();
-  const authRateLimiter = rateLimit({
+
+  const loginRateLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: 30
+    max: 15,
+    keyGenerator: (req) => req.ip ?? 'unknown'
   });
 
   app.use(correlationIdMiddleware);
@@ -54,7 +56,7 @@ export function createApp(): Express {
   app.use(
     rateLimit({
       windowMs: 60 * 1000,
-      max: 300
+      max: 600
     })
   );
 
@@ -62,18 +64,9 @@ export function createApp(): Express {
   app.get(`${API_PREFIX}/openapi.json`, (_request, response) => {
     response.status(200).json(openApiSpec);
   });
-  app.use(`${API_PREFIX}/auth`, authRateLimiter, authRoutes);
-  app.use(`${API_PREFIX}/admin`, adminRoutes);
-  app.use(`${API_PREFIX}/projects`, projectsRoutes);
-  app.use(`${API_PREFIX}/callers`, callersRoutes);
-  app.use(`${API_PREFIX}/call-tasks`, callAllocationRoutes);
-  app.use(`${API_PREFIX}/job-title-discovery`, jobTitleDiscoveryRoutes);
-  app.use(`${API_PREFIX}/documentation`, documentationGeneratorRoutes);
-  app.use(`${API_PREFIX}/outreach`, outreachRoutes);
-  app.use(`${API_PREFIX}/providers`, providerAccountRoutes);
-  app.use(`${API_PREFIX}/screening`, screeningRoutes);
-  app.use(`${API_PREFIX}/users`, userRoutes);
-  app.use('/webhooks', webhookRoutes);
+
+  app.post(`${API_PREFIX}/auth/login`, loginRateLimiter);
+  app.use(`${API_PREFIX}/auth`, authRoutes);
 
   app.get(`${API_PREFIX}/auth/me`, authenticate, async (request, response, next) => {
     try {
@@ -99,6 +92,18 @@ export function createApp(): Express {
       next(error);
     }
   });
+
+  app.use(`${API_PREFIX}/admin`, adminRoutes);
+  app.use(`${API_PREFIX}/projects`, projectsRoutes);
+  app.use(`${API_PREFIX}/callers`, callersRoutes);
+  app.use(`${API_PREFIX}/call-tasks`, callAllocationRoutes);
+  app.use(`${API_PREFIX}/job-title-discovery`, jobTitleDiscoveryRoutes);
+  app.use(`${API_PREFIX}/documentation`, documentationGeneratorRoutes);
+  app.use(`${API_PREFIX}/outreach`, outreachRoutes);
+  app.use(`${API_PREFIX}/providers`, providerAccountRoutes);
+  app.use(`${API_PREFIX}/screening`, screeningRoutes);
+  app.use(`${API_PREFIX}/users`, userRoutes);
+  app.use('/webhooks', webhookRoutes);
 
   app.get(`${API_PREFIX}/admin/ping`, authenticate, authorize(['admin']), (_request, response) => {
     response.status(200).json({

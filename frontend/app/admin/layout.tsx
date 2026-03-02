@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, type PropsWithChildren } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -37,6 +37,7 @@ function isActive(pathname: string, href: string): boolean {
 
 export default function AdminLayout({ children }: PropsWithChildren): JSX.Element {
   const pathname = usePathname();
+  const router = useRouter();
   const { logout, user, loading, refresh } = useAuth();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -52,9 +53,9 @@ export default function AdminLayout({ children }: PropsWithChildren): JSX.Elemen
 
   useEffect(() => {
     if (!loading && !user) {
-      window.location.href = '/login';
+      router.replace('/login');
     }
-  }, [loading, user]);
+  }, [loading, user, router]);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent): void {
@@ -84,9 +85,9 @@ export default function AdminLayout({ children }: PropsWithChildren): JSX.Elemen
   const handleLogout = useCallback(() => {
     closeMenu();
     void logout().then(() => {
-      window.location.href = '/login';
+      router.replace('/login');
     });
-  }, [logout]);
+  }, [logout, router]);
 
   const handleSave = async (): Promise<void> => {
     setFormError('');
