@@ -7,6 +7,8 @@ interface GenericEnrichmentClientInput {
   endpoint: string;
   apiKey?: string;
   apiKeyHeader?: string;
+  method?: 'GET' | 'POST';
+  buildRequestUrl?: (baseEndpoint: string, request: EnrichmentRequest) => string;
   buildRequestBody?: (request: EnrichmentRequest) => unknown;
   extractResponse?: (response: unknown) => { emails: string[]; phones: string[] };
 }
@@ -67,6 +69,8 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
   private readonly endpoint: string;
   private readonly apiKey?: string;
   private readonly apiKeyHeader: string;
+  private readonly method: 'GET' | 'POST';
+  private readonly customBuildRequestUrl?: (baseEndpoint: string, request: EnrichmentRequest) => string;
   private readonly buildRequestBody?: (request: EnrichmentRequest) => unknown;
   private readonly customExtractResponse?: (response: unknown) => { emails: string[]; phones: string[] };
 
@@ -75,6 +79,8 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
     this.endpoint = input.endpoint;
     this.apiKey = input.apiKey;
     this.apiKeyHeader = input.apiKeyHeader ?? 'authorization';
+    this.method = input.method ?? 'POST';
+    this.customBuildRequestUrl = input.buildRequestUrl;
     this.buildRequestBody = input.buildRequestBody;
     this.customExtractResponse = input.extractResponse;
   }
@@ -93,11 +99,16 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
       headers[this.apiKeyHeader] = this.apiKey;
     }
 
-    const body = this.buildRequestBody ? this.buildRequestBody(request) : request;
+    const url = this.customBuildRequestUrl
+      ? this.customBuildRequestUrl(this.endpoint, request)
+      : this.endpoint;
+    const body = this.method === 'GET'
+      ? undefined
+      : (this.buildRequestBody ? this.buildRequestBody(request) : request);
 
     const response = await requestJson<unknown>({
-      method: 'POST',
-      url: this.endpoint,
+      method: this.method,
+      url,
       headers,
       body,
       provider: this.providerName,

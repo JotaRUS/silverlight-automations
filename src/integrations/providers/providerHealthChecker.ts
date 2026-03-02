@@ -271,6 +271,75 @@ export async function runProviderHealthCheck(
     };
   }
 
+  if (input.providerType === 'ROCKETREACH') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const endpoint = 'https://api.rocketreach.co/api/v2/person/lookup?name=Test&current_employer=Example';
+
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: { 'Api-Key': apiKey }
+    });
+
+    const responseText = await response.text().catch(() => '');
+    let responseJson: unknown = null;
+    try {
+      responseJson = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      responseJson = null;
+    }
+    const responseSnippet = responseText.slice(0, 500);
+
+    logger.info(
+      {
+        provider: 'rocketreach',
+        operation: 'health-check',
+        correlationId: input.correlationId,
+        statusCode: response.status,
+        endpoint: 'https://api.rocketreach.co/api/v2/person/lookup',
+        responseSnippet
+      },
+      'rocketreach-health-check-response'
+    );
+
+    if (response.status === 200) {
+      return {
+        healthy: true,
+        details: { statusCode: 200, reason: 'RocketReach reachable and API key accepted.' }
+      };
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return {
+        healthy: false,
+        details: {
+          statusCode: response.status,
+          reason: 'RocketReach rejected the API key.',
+          responseBody: responseJson ?? responseSnippet
+        }
+      };
+    }
+
+    // 400 with a valid response means the key works but the test query didn't match -- that's healthy
+    if (response.status === 400) {
+      return {
+        healthy: true,
+        details: {
+          statusCode: 400,
+          reason: 'RocketReach reachable and API key accepted (test lookup returned no match, which is expected).'
+        }
+      };
+    }
+
+    return {
+      healthy: false,
+      details: {
+        statusCode: response.status,
+        reason: `RocketReach health probe failed (HTTP ${response.status}).`,
+        responseBody: responseJson ?? responseSnippet
+      }
+    };
+  }
+
   if (input.providerType === 'PROSPEO') {
     const apiKey = credentialString(input.credentials, 'apiKey');
     const endpoint = 'https://api.prospeo.io/account-information';
@@ -490,7 +559,6 @@ export async function runProviderHealthCheck(
   const apiKey = credentialString(input.credentials, 'apiKey');
   const genericHealthUrls: Partial<Record<ProviderType, string>> = {
     APOLLO: 'https://api.apollo.io/v1/auth/health',
-    ROCKETREACH: 'https://api.rocketreach.co/api/v2/person/lookup',
     WIZA: 'https://api.wiza.co/v1/enrich',
     FORAGER: 'https://api-v2.forager.ai/api/{account_id}/datastorage/person_detail_lookup/',
     ZELIQ: 'https://api.zeliq.com/api/contact/enrich/email',

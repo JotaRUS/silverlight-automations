@@ -82,6 +82,8 @@ class DynamicResolvedEnrichmentProviderClient implements ResolvedAwareProviderCl
       endpoint: this.definition.endpoint,
       apiKey,
       apiKeyHeader: this.definition.apiKeyHeader,
+      method: this.definition.method,
+      buildRequestUrl: this.definition.buildRequestUrl,
       buildRequestBody: this.definition.buildRequestBody,
       extractResponse: this.definition.extractResponse
     });

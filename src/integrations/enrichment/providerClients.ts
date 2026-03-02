@@ -6,6 +6,8 @@ export interface EnrichmentProviderDefinition {
   providerName: string;
   endpoint: string;
   apiKeyHeader: string;
+  method?: 'GET' | 'POST';
+  buildRequestUrl?: (baseEndpoint: string, request: EnrichmentRequest) => string;
   buildRequestBody?: (request: EnrichmentRequest) => unknown;
   extractResponse?: (response: unknown) => { emails: string[]; phones: string[] };
 }
@@ -149,7 +151,53 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
     providerType: 'ROCKETREACH',
     providerName: 'ROCKETREACH',
     endpoint: 'https://api.rocketreach.co/api/v2/person/lookup',
-    apiKeyHeader: 'Api-Key'
+    apiKeyHeader: 'Api-Key',
+    method: 'GET',
+    buildRequestUrl: (baseEndpoint, request) => {
+      const params = new URLSearchParams();
+      if (request.fullName) {
+        params.set('name', request.fullName);
+      }
+      if (request.companyName) {
+        params.set('current_employer', request.companyName);
+      }
+      if (request.linkedinUrl) {
+        params.set('linkedin_url', request.linkedinUrl);
+      }
+      const qs = params.toString();
+      return qs ? `${baseEndpoint}?${qs}` : baseEndpoint;
+    },
+    extractResponse: (response) => {
+      const parsed = (response ?? {}) as Record<string, unknown>;
+      const emails: string[] = [];
+      const phones: string[] = [];
+      const currentEmails = parsed.current_work_email ?? parsed.current_personal_email;
+      if (typeof currentEmails === 'string' && currentEmails) {
+        emails.push(currentEmails);
+      }
+      const emailList = parsed.emails as Array<Record<string, unknown>> | undefined;
+      if (Array.isArray(emailList)) {
+        for (const entry of emailList) {
+          const addr = typeof entry === 'string' ? entry : (entry as Record<string, unknown>)?.email;
+          if (typeof addr === 'string' && addr) {
+            emails.push(addr);
+          }
+        }
+      }
+      const phoneList = parsed.phones as Array<Record<string, unknown>> | undefined;
+      if (Array.isArray(phoneList)) {
+        for (const entry of phoneList) {
+          const num = typeof entry === 'string' ? entry : (entry as Record<string, unknown>)?.number;
+          if (typeof num === 'string' && num) {
+            phones.push(num);
+          }
+        }
+      }
+      return {
+        emails: [...new Set(emails)],
+        phones: [...new Set(phones)]
+      };
+    }
   },
   {
     providerType: 'WIZA',
