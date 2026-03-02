@@ -28,6 +28,13 @@ export async function updateProject(projectId: string, payload: Partial<ProjectR
   });
 }
 
+export async function kickProject(projectId: string): Promise<{ sourcingQueued: boolean; enrichmentQueued: number }> {
+  return apiRequest<{ sourcingQueued: boolean; enrichmentQueued: number }>(
+    `/api/v1/projects/${projectId}/kick`,
+    { method: 'POST' }
+  );
+}
+
 export async function addSalesNavSearches(
   projectId: string,
   searches: { sourceUrl: string; normalizedUrl: string; metadata?: Record<string, unknown> }[]

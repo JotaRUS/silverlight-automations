@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, type PropsWithChildren } from 'react';
 
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
@@ -203,10 +204,7 @@ export default function AdminLayout({ children }: PropsWithChildren): JSX.Elemen
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button className="p-2 text-slate-600 hover:bg-slate-100 rounded-full relative">
-            <span className="material-symbols-outlined">notifications</span>
-            <span className="absolute top-2 right-2 size-2 bg-red-500 rounded-full border-2 border-white" />
-          </button>
+          <NotificationBell />
           <details ref={detailsRef} className="relative">
             <summary
               className="size-8 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden border border-primary/30 text-primary text-xs font-bold cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all list-none [&::-webkit-details-marker]:hidden"

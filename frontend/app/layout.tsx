@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import type { PropsWithChildren } from 'react';
+import { Toaster } from 'sonner';
 
 import { AuthProvider } from '@/hooks/useAuth';
 
@@ -55,6 +56,7 @@ export default function RootLayout({ children }: PropsWithChildren): JSX.Element
       <body className="font-display">
         <AppProviders>
           <AuthProvider>{children}</AuthProvider>
+          <Toaster position="top-center" richColors />
         </AppProviders>
       </body>
     </html>

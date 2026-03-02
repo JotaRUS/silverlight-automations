@@ -2,6 +2,7 @@ import type { Job } from 'bullmq';
 
 import { clock } from '../../core/time/clock';
 import { logger } from '../../core/logging/logger';
+import { emitNotification } from '../../modules/notifications/emitNotification';
 import {
   DEAD_LETTER_CAPTURE_JOB_NAME,
   type DeadLetterEnvelope
@@ -116,6 +117,14 @@ async function routeFailedJobToDeadLetter<TData>(
     },
     'worker-job-routed-to-dead-letter'
   );
+
+  emitNotification({
+    type: 'job.dead_letter',
+    severity: 'ERROR',
+    title: `Job failed: ${queueName}`,
+    message: error.message.slice(0, 300),
+    metadata: { queueName, jobId: job.id, correlationId }
+  });
 }
 
 export function registerDeadLetterHandler<TData>(

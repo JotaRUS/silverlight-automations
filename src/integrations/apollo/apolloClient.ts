@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AppError } from '../../core/errors/appError';
 import { requestJson } from '../../core/http/httpJsonClient';
 import { ProviderCredentialResolver } from '../../core/providers/providerCredentialResolver';
+import { emitNotification } from '../../modules/notifications/emitNotification';
 import { prisma } from '../../db/client';
 
 const apolloPersonSchema = z.object({
@@ -113,19 +114,31 @@ export class ApolloClient {
   }
 
   private async handleProviderError(providerAccountId: string, error: unknown): Promise<never> {
+    const reason = error instanceof Error ? error.message : 'unknown provider error';
+    const statusCode =
+      error instanceof AppError &&
+      typeof error.details === 'object' &&
+      error.details !== null &&
+      'statusCode' in error.details &&
+      typeof (error.details as { statusCode?: unknown }).statusCode === 'number'
+        ? ((error.details as { statusCode: number }).statusCode)
+        : undefined;
+
     await this.providerCredentialResolver.markFailure({
       providerAccountId,
       providerType: 'APOLLO',
-      reason: error instanceof Error ? error.message : 'unknown provider error',
-      statusCode:
-        error instanceof AppError &&
-        typeof error.details === 'object' &&
-        error.details !== null &&
-        'statusCode' in error.details &&
-        typeof (error.details as { statusCode?: unknown }).statusCode === 'number'
-          ? ((error.details as { statusCode: number }).statusCode)
-          : undefined
+      reason,
+      statusCode
     });
+
+    emitNotification({
+      type: 'provider.failure',
+      severity: statusCode === 429 ? 'WARNING' : 'ERROR',
+      title: 'Apollo API error',
+      message: reason.slice(0, 300),
+      metadata: { providerAccountId, statusCode }
+    });
+
     throw error;
   }
 

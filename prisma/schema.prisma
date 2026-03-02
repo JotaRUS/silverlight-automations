@@ -192,6 +192,12 @@ enum ExportStatus {
   RETRYING
 }
 
+enum NotificationSeverity {
+  INFO
+  WARNING
+  ERROR
+}
+
 enum SystemEventCategory {
   SYSTEM
   JOB
@@ -773,6 +779,21 @@ model SystemEvent {
 
   @@index([category, createdAt], map: "idx_system_event_category_created")
   @@index([entityType, entityId], map: "idx_system_event_entity")
+}
+
+model Notification {
+  id        String               @id @default(uuid()) @db.Uuid
+  type      String
+  severity  NotificationSeverity @default(INFO)
+  title     String
+  message   String
+  projectId String?              @db.Uuid
+  metadata  Json?                @db.JsonB
+  readAt    DateTime?
+  createdAt DateTime             @default(now())
+
+  @@index([readAt, createdAt], map: "idx_notification_read_created")
+  @@index([projectId], map: "idx_notification_project")
 }
 
 model DeadLetterJob {

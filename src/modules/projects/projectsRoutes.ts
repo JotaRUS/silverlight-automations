@@ -143,6 +143,80 @@ projectsRoutes.patch('/:projectId/screening-questions/:questionId', async (reque
   }
 });
 
+projectsRoutes.post('/:projectId/kick', async (request, response, next) => {
+  try {
+    const params = parseOrThrow(pathParamsSchema, request.params);
+    const project = await projectsService.getProject(params.projectId);
+    if (!project) {
+      throw new AppError('Project not found', 404, 'project_not_found');
+    }
+
+    const timeSlice = new Date().toISOString().slice(0, 16);
+    let sourcingQueued = false;
+    let enrichmentQueued = 0;
+
+    if (project.apolloProviderAccountId) {
+      const locations = project.geographyIsoCodes?.length
+        ? project.geographyIsoCodes
+        : undefined;
+
+      const jobId = buildJobId('apollo-sourcing', params.projectId, timeSlice);
+      await getQueues().apolloLeadSourcingQueue.add(
+        'apollo-lead-sourcing.search',
+        {
+          correlationId: request.headers['x-correlation-id'] as string || 'api-kick',
+          data: {
+            projectId: params.projectId,
+            personLocations: locations,
+            maxPages: 2,
+            perPage: 25
+          }
+        },
+        { jobId }
+      );
+      sourcingQueued = true;
+    }
+
+    const newLeads = await prisma.lead.findMany({
+      where: { projectId: params.projectId, status: 'NEW', deletedAt: null },
+      take: 50
+    });
+    for (const lead of newLeads) {
+      const metadata = (lead.metadata ?? {}) as Record<string, unknown>;
+      const companyName = typeof metadata.companyName === 'string' ? metadata.companyName : undefined;
+      const emails = Array.isArray(metadata.emails)
+        ? (metadata.emails as unknown[]).filter((e): e is string => typeof e === 'string')
+        : [];
+      const phones = Array.isArray(metadata.phones)
+        ? (metadata.phones as unknown[]).filter((p): p is string => typeof p === 'string')
+        : [];
+
+      await getQueues().enrichmentQueue.add(
+        'enrichment.run',
+        {
+          correlationId: 'api-kick',
+          data: {
+            leadId: lead.id,
+            projectId: params.projectId,
+            fullName: lead.fullName ?? undefined,
+            companyName,
+            linkedinUrl: lead.linkedinUrl ?? undefined,
+            countryIso: lead.countryIso && lead.countryIso.length === 2 ? lead.countryIso : undefined,
+            emails,
+            phones
+          }
+        },
+        { jobId: buildJobId('enrichment', lead.id, timeSlice) }
+      );
+      enrichmentQueued += 1;
+    }
+
+    response.status(202).json({ sourcingQueued, enrichmentQueued });
+  } catch (error) {
+    next(error);
+  }
+});
+
 const apolloSearchBodySchema = z.object({
   personLocations: z.array(z.string()).optional(),
   personTitles: z.array(z.string()).optional(),

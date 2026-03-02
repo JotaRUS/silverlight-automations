@@ -23,6 +23,7 @@ import { outreachRoutes } from '../modules/outreach/outreachRoutes';
 import { providerAccountRoutes } from '../modules/providers/providerAccountRoutes';
 import { projectsRoutes } from '../modules/projects/projectsRoutes';
 import { screeningRoutes } from '../modules/screening/screeningRoutes';
+import { notificationRoutes } from '../modules/notifications/notificationRoutes';
 import { userRoutes } from '../modules/users/userRoutes';
 
 export function createApp(): Express {
@@ -102,6 +103,7 @@ export function createApp(): Express {
   app.use(`${API_PREFIX}/outreach`, outreachRoutes);
   app.use(`${API_PREFIX}/providers`, providerAccountRoutes);
   app.use(`${API_PREFIX}/screening`, screeningRoutes);
+  app.use(`${API_PREFIX}/notifications`, notificationRoutes);
   app.use(`${API_PREFIX}/users`, userRoutes);
   app.use('/webhooks', webhookRoutes);
 

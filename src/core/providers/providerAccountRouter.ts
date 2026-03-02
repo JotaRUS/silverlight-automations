@@ -5,6 +5,7 @@ import type { Prisma, PrismaClient, ProviderAccount } from '@prisma/client';
 import { AppError } from '../errors/appError';
 import { namespacedRedisKey } from '../redis/namespace';
 import { redisConnection } from '../../queues/redis';
+import { emitNotification } from '../../modules/notifications/emitNotification';
 import {
   type ProjectProviderBindingField,
   type ProviderType,
@@ -328,6 +329,21 @@ export class ProviderAccountRouter {
           reason: options.reason,
           quarantineSeconds
         })
+      }
+    });
+
+    const severity = options.statusCode === 429 ? 'WARNING' as const : 'ERROR' as const;
+    const label = providerAccount.accountLabel;
+    emitNotification({
+      type: 'provider.failure',
+      severity,
+      title: `${options.providerType} provider error`,
+      message: `${label}: ${options.reason} — quarantined for ${quarantineSeconds}s`,
+      metadata: {
+        providerAccountId,
+        providerType: options.providerType,
+        statusCode: options.statusCode,
+        quarantineSeconds
       }
     });
   }

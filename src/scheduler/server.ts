@@ -8,6 +8,7 @@ import { DeadLetterJobRepository } from '../db/repositories/deadLetterJobReposit
 import { closeQueues, getQueues } from '../queues';
 import { DEAD_LETTER_RETENTION_DAYS } from '../queues/dlq/deadLetterPolicy';
 import { buildJobId } from '../queues/jobId';
+import { emitNotification } from '../modules/notifications/emitNotification';
 
 const deadLetterRepository = new DeadLetterJobRepository(prisma);
 const SCHEDULER_INTERVAL_MS = 60 * 1000;
@@ -164,7 +165,8 @@ async function runScheduledMaintenance(): Promise<void> {
 
 async function runAutoSourcingLoop(): Promise<void> {
   const activeProjects = await prisma.project.findMany({
-    where: { status: 'ACTIVE' }
+    where: { status: 'ACTIVE' },
+    orderBy: { priority: 'desc' }
   });
   const incompleteProjects = activeProjects.filter(
     (p) => p.signedUpCount < p.targetThreshold
@@ -459,6 +461,15 @@ async function detectStalledSourcing(project: {
           'No leads in pipeline and no recent ingestion. Triggering Apollo sourcing.'
       }
     }
+  });
+
+  emitNotification({
+    type: 'project.stalled',
+    severity: 'WARNING',
+    title: `Sourcing stalled: ${project.name}`,
+    message: `No leads in pipeline, ${project.signedUpCount}/${project.targetThreshold} signed up. Re-triggering Apollo.`,
+    projectId: project.id,
+    metadata: { activeSources, signedUpCount: project.signedUpCount, targetThreshold: project.targetThreshold }
   });
 
   if (project.apolloProviderAccountId) {

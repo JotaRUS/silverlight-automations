@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { toast } from 'sonner';
+
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -16,7 +18,7 @@ import {
   PROVIDER_TYPE_TO_FIELD
 } from '@/lib/providerConstants';
 import { listProviderAccounts } from '@/services/providerService';
-import { getProject, updateProject } from '@/services/projectService';
+import { getProject, kickProject, updateProject } from '@/services/projectService';
 import type { ProviderAccount, ProviderType } from '@/types/provider';
 import type { ProjectRecord, ProjectStatus } from '@/types/project';
 
@@ -115,6 +117,9 @@ export default function ProjectEditPage(): JSX.Element {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['project', projectId] });
       void queryClient.invalidateQueries({ queryKey: ['projects'] });
+      toast.success('Saved!');
+      kickProject(projectId).catch(() => {});
+      router.push(`/admin/leads?projectId=${projectId}`);
     }
   });
 
@@ -179,12 +184,6 @@ export default function ProjectEditPage(): JSX.Element {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {saveMutation.isSuccess && (
-            <span className="text-sm text-emerald-600 flex items-center gap-1">
-              <span className="material-symbols-outlined text-base">check_circle</span>
-              Saved
-            </span>
-          )}
           <Button
             onClick={() => saveMutation.mutate()}
             disabled={!name || selectedGeos.length === 0 || saveMutation.isPending}
