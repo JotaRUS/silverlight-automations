@@ -61,13 +61,6 @@ export async function apiRequest<TResponse>(
     throw new ApiError(0, 'network_error', 'Network error — check your connection and try again.');
   }
 
-  if (response.status === 401 || response.status === 403) {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/login';
-    }
-    return new Promise<TResponse>(() => {});
-  }
-
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as ApiErrorPayload;
     const code = payload.error?.code ?? `http_${response.status}`;
