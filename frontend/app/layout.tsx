@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     siteName: 'Silverlight',
     images: [
       {
-        url: '/og-image.png',
+        url: '/og-image.jpg',
         width: 1200,
         height: 630,
         alt: 'Silverlight Expert Sourcing Platform'
@@ -35,7 +35,7 @@ export const metadata: Metadata = {
     title: 'Silverlight — Expert Sourcing Platform',
     description:
       'Automated expert sourcing, outreach and screening platform. Find, enrich and engage the right experts at scale.',
-    images: ['/og-image.png']
+    images: ['/og-image.jpg']
   }
 };
 

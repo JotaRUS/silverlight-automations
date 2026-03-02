@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
+import LoginPage from './login/page';
 
-export default function RootPage(): never {
-  redirect('/login');
+export default function RootPage(): JSX.Element {
+  return <LoginPage />;
 }
