@@ -274,6 +274,14 @@ authRoutes.get('/linkedin/callback', async (request, response, next) => {
       stateSession.providerAccountId
     );
     const providerType = providerAccount.providerType as ProviderType;
+    if (providerType !== 'SALES_NAV_WEBHOOK' && providerType !== 'LINKEDIN') {
+      throw new AppError(
+        'Provider account is not a LinkedIn Sales Navigator account',
+        422,
+        'provider_type_not_supported'
+      );
+    }
+
     const credentials = await providerAccountsService.getDecryptedCredentials(
       stateSession.providerAccountId,
       providerType
