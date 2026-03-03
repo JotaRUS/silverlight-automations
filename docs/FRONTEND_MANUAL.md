@@ -349,7 +349,7 @@ POST /api/v1/projects/:projectId/sales-nav-searches
 Body: { "searches": [ { "sourceUrl": "...", "normalizedUrl": "..." }, ... ] }
 ```
 
-Minimum **6 searches** required. Show a counter: "4/6 minimum searches added".
+Minimum **1 search** required.
 
 **Form:** Repeating rows with URL inputs. Validate URLs client-side.
 

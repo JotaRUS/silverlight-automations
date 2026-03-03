@@ -102,7 +102,7 @@ export const salesNavSearchCreateSchema = z.object({
         metadata: z.record(z.unknown()).default({})
       })
     )
-    .min(6)
+    .min(1)
 });
 
 export const screeningQuestionCreateSchema = z.object({

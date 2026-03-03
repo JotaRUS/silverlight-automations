@@ -429,7 +429,7 @@ curl -X POST http://localhost:3000/api/v1/projects/<projectId>/sales-nav-searche
   }'
 ```
 
-Minimum 6 searches required. Response: `{"created": 6}`
+Minimum 1 search required. Response: `{"created": N}`
 
 #### Manage screening questions
 

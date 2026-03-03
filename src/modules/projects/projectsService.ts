@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient, Project, ScreeningQuestion } from '@prisma/client';
+import { extractApolloFiltersFromSalesNavSearch } from '../sales-nav/salesNavSearchParamExtractor';
 
 export interface ProjectCreateInput {
   name: string;
@@ -229,12 +230,22 @@ export class ProjectsService {
   }
 
   public async addSalesNavSearches(projectId: string, input: SalesNavSearchCreateInput): Promise<number> {
-    const entries = input.searches.map((search) => ({
-      projectId,
-      sourceUrl: search.sourceUrl,
-      normalizedUrl: search.normalizedUrl,
-      metadata: toJsonValue(search.metadata) ?? {}
-    }));
+    const entries = input.searches.map((search) => {
+      const apolloFilters = extractApolloFiltersFromSalesNavSearch({
+        sourceUrl: search.sourceUrl,
+        normalizedUrl: search.normalizedUrl,
+        metadata: search.metadata
+      });
+      return {
+        projectId,
+        sourceUrl: search.sourceUrl,
+        normalizedUrl: search.normalizedUrl,
+        metadata: toJsonValue({
+          ...(search.metadata ?? {}),
+          apolloFilters
+        }) ?? {}
+      };
+    });
 
     const result = await this.prismaClient.salesNavSearch.createMany({
       data: entries,
