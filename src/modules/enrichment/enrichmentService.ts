@@ -14,7 +14,8 @@ import {
 import type {
   EnrichmentProviderClient,
   EnrichmentRequest,
-  EnrichmentResult
+  EnrichmentResult,
+  ExtractedPersonData
 } from '../../integrations/enrichment/types';
 import { getQueues } from '../../queues';
 import { buildJobId } from '../../queues/jobId';
@@ -25,8 +26,11 @@ import { normalizeEmail, normalizePhone } from './enrichmentValidators';
 export interface EnrichmentJobInput {
   leadId: string;
   projectId: string;
+  firstName?: string;
+  lastName?: string;
   fullName?: string;
   companyName?: string;
+  jobTitle?: string;
   linkedinUrl?: string;
   countryIso?: string;
   emails?: string[];
@@ -125,8 +129,11 @@ export class EnrichmentService {
   private buildRequest(job: EnrichmentJobInput): EnrichmentRequest {
     return {
       projectId: job.projectId,
+      firstName: job.firstName,
+      lastName: job.lastName,
       fullName: job.fullName,
       companyName: job.companyName,
+      jobTitle: job.jobTitle,
       linkedinUrl: job.linkedinUrl,
       countryIso: job.countryIso,
       emails: job.emails ?? [],
@@ -221,10 +228,57 @@ export class EnrichmentService {
     return sorted[0] ?? null;
   }
 
+  /**
+   * Merges person data from a provider result into the accumulated data.
+   * Existing fields are never overwritten — first non-empty value wins.
+   */
+  private mergePersonData(
+    accumulated: ExtractedPersonData,
+    incoming: ExtractedPersonData | undefined
+  ): void {
+    if (!incoming) return;
+    const keys: (keyof ExtractedPersonData)[] = [
+      'firstName', 'lastName', 'fullName', 'linkedinUrl',
+      'jobTitle', 'companyName', 'city', 'state', 'country'
+    ];
+    for (const key of keys) {
+      if (!accumulated[key] && incoming[key]) {
+        accumulated[key] = incoming[key];
+      }
+    }
+    if (accumulated.firstName && accumulated.lastName && !accumulated.fullName) {
+      accumulated.fullName = `${accumulated.firstName} ${accumulated.lastName}`;
+    }
+  }
+
+  /**
+   * Enriches the request with any data discovered by previous providers so
+   * subsequent providers get the richest possible input.
+   */
+  private feedForward(
+    request: EnrichmentRequest,
+    accumulated: ExtractedPersonData,
+    emails: string[],
+    phones: string[]
+  ): EnrichmentRequest {
+    return {
+      ...request,
+      firstName: request.firstName || accumulated.firstName,
+      lastName: request.lastName || accumulated.lastName,
+      fullName: request.fullName || accumulated.fullName,
+      companyName: request.companyName || accumulated.companyName,
+      jobTitle: request.jobTitle || accumulated.jobTitle,
+      linkedinUrl: request.linkedinUrl || accumulated.linkedinUrl,
+      emails: emails.length > 0 ? emails : request.emails,
+      phones: phones.length > 0 ? phones : request.phones
+    };
+  }
+
   public async enrich(job: EnrichmentJobInput, correlationId: string): Promise<void> {
     const lead = await this.prismaClient.lead.findUnique({
       where: { id: job.leadId },
-      select: { id: true, expertId: true }
+      select: { id: true, expertId: true, firstName: true, lastName: true, fullName: true,
+                jobTitle: true, linkedinUrl: true, countryIso: true }
     });
     if (!lead) {
       return;
@@ -234,6 +288,7 @@ export class EnrichmentService {
 
     let hasEmail = false;
     let hasPhone = false;
+    let hasLinkedin = false;
 
     if (lead.expertId) {
       const existingContacts = await this.prismaClient.expertContact.findMany({
@@ -242,6 +297,7 @@ export class EnrichmentService {
       });
       hasEmail = existingContacts.some((c) => c.type === 'EMAIL');
       hasPhone = existingContacts.some((c) => c.type === 'PHONE');
+      hasLinkedin = existingContacts.some((c) => c.type === 'LINKEDIN');
     }
 
     if (hasEmail && hasPhone) {
@@ -264,13 +320,24 @@ export class EnrichmentService {
       return Boolean(projectRecord[bindingField]);
     });
 
-    const request = this.buildRequest(job);
+    const baseRequest = this.buildRequest(job);
     const allResults: EnrichmentResult[] = [];
+    const accumulatedPerson: ExtractedPersonData = {
+      firstName: job.firstName ?? lead.firstName ?? undefined,
+      lastName: job.lastName ?? lead.lastName ?? undefined,
+      fullName: job.fullName ?? lead.fullName ?? undefined,
+      linkedinUrl: job.linkedinUrl ?? lead.linkedinUrl ?? undefined,
+      jobTitle: job.jobTitle ?? lead.jobTitle ?? undefined
+    };
+    const collectedEmails: string[] = [...(job.emails ?? [])];
+    const collectedPhones: string[] = [...(job.phones ?? [])];
 
     for (const providerClient of eligibleProviders) {
-      const result = await this.runProvider(providerClient, request, correlationId, job.leadId);
+      const enrichedRequest = this.feedForward(baseRequest, accumulatedPerson, collectedEmails, collectedPhones);
+      const result = await this.runProvider(providerClient, enrichedRequest, correlationId, job.leadId);
       if (result) {
         allResults.push(result);
+        this.mergePersonData(accumulatedPerson, result.personData);
 
         const resultEmails = result.emails
           .map((e) => normalizeEmail(e))
@@ -278,6 +345,13 @@ export class EnrichmentService {
         const resultPhones = result.phones
           .map((p) => normalizePhone(p))
           .filter((p): p is string => Boolean(p));
+
+        for (const e of resultEmails) {
+          if (!collectedEmails.includes(e)) collectedEmails.push(e);
+        }
+        for (const p of resultPhones) {
+          if (!collectedPhones.includes(p)) collectedPhones.push(p);
+        }
 
         if (!hasEmail && resultEmails.length > 0) hasEmail = true;
         if (!hasPhone && resultPhones.length > 0) hasPhone = true;
@@ -297,22 +371,37 @@ export class EnrichmentService {
       return;
     }
 
-    const allEmails = allResults.flatMap((r) => r.emails);
-    const allPhones = allResults.flatMap((r) => r.phones);
+    const normalizedEmails = Array.from(new Set(
+      collectedEmails.map((e) => normalizeEmail(e)).filter((e): e is string => Boolean(e))
+    ));
+    const normalizedPhones = Array.from(new Set(
+      collectedPhones.map((p) => normalizePhone(p)).filter((p): p is string => Boolean(p))
+    ));
 
-    const normalizedEmails = Array.from(
-      new Set(allEmails.map((email) => normalizeEmail(email)).filter((email): email is string => Boolean(email)))
-    );
-    const normalizedPhones = Array.from(
-      new Set(allPhones.map((phone) => normalizePhone(phone)).filter((phone): phone is string => Boolean(phone)))
-    );
+    const leadUpdateData: Record<string, unknown> = {
+      status: 'ENRICHED',
+      enrichmentConfidence: bestResult.confidenceScore
+    };
+    if (accumulatedPerson.fullName && !lead.fullName) leadUpdateData.fullName = accumulatedPerson.fullName;
+    if (accumulatedPerson.firstName && !lead.firstName) leadUpdateData.firstName = accumulatedPerson.firstName;
+    if (accumulatedPerson.lastName && !lead.lastName) leadUpdateData.lastName = accumulatedPerson.lastName;
+    if (accumulatedPerson.jobTitle && !lead.jobTitle) leadUpdateData.jobTitle = accumulatedPerson.jobTitle;
+    if (accumulatedPerson.linkedinUrl && !lead.linkedinUrl) leadUpdateData.linkedinUrl = accumulatedPerson.linkedinUrl;
+    if (accumulatedPerson.country && !lead.countryIso) leadUpdateData.countryIso = accumulatedPerson.country;
+
+    const existingMeta = (await this.prismaClient.lead.findUnique({
+      where: { id: job.leadId }, select: { metadata: true }
+    }))?.metadata as Record<string, unknown> | null;
+    const metaUpdate: Record<string, unknown> = { ...(existingMeta ?? {}) };
+    if (accumulatedPerson.city && !metaUpdate.city) metaUpdate.city = accumulatedPerson.city;
+    if (accumulatedPerson.state && !metaUpdate.state) metaUpdate.state = accumulatedPerson.state;
+    if (accumulatedPerson.country && !metaUpdate.country) metaUpdate.country = accumulatedPerson.country;
+    if (accumulatedPerson.companyName && !metaUpdate.companyName) metaUpdate.companyName = accumulatedPerson.companyName;
+    leadUpdateData.metadata = toJsonValue(metaUpdate);
 
     await this.prismaClient.lead.update({
       where: { id: job.leadId },
-      data: {
-        status: 'ENRICHED',
-        enrichmentConfidence: bestResult.confidenceScore
-      }
+      data: leadUpdateData as Prisma.LeadUpdateInput
     });
     await completionService.recalculate(job.projectId);
 
@@ -321,6 +410,30 @@ export class EnrichmentService {
     });
     if (!updatedLead?.expertId) {
       return;
+    }
+
+    const expertUpdateData: Record<string, unknown> = {};
+    const expert = await this.prismaClient.expert.findUnique({
+      where: { id: updatedLead.expertId },
+      select: { fullName: true, firstName: true, lastName: true, currentRole: true,
+                currentCompany: true, countryIso: true, regionIso: true }
+    });
+    if (expert) {
+      if (accumulatedPerson.fullName && (!expert.fullName || expert.fullName.includes('*'))) {
+        expertUpdateData.fullName = accumulatedPerson.fullName;
+      }
+      if (accumulatedPerson.firstName && !expert.firstName) expertUpdateData.firstName = accumulatedPerson.firstName;
+      if (accumulatedPerson.lastName && !expert.lastName) expertUpdateData.lastName = accumulatedPerson.lastName;
+      if (accumulatedPerson.jobTitle && !expert.currentRole) expertUpdateData.currentRole = accumulatedPerson.jobTitle;
+      if (accumulatedPerson.companyName && !expert.currentCompany) expertUpdateData.currentCompany = accumulatedPerson.companyName;
+      if (accumulatedPerson.country && !expert.countryIso) expertUpdateData.countryIso = accumulatedPerson.country;
+      if (accumulatedPerson.state && !expert.regionIso) expertUpdateData.regionIso = accumulatedPerson.state;
+      if (Object.keys(expertUpdateData).length > 0) {
+        await this.prismaClient.expert.update({
+          where: { id: updatedLead.expertId },
+          data: expertUpdateData as Prisma.ExpertUpdateInput
+        });
+      }
     }
 
     for (const email of normalizedEmails) {
@@ -370,6 +483,29 @@ export class EnrichmentService {
           verificationStatus: 'VERIFIED',
           confidenceScore: bestResult.confidenceScore
         }
+      });
+    }
+
+    if (accumulatedPerson.linkedinUrl && !hasLinkedin) {
+      const normalizedLinkedin = accumulatedPerson.linkedinUrl.trim().toLowerCase();
+      await this.prismaClient.expertContact.upsert({
+        where: {
+          expertId_type_valueNormalized: {
+            expertId: updatedLead.expertId,
+            type: 'LINKEDIN',
+            valueNormalized: normalizedLinkedin
+          }
+        },
+        create: {
+          expertId: updatedLead.expertId,
+          type: 'LINKEDIN',
+          label: 'PROFESSIONAL',
+          value: accumulatedPerson.linkedinUrl,
+          valueNormalized: normalizedLinkedin,
+          verificationStatus: 'UNVERIFIED',
+          confidenceScore: 0.8
+        },
+        update: {}
       });
     }
 

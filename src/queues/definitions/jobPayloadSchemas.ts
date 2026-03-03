@@ -59,8 +59,11 @@ export type ApolloLeadSourcingJob = z.infer<typeof apolloLeadSourcingJobSchema>;
 export const enrichmentJobSchema = z.object({
   leadId: z.string().uuid(),
   projectId: z.string().uuid(),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
   fullName: z.string().optional(),
   companyName: z.string().optional(),
+  jobTitle: z.string().optional(),
   linkedinUrl: z.string().url().optional(),
   countryIso: z.string().length(2).optional(),
   emails: z.array(z.string().email()).default([]),

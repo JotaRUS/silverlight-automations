@@ -1,5 +1,11 @@
 import type { ProviderType } from '../../core/providers/providerTypes';
-import type { EnrichmentRequest } from './types';
+import type { EnrichmentRequest, ExtractedPersonData } from './types';
+
+export interface ExtractedProviderData {
+  emails: string[];
+  phones: string[];
+  personData?: ExtractedPersonData;
+}
 
 export interface EnrichmentProviderDefinition {
   providerType: ProviderType;
@@ -7,12 +13,11 @@ export interface EnrichmentProviderDefinition {
   endpoint: string;
   apiKeyHeader: string;
   method?: 'GET' | 'POST';
-  /** If true, the API key is passed as a query param instead of a header (e.g. Datagma uses ?apiId=KEY) */
   apiKeyInUrl?: boolean;
   apiKeyUrlParam?: string;
   buildRequestUrl?: (baseEndpoint: string, request: EnrichmentRequest) => string;
   buildRequestBody?: (request: EnrichmentRequest) => unknown;
-  extractResponse?: (response: unknown) => { emails: string[]; phones: string[] };
+  extractResponse?: (response: unknown) => ExtractedProviderData;
 }
 
 function splitFullName(fullName: string): { first_name: string; last_name: string } {
@@ -26,6 +31,10 @@ function splitFullName(fullName: string): { first_name: string; last_name: strin
 function extractLinkedinSlug(url: string): string | undefined {
   const match = url.match(/linkedin\.com\/in\/([^/?#]+)/);
   return match?.[1];
+}
+
+function str(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
@@ -72,8 +81,9 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
       const parsed = (response ?? {}) as Record<string, unknown>;
       const emails: string[] = [];
       const phones: string[] = [];
+      const personData: ExtractedPersonData = {};
       if (parsed.error === true) {
-        return { emails, phones };
+        return { emails, phones, personData };
       }
       const person = parsed.person as Record<string, unknown> | undefined;
       if (person) {
@@ -85,8 +95,17 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
         if (mobileObj && typeof mobileObj.mobile === 'string' && mobileObj.mobile && mobileObj.revealed === true) {
           phones.push(mobileObj.mobile);
         }
+        personData.firstName = str(person.first_name);
+        personData.lastName = str(person.last_name);
+        personData.fullName = str(person.full_name);
+        personData.linkedinUrl = str(person.linkedin) ?? str(person.linkedin_url);
+        personData.jobTitle = str(person.title);
+        const company = person.company as Record<string, unknown> | undefined;
+        personData.companyName = str(company?.name) ?? str(person.company_name);
+        personData.country = str(person.country);
+        personData.city = str(person.city);
       }
-      return { emails, phones };
+      return { emails, phones, personData };
     }
   },
   {
@@ -119,9 +138,10 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
       const parsed = (response ?? {}) as Record<string, unknown>;
       const emails: string[] = [];
       const phones: string[] = [];
+      const personData: ExtractedPersonData = {};
       const results = parsed.results as Array<Record<string, unknown>> | undefined;
       if (!results?.length) {
-        return { emails, phones };
+        return { emails, phones, personData };
       }
       const emailRegex = /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,15}\b/g;
       const phoneRegex = /\+?1?\s*[-.(]?\d{3}[-.)]\s*\d{3}[-.]?\d{4}/g;
@@ -145,13 +165,17 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
           }
         }
         const url = typeof result.url === 'string' ? result.url : '';
-        if (url.includes('linkedin.com/in/') && !emails.length) {
-          // LinkedIn URL found but no email extracted - still valuable for downstream matching
+        if (url.includes('linkedin.com/in/') && !personData.linkedinUrl) {
+          personData.linkedinUrl = url;
+        }
+        if (!personData.fullName && str(result.author)) {
+          personData.fullName = str(result.author);
         }
       }
       return {
         emails: [...new Set(emails)],
-        phones: [...new Set(phones)]
+        phones: [...new Set(phones)],
+        personData
       };
     }
   },
@@ -179,6 +203,7 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
       const parsed = (response ?? {}) as Record<string, unknown>;
       const emails: string[] = [];
       const phones: string[] = [];
+      const personData: ExtractedPersonData = {};
       const currentEmails = parsed.current_work_email ?? parsed.current_personal_email;
       if (typeof currentEmails === 'string' && currentEmails) {
         emails.push(currentEmails);
@@ -201,9 +226,19 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
           }
         }
       }
+      personData.firstName = str(parsed.first_name);
+      personData.lastName = str(parsed.last_name);
+      personData.fullName = str(parsed.name);
+      personData.linkedinUrl = str(parsed.linkedin_url);
+      personData.jobTitle = str(parsed.current_title);
+      personData.companyName = str(parsed.current_employer);
+      personData.city = str(parsed.city);
+      personData.state = str(parsed.state);
+      personData.country = str(parsed.country);
       return {
         emails: [...new Set(emails)],
-        phones: [...new Set(phones)]
+        phones: [...new Set(phones)],
+        personData
       };
     }
   },
@@ -224,11 +259,21 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
       const parsed = (response ?? {}) as Record<string, unknown>;
       const emails: string[] = [];
       const phones: string[] = [];
+      const personData: ExtractedPersonData = {};
       const data = (parsed.data ?? parsed) as Record<string, unknown>;
       if (typeof data.email === 'string' && data.email) emails.push(data.email);
       if (typeof data.phone_number === 'string' && data.phone_number) phones.push(data.phone_number);
       if (typeof data.mobile_phone === 'string' && data.mobile_phone) phones.push(data.mobile_phone);
-      return { emails: [...new Set(emails)], phones: [...new Set(phones)] };
+      personData.firstName = str(data.first_name);
+      personData.lastName = str(data.last_name);
+      personData.fullName = str(data.full_name) ?? str(data.name);
+      personData.linkedinUrl = str(data.linkedin_url) ?? str(data.profile_url);
+      personData.jobTitle = str(data.title) ?? str(data.job_title);
+      personData.companyName = str(data.company) ?? str(data.company_name);
+      personData.city = str(data.city);
+      personData.state = str(data.state);
+      personData.country = str(data.country);
+      return { emails: [...new Set(emails)], phones: [...new Set(phones)], personData };
     }
   },
   {
@@ -245,12 +290,17 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
     },
     extractResponse: (response) => {
       const emails: string[] = [];
+      const personData: ExtractedPersonData = {};
       const items = Array.isArray(response) ? response : [];
       for (const item of items) {
         const entry = item as Record<string, unknown>;
         if (typeof entry.email === 'string' && entry.email) emails.push(entry.email);
+        if (!personData.fullName) personData.fullName = str(entry.full_name) ?? str(entry.name);
+        if (!personData.linkedinUrl) personData.linkedinUrl = str(entry.linkedin_url);
+        if (!personData.jobTitle) personData.jobTitle = str(entry.title) ?? str(entry.job_title);
+        if (!personData.companyName) personData.companyName = str(entry.company) ?? str(entry.company_name);
       }
-      return { emails, phones: [] };
+      return { emails, phones: [], personData };
     }
   },
   {
@@ -274,6 +324,7 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
       const parsed = (response ?? {}) as Record<string, unknown>;
       const emails: string[] = [];
       const phones: string[] = [];
+      const personData: ExtractedPersonData = {};
       const contact = (parsed.contact ?? parsed) as Record<string, unknown>;
       if (typeof contact.most_probable_email === 'string' && contact.most_probable_email) {
         emails.push(contact.most_probable_email);
@@ -293,7 +344,15 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
           if (typeof p.phone === 'string' && p.phone) phones.push(p.phone);
         }
       }
-      return { emails: [...new Set(emails)], phones: [...new Set(phones)] };
+      personData.firstName = str(contact.first_name);
+      personData.lastName = str(contact.last_name);
+      personData.fullName = str(contact.full_name);
+      personData.linkedinUrl = str(contact.linkedin_url) ?? str(contact.linkedin);
+      personData.jobTitle = str(contact.title) ?? str(contact.job_title);
+      personData.companyName = str(contact.company_name) ?? str(contact.company);
+      personData.country = str(contact.country);
+      personData.city = str(contact.city);
+      return { emails: [...new Set(emails)], phones: [...new Set(phones)], personData };
     }
   },
   {
@@ -313,6 +372,7 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
       const parsed = (response ?? {}) as Record<string, unknown>;
       const emails: string[] = [];
       const phones: string[] = [];
+      const personData: ExtractedPersonData = {};
       const profile = (parsed.profile ?? parsed) as Record<string, unknown>;
       for (const key of ['email', 'work_email', 'personal_email']) {
         const val = profile[key];
@@ -328,7 +388,16 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
       } else if (typeof phoneVal === 'string' && phoneVal) {
         phones.push(phoneVal);
       }
-      return { emails: [...new Set(emails)], phones: [...new Set(phones)] };
+      personData.firstName = str(profile.first_name);
+      personData.lastName = str(profile.last_name);
+      personData.fullName = str(profile.full_name) ?? str(profile.name);
+      personData.linkedinUrl = str(profile.linkedin_url) ?? str(profile.linkedin);
+      personData.jobTitle = str(profile.title) ?? str(profile.job_title);
+      personData.companyName = str(profile.company) ?? str(profile.company_name);
+      personData.city = str(profile.city);
+      personData.state = str(profile.state);
+      personData.country = str(profile.country);
+      return { emails: [...new Set(emails)], phones: [...new Set(phones)], personData };
     }
   },
   {
@@ -355,11 +424,21 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
       const data = (parsed.data ?? parsed) as Record<string, unknown>;
       const emails: string[] = [];
       const phones: string[] = [];
+      const personData: ExtractedPersonData = {};
       if (typeof data.legacyEmail === 'string' && data.legacyEmail) emails.push(data.legacyEmail);
       if (typeof data.email === 'string' && data.email) emails.push(data.email);
       if (typeof data.phone === 'string' && data.phone) phones.push(data.phone);
       if (typeof data.mobilePhone === 'string' && data.mobilePhone) phones.push(data.mobilePhone);
-      return { emails: [...new Set(emails)], phones: [...new Set(phones)] };
+      personData.firstName = str(data.firstName) ?? str(data.first_name);
+      personData.lastName = str(data.lastName) ?? str(data.last_name);
+      personData.fullName = str(data.fullName) ?? str(data.full_name);
+      personData.linkedinUrl = str(data.linkedInUrl) ?? str(data.linkedin_url) ?? str(data.linkedinUrl);
+      personData.jobTitle = str(data.jobTitle) ?? str(data.job_title) ?? str(data.title);
+      personData.companyName = str(data.company) ?? str(data.companyName) ?? str(data.company_name);
+      personData.city = str(data.city);
+      personData.state = str(data.state);
+      personData.country = str(data.country);
+      return { emails: [...new Set(emails)], phones: [...new Set(phones)], personData };
     }
   },
   {
@@ -384,6 +463,7 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
       const data = (parsed.data ?? parsed) as Record<string, unknown>;
       const emails: string[] = [];
       const phones: string[] = [];
+      const personData: ExtractedPersonData = {};
       if (typeof data.work_email === 'string' && data.work_email) emails.push(data.work_email);
       if (typeof data.recommended_personal_email === 'string' && data.recommended_personal_email) {
         emails.push(data.recommended_personal_email);
@@ -403,7 +483,16 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
       if (Array.isArray(phoneNumbers)) {
         for (const p of phoneNumbers) { if (typeof p === 'string' && p) phones.push(p); }
       }
-      return { emails: [...new Set(emails)], phones: [...new Set(phones)] };
+      personData.firstName = str(data.first_name);
+      personData.lastName = str(data.last_name);
+      personData.fullName = str(data.full_name);
+      personData.linkedinUrl = str(data.linkedin_url);
+      personData.jobTitle = str(data.job_title);
+      personData.companyName = str(data.job_company_name);
+      personData.city = str(data.location_locality);
+      personData.state = str(data.location_region);
+      personData.country = str(data.location_country);
+      return { emails: [...new Set(emails)], phones: [...new Set(phones)], personData };
     }
   }
 ];

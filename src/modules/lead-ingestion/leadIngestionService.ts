@@ -233,8 +233,11 @@ export class LeadIngestionService {
       await enqueueWithContext(getQueues().enrichmentQueue, 'enrichment.run', {
         leadId: createdLead.id,
         projectId: job.projectId,
+        firstName: createdLead.firstName ?? undefined,
+        lastName: createdLead.lastName ?? undefined,
         fullName: createdLead.fullName ?? undefined,
         companyName: job.lead.companyName,
+        jobTitle: createdLead.jobTitle ?? undefined,
         linkedinUrl: createdLead.linkedinUrl ?? undefined,
         countryIso: createdLead.countryIso ?? undefined,
         emails: job.lead.emails,

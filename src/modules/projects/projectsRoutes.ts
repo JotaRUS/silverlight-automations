@@ -211,8 +211,11 @@ projectsRoutes.post('/:projectId/kick', async (request, response, next) => {
           data: {
             leadId: lead.id,
             projectId: params.projectId,
+            firstName: lead.firstName ?? undefined,
+            lastName: lead.lastName ?? undefined,
             fullName: lead.fullName ?? undefined,
             companyName,
+            jobTitle: lead.jobTitle ?? undefined,
             linkedinUrl: lead.linkedinUrl ?? undefined,
             countryIso: lead.countryIso && lead.countryIso.length === 2 ? lead.countryIso : undefined,
             emails,

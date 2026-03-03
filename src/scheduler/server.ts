@@ -262,8 +262,11 @@ async function queuePendingEnrichment(projectId: string, timeSlice: string): Pro
         data: {
           leadId: lead.id,
           projectId,
+          firstName: lead.firstName ?? undefined,
+          lastName: lead.lastName ?? undefined,
           fullName: lead.fullName ?? undefined,
           companyName,
+          jobTitle: lead.jobTitle ?? undefined,
           linkedinUrl: lead.linkedinUrl ?? undefined,
           countryIso:
             lead.countryIso && lead.countryIso.length === 2 ? lead.countryIso : undefined,

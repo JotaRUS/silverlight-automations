@@ -1,6 +1,7 @@
 import { AppError } from '../../core/errors/appError';
 import { requestJson } from '../../core/http/httpJsonClient';
-import type { EnrichmentProviderClient, EnrichmentRequest, EnrichmentResult } from './types';
+import type { ExtractedProviderData } from './providerClients';
+import type { EnrichmentProviderClient, EnrichmentRequest, EnrichmentResult, ExtractedPersonData } from './types';
 
 interface GenericEnrichmentClientInput {
   providerName: string;
@@ -12,7 +13,7 @@ interface GenericEnrichmentClientInput {
   apiKeyUrlParam?: string;
   buildRequestUrl?: (baseEndpoint: string, request: EnrichmentRequest) => string;
   buildRequestBody?: (request: EnrichmentRequest) => unknown;
-  extractResponse?: (response: unknown) => { emails: string[]; phones: string[] };
+  extractResponse?: (response: unknown) => ExtractedProviderData;
 }
 
 function toStringArray(value: unknown): string[] {
@@ -47,6 +48,27 @@ function extractArrayFromKnownPaths(payload: Record<string, unknown>, keys: stri
   return [];
 }
 
+function str(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function extractPersonDataFromGenericPayload(payload: Record<string, unknown>): ExtractedPersonData {
+  const data = (typeof payload.data === 'object' && payload.data !== null && !Array.isArray(payload.data))
+    ? payload.data as Record<string, unknown>
+    : payload;
+  const personData: ExtractedPersonData = {};
+  personData.firstName = str(data.first_name) ?? str(data.firstName);
+  personData.lastName = str(data.last_name) ?? str(data.lastName);
+  personData.fullName = str(data.full_name) ?? str(data.fullName) ?? str(data.name);
+  personData.linkedinUrl = str(data.linkedin_url) ?? str(data.linkedinUrl) ?? str(data.linkedin);
+  personData.jobTitle = str(data.job_title) ?? str(data.jobTitle) ?? str(data.title);
+  personData.companyName = str(data.company) ?? str(data.companyName) ?? str(data.company_name);
+  personData.city = str(data.city);
+  personData.state = str(data.state);
+  personData.country = str(data.country);
+  return personData;
+}
+
 function extractConfidenceScore(payload: Record<string, unknown>): number {
   const candidateValues = [
     payload.confidenceScore,
@@ -76,7 +98,7 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
   private readonly apiKeyUrlParam: string;
   private readonly customBuildRequestUrl?: (baseEndpoint: string, request: EnrichmentRequest) => string;
   private readonly buildRequestBody?: (request: EnrichmentRequest) => unknown;
-  private readonly customExtractResponse?: (response: unknown) => { emails: string[]; phones: string[] };
+  private readonly customExtractResponse?: (response: unknown) => ExtractedProviderData;
 
   public constructor(input: GenericEnrichmentClientInput) {
     this.providerName = input.providerName;
@@ -130,14 +152,15 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
     });
 
     if (this.customExtractResponse) {
-      const { emails, phones } = this.customExtractResponse(response);
-      const confidenceScore = emails.length > 0 || phones.length > 0 ? 0.8 : 0;
+      const extracted = this.customExtractResponse(response);
+      const confidenceScore = extracted.emails.length > 0 || extracted.phones.length > 0 ? 0.8 : 0;
       return {
         provider: this.providerName,
-        emails,
-        phones,
+        emails: extracted.emails,
+        phones: extracted.phones,
         confidenceScore,
-        rawPayload: response
+        rawPayload: response,
+        personData: extracted.personData
       };
     }
 
@@ -151,13 +174,15 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
     ]);
     const phones = extractArrayFromKnownPaths(parsed, ['phones', 'phone', 'mobilePhones']);
     const confidenceScore = extractConfidenceScore(parsed);
+    const personData = extractPersonDataFromGenericPayload(parsed);
 
     return {
       provider: this.providerName,
       emails,
       phones,
       confidenceScore,
-      rawPayload: response
+      rawPayload: response,
+      personData
     };
   }
 }
