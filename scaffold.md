@@ -185,7 +185,7 @@ Validated job title list per project.
 7. SALES NAVIGATOR INGESTION
 
 Requirements:
-	•	Minimum 6 URLs per project
+	•	Minimum 1 URL per project
 	•	URL validation
 	•	Metadata extraction
 	•	Pagination handling

@@ -953,7 +953,7 @@ The outreach system supports 13 messaging channels:
 |-------------|----------------|----------------------------|
 | Phone       | `phone`        | `TWILIO_API_KEY`           |
 | Email       | `email`        | `EMAIL_PROVIDER_API_KEY`   |
-| LinkedIn    | `linkedin`     | `LINKEDIN_API_KEY`         |
+| LinkedIn    | `linkedin`     | LinkedIn Sales Navigator provider credentials (`clientId`, `clientSecret`) |
 | WhatsApp    | `whatsapp`     | `WHATSAPP_2CHAT_API_KEY`   |
 | Respond.io  | `respondio`    | `RESPONDIO_API_KEY`        |
 | SMS         | `sms`          | `TWILIO_API_KEY`           |
@@ -1021,7 +1021,9 @@ All optional. Configure only the providers you have API access to:
 
 All optional. Configure only the channels you intend to use:
 
-`LINKEDIN_API_KEY`, `EMAIL_PROVIDER_API_KEY`, `TWILIO_API_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `WHATSAPP_2CHAT_API_KEY`, `RESPONDIO_API_KEY`, `LINE_API_KEY`, `WECHAT_API_KEY`, `VIBER_API_KEY`, `TELEGRAM_BOT_TOKEN`, `KAKAOTALK_API_KEY`, `VOICEMAIL_DROP_API_KEY`
+`EMAIL_PROVIDER_API_KEY`, `TWILIO_API_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `WHATSAPP_2CHAT_API_KEY`, `RESPONDIO_API_KEY`, `LINE_API_KEY`, `WECHAT_API_KEY`, `VIBER_API_KEY`, `TELEGRAM_BOT_TOKEN`, `KAKAOTALK_API_KEY`, `VOICEMAIL_DROP_API_KEY`
+
+LinkedIn channel operations use the LinkedIn Sales Navigator provider credentials (Client ID + Client Secret) configured in provider accounts.
 
 ### Integrations
 

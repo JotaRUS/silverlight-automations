@@ -1021,4 +1021,4 @@ function useCreateProject() {
 | Method | Path                  | Auth mechanism              |
 |--------|-----------------------|-----------------------------|
 | POST   | `/webhooks/yay`       | HMAC signature headers      |
-| POST   | `/webhooks/sales-nav` | `x-sales-nav-secret` header |
+| POST   | `/webhooks/sales-nav/:providerAccountId` | `Authorization: Bearer <token>` or `x-sales-nav-client-id` |
