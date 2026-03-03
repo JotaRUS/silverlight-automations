@@ -245,7 +245,11 @@ export class MessagingClient {
     if (input.channel === 'linkedin') {
       linkedInOauthAccessToken = credentialString(resolvedCredentials.credentials, 'oauthAccessToken');
       if (linkedInOauthAccessToken) {
-        linkedInBearerToken = linkedInOauthAccessToken;
+        const expiresAt = credentialString(resolvedCredentials.credentials, 'oauthAccessTokenExpiresAt');
+        const isExpired = expiresAt && new Date(expiresAt).getTime() <= Date.now();
+        if (!isExpired) {
+          linkedInBearerToken = linkedInOauthAccessToken;
+        }
       }
       linkedInClientId = credentialString(resolvedCredentials.credentials, 'clientId');
       linkedInClientSecret = credentialString(resolvedCredentials.credentials, 'clientSecret');
