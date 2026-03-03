@@ -1,5 +1,7 @@
 import { createSign } from 'node:crypto';
 
+import { createTransport } from 'nodemailer';
+
 import { AppError } from '../../core/errors/appError';
 import { requestJson } from '../../core/http/httpJsonClient';
 import { logger } from '../../core/logging/logger';
@@ -427,6 +429,26 @@ export async function runProviderHealthCheck(
     };
   }
 
+  if (input.providerType === 'VOICEMAIL_DROP') {
+    const accountSid = credentialString(input.credentials, 'accountSid');
+    const authToken = credentialString(input.credentials, 'authToken');
+    const encoded = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+    const response = await requestJson<{ sid?: string; status?: string }>({
+      method: 'GET',
+      url: `https://api.twilio.com/2010-04-01/Accounts/${accountSid}.json`,
+      headers: {
+        authorization: `Basic ${encoded}`
+      },
+      provider: 'voicemail-drop',
+      operation: 'health-check',
+      correlationId: input.correlationId
+    });
+    return {
+      healthy: Boolean(response.sid),
+      details: response
+    };
+  }
+
   if (input.providerType === 'GOOGLE_SHEETS') {
     const spreadsheetId = credentialString(input.credentials, 'spreadsheetId');
     const serviceAccountJson = credentialString(input.credentials, 'serviceAccountJson');
@@ -634,19 +656,559 @@ export async function runProviderHealthCheck(
     return { healthy: false, details: { statusCode: response.status, reason: `PeopleDataLabs health probe failed (HTTP ${response.status}).` } };
   }
 
+  if (input.providerType === 'VIBER') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const endpoint = 'https://chatapi.viber.com/pa/get_account_info';
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'x-viber-auth-token': apiKey,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({})
+    });
+
+    const responseText = await response.text().catch(() => '');
+    let responseJson: { status?: number; status_message?: string } | null = null;
+    try {
+      responseJson = responseText ? (JSON.parse(responseText) as { status?: number; status_message?: string }) : null;
+    } catch {
+      responseJson = null;
+    }
+    const responseSnippet = responseText.slice(0, 500);
+
+    logger.info(
+      {
+        provider: 'viber',
+        operation: 'health-check',
+        correlationId: input.correlationId,
+        statusCode: response.status,
+        endpoint,
+        responseSnippet
+      },
+      'viber-health-check-response'
+    );
+
+    if (response.status === 200 && responseJson?.status === 0) {
+      return {
+        healthy: true,
+        details: {
+          statusCode: 200,
+          endpoint,
+          reason: 'Viber reachable and API key accepted.'
+        }
+      };
+    }
+
+    if (response.status === 401 || response.status === 403 || responseJson?.status_message === 'invalidAuthToken') {
+      return {
+        healthy: false,
+        details: {
+          statusCode: response.status,
+          endpoint,
+          reason: 'Viber rejected the API key (invalid auth token).',
+          responseBody: responseJson ?? responseSnippet
+        }
+      };
+    }
+
+    return {
+      healthy: false,
+      details: {
+        statusCode: response.status,
+        endpoint,
+        reason: `Viber health probe failed (HTTP ${response.status}).`,
+        responseBody: responseJson ?? responseSnippet
+      }
+    };
+  }
+
+  if (input.providerType === 'LINKEDIN') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const endpoint = 'https://api.linkedin.com/v2/userinfo';
+
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: { authorization: `Bearer ${apiKey}` }
+    });
+
+    const responseText = await response.text().catch(() => '');
+    let responseJson: unknown = null;
+    try {
+      responseJson = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      responseJson = null;
+    }
+    const responseSnippet = responseText.slice(0, 500);
+
+    logger.info(
+      {
+        provider: 'linkedin',
+        operation: 'health-check',
+        correlationId: input.correlationId,
+        statusCode: response.status,
+        endpoint,
+        responseSnippet
+      },
+      'linkedin-health-check-response'
+    );
+
+    if (response.status === 200) {
+      return {
+        healthy: true,
+        details: {
+          statusCode: 200,
+          endpoint,
+          reason: 'LinkedIn OAuth2 access token valid.'
+        }
+      };
+    }
+
+    if (response.status === 401) {
+      return {
+        healthy: false,
+        details: {
+          statusCode: 401,
+          endpoint,
+          reason: 'LinkedIn access token invalid or expired.',
+          responseBody: responseJson ?? responseSnippet
+        }
+      };
+    }
+
+    if (response.status === 403) {
+      return {
+        healthy: false,
+        details: {
+          statusCode: 403,
+          endpoint,
+          reason: 'LinkedIn access denied. Token may lack required scopes (e.g. openid, profile).',
+          responseBody: responseJson ?? responseSnippet
+        }
+      };
+    }
+
+    return {
+      healthy: false,
+      details: {
+        statusCode: response.status,
+        endpoint,
+        reason: `LinkedIn health probe failed (HTTP ${response.status}).`,
+        responseBody: responseJson ?? responseSnippet
+      }
+    };
+  }
+
+  if (input.providerType === 'WHATSAPP_2CHAT') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const endpoint = 'https://api.p.2chat.io/open/info';
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: { 'x-api-key': apiKey }
+    });
+
+    const responseText = await response.text().catch(() => '');
+    let responseJson: unknown = null;
+    try {
+      responseJson = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      responseJson = null;
+    }
+    const responseSnippet = responseText.slice(0, 500);
+
+    logger.info(
+      {
+        provider: 'whatsapp-2chat',
+        operation: 'health-check',
+        correlationId: input.correlationId,
+        statusCode: response.status,
+        endpoint,
+        responseSnippet
+      },
+      'whatsapp-2chat-health-check-response'
+    );
+
+    if (response.status >= 200 && response.status < 300) {
+      return {
+        healthy: true,
+        details: {
+          statusCode: response.status,
+          endpoint,
+          reason: '2Chat reachable and API key accepted.'
+        }
+      };
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return {
+        healthy: false,
+        details: {
+          statusCode: response.status,
+          endpoint,
+          reason: '2Chat rejected the API key (unauthorized/forbidden).',
+          responseBody: responseJson ?? responseSnippet
+        }
+      };
+    }
+
+    return {
+      healthy: false,
+      details: {
+        statusCode: response.status,
+        endpoint,
+        reason: `2Chat health probe failed (HTTP ${response.status}).`,
+        responseBody: responseJson ?? responseSnippet
+      }
+    };
+  }
+
+  if (input.providerType === 'LINE') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const endpoint = 'https://api.line.me/v2/bot/info';
+
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: { authorization: `Bearer ${apiKey}` }
+    });
+
+    const responseText = await response.text().catch(() => '');
+    let responseJson: unknown = null;
+    try {
+      responseJson = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      responseJson = null;
+    }
+    const responseSnippet = responseText.slice(0, 500);
+
+    logger.info(
+      {
+        provider: 'line',
+        operation: 'health-check',
+        correlationId: input.correlationId,
+        statusCode: response.status,
+        endpoint,
+        responseSnippet
+      },
+      'line-health-check-response'
+    );
+
+    if (response.status === 200) {
+      const body = responseJson as { userId?: string; basicId?: string; displayName?: string } | null;
+      return {
+        healthy: true,
+        details: {
+          statusCode: 200,
+          endpoint,
+          reason: 'LINE reachable and channel access token accepted.',
+          displayName: body?.displayName ?? undefined
+        }
+      };
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return {
+        healthy: false,
+        details: {
+          statusCode: response.status,
+          endpoint,
+          reason: 'LINE rejected the channel access token (unauthorized/forbidden).',
+          responseBody: responseJson ?? responseSnippet
+        }
+      };
+    }
+
+    return {
+      healthy: false,
+      details: {
+        statusCode: response.status,
+        endpoint,
+        reason: `LINE health probe failed (HTTP ${response.status}).`,
+        responseBody: responseJson ?? responseSnippet
+      }
+    };
+  }
+
+  if (input.providerType === 'KAKAOTALK') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const endpoint = 'https://kapi.kakao.com/v1/api/talk/profile';
+
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: { authorization: `Bearer ${apiKey}` }
+    });
+
+    const responseText = await response.text().catch(() => '');
+    let responseJson: unknown = null;
+    try {
+      responseJson = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      responseJson = null;
+    }
+    const responseSnippet = responseText.slice(0, 500);
+
+    logger.info(
+      {
+        provider: 'kakaotalk',
+        operation: 'health-check',
+        correlationId: input.correlationId,
+        statusCode: response.status,
+        endpoint,
+        responseSnippet
+      },
+      'kakaotalk-health-check-response'
+    );
+
+    if (response.status === 200) {
+      const body = responseJson as { nickName?: string; profileImageUrl?: string } | null;
+      return {
+        healthy: true,
+        details: {
+          statusCode: 200,
+          endpoint,
+          reason: 'KakaoTalk reachable and access token accepted.',
+          nickName: body?.nickName ?? undefined
+        }
+      };
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return {
+        healthy: false,
+        details: {
+          statusCode: response.status,
+          endpoint,
+          reason: 'KakaoTalk rejected the access token (unauthorized/forbidden).',
+          responseBody: responseJson ?? responseSnippet
+        }
+      };
+    }
+
+    return {
+      healthy: false,
+      details: {
+        statusCode: response.status,
+        endpoint,
+        reason: `KakaoTalk health probe failed (HTTP ${response.status}).`,
+        responseBody: responseJson ?? responseSnippet
+      }
+    };
+  }
+
+  if (input.providerType === 'EMAIL_PROVIDER') {
+    const host = credentialString(input.credentials, 'host');
+    const portRaw = input.credentials.port;
+    const port = typeof portRaw === 'number' ? portRaw : 587;
+    const user = credentialString(input.credentials, 'user');
+    const pass = credentialString(input.credentials, 'pass');
+
+    if (!host || !user || !pass) {
+      return {
+        healthy: false,
+        details: {
+          reason: 'SMTP credentials incomplete. host, user, and pass are required.',
+          hasHost: Boolean(host),
+          hasUser: Boolean(user),
+          hasPass: Boolean(pass)
+        }
+      };
+    }
+
+    const transporter = createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user, pass }
+    });
+
+    try {
+      await transporter.verify();
+      logger.info(
+        {
+          provider: 'email-provider',
+          operation: 'health-check',
+          correlationId: input.correlationId,
+          host,
+          port
+        },
+        'email-provider-health-check-success'
+      );
+      return {
+        healthy: true,
+        details: {
+          reason: 'SMTP server reachable and credentials accepted.',
+          host,
+          port
+        }
+      };
+    } catch (error) {
+      logger.info(
+        {
+          provider: 'email-provider',
+          operation: 'health-check',
+          correlationId: input.correlationId,
+          host,
+          port,
+          error: errorMessage(error)
+        },
+        'email-provider-health-check-failed'
+      );
+      return {
+        healthy: false,
+        details: {
+          reason: `SMTP connection failed: ${errorMessage(error)}`,
+          host,
+          port
+        }
+      };
+    }
+  }
+
+  if (input.providerType === 'RESPONDIO') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const endpoint = 'https://api.respond.io/v2/channels';
+    const url = `${endpoint}?limit=1`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json'
+      }
+    });
+
+    const responseText = await response.text().catch(() => '');
+    let responseJson: unknown = null;
+    try {
+      responseJson = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      responseJson = null;
+    }
+    const responseSnippet = responseText.slice(0, 500);
+
+    logger.info(
+      {
+        provider: 'respondio',
+        operation: 'health-check',
+        correlationId: input.correlationId,
+        statusCode: response.status,
+        endpoint,
+        responseSnippet
+      },
+      'respondio-health-check-response'
+    );
+
+    if (response.status >= 200 && response.status < 300) {
+      return {
+        healthy: true,
+        details: {
+          statusCode: response.status,
+          endpoint,
+          reason: 'Respond.io reachable and API key accepted.'
+        }
+      };
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return {
+        healthy: false,
+        details: {
+          statusCode: response.status,
+          endpoint,
+          reason: 'Respond.io rejected the API key (unauthorized/forbidden).',
+          responseBody: responseJson ?? responseSnippet
+        }
+      };
+    }
+
+    return {
+      healthy: false,
+      details: {
+        statusCode: response.status,
+        endpoint,
+        reason: `Respond.io health probe failed (HTTP ${response.status}).`,
+        responseBody: responseJson ?? responseSnippet
+      }
+    };
+  }
+
+  if (input.providerType === 'WECHAT') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const endpoint = `https://api.weixin.qq.com/cgi-bin/get_api_domain_ip?access_token=${encodeURIComponent(apiKey)}`;
+
+    const response = await fetch(endpoint, {
+      method: 'GET'
+    });
+
+    const responseText = await response.text().catch(() => '');
+    let responseJson: unknown = null;
+    try {
+      responseJson = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      responseJson = null;
+    }
+    const responseSnippet = responseText.slice(0, 500);
+
+    logger.info(
+      {
+        provider: 'wechat',
+        operation: 'health-check',
+        correlationId: input.correlationId,
+        statusCode: response.status,
+        endpoint: 'https://api.weixin.qq.com/cgi-bin/get_api_domain_ip',
+        responseSnippet
+      },
+      'wechat-health-check-response'
+    );
+
+    if (response.status === 200) {
+      const body = responseJson as { ip_list?: string[]; errcode?: number; errmsg?: string } | null;
+      if (body?.errcode && body.errcode !== 0) {
+        return {
+          healthy: false,
+          details: {
+            statusCode: 200,
+            endpoint: 'https://api.weixin.qq.com/cgi-bin/get_api_domain_ip',
+            reason: `WeChat API error: ${body.errmsg ?? 'unknown'} (errcode ${body.errcode}).`,
+            responseBody: responseJson ?? responseSnippet
+          }
+        };
+      }
+      return {
+        healthy: true,
+        details: {
+          statusCode: 200,
+          endpoint: 'https://api.weixin.qq.com/cgi-bin/get_api_domain_ip',
+          reason: 'WeChat reachable and access_token accepted.',
+          ipList: body?.ip_list ?? undefined
+        }
+      };
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return {
+        healthy: false,
+        details: {
+          statusCode: response.status,
+          endpoint: 'https://api.weixin.qq.com/cgi-bin/get_api_domain_ip',
+          reason: 'WeChat rejected the access_token (unauthorized/forbidden).',
+          responseBody: responseJson ?? responseSnippet
+        }
+      };
+    }
+
+    return {
+      healthy: false,
+      details: {
+        statusCode: response.status,
+        endpoint: 'https://api.weixin.qq.com/cgi-bin/get_api_domain_ip',
+        reason: `WeChat health probe failed (HTTP ${response.status}).`,
+        responseBody: responseJson ?? responseSnippet
+      }
+    };
+  }
+
   const apiKey = credentialString(input.credentials, 'apiKey');
-  const genericHealthUrls: Partial<Record<ProviderType, string>> = {
-    APOLLO: 'https://api.apollo.io/v1/auth/health',
-    LINKEDIN: 'https://api.linkedin.com/v2/me',
-    EMAIL_PROVIDER: 'https://api.email-provider.example/v1/health',
-    WHATSAPP_2CHAT: 'https://api.2chat.co/v1/messages',
-    RESPONDIO: 'https://api.respond.io/v2/message',
-    LINE: 'https://api.line.me/v2/bot/info',
-    WECHAT: 'https://api.wechat.com/v1/account',
-    VIBER: 'https://chatapi.viber.com/pa/get_account_info',
-    KAKAOTALK: 'https://kapi.kakao.com/v1/api/talk/profile',
-    VOICEMAIL_DROP: 'https://api.voicemail-drop.example/v1/health'
-  };
+  const genericHealthUrls: Partial<Record<ProviderType, string>> = {};
 
   const endpoint = genericHealthUrls[input.providerType];
   if (!endpoint) {

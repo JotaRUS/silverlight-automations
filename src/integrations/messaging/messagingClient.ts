@@ -42,11 +42,20 @@ const channelProviderConfigs: Partial<Record<Channel, ChannelProviderConfig>> = 
     providerType: 'LINKEDIN',
     endpoint: 'https://api.linkedin.com/v2/messages',
     apiKeyHeader: 'authorization',
-    bodyBuilder: (recipient, text) => ({
-      recipients: [recipient],
-      body: text,
-      messageType: 'MEMBER_TO_MEMBER'
-    })
+    bodyBuilder: (recipient, text) => {
+      // LinkedIn Messages API requires Person URNs (urn:li:person:xxxxx)
+      const personUrn =
+        recipient.startsWith('urn:li:person:')
+          ? recipient
+          : recipient.includes('://')
+            ? recipient
+            : `urn:li:person:${recipient}`;
+      return {
+        recipients: [personUrn],
+        body: text,
+        messageType: 'MEMBER_TO_MEMBER'
+      };
+    }
   },
   whatsapp: {
     providerType: 'WHATSAPP_2CHAT',
@@ -103,8 +112,10 @@ const channelProviderConfigs: Partial<Record<Channel, ChannelProviderConfig>> = 
   },
   wechat: {
     providerType: 'WECHAT',
-    endpoint: 'https://api.wechat.com/v1/message/send',
-    apiKeyHeader: 'authorization',
+    endpoint: '',
+    endpointBuilder: (credentials) =>
+      `https://api.weixin.qq.com/cgi-bin/message/custom/send?access_token=${encodeURIComponent(credentialString(credentials, 'apiKey'))}`,
+    headerBuilder: () => ({}),
     bodyBuilder: (recipient, text) => ({
       touser: recipient,
       msgtype: 'text',
