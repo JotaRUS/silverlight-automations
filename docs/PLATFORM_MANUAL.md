@@ -165,6 +165,30 @@ npm run dev:frontend
 
 The web UI will be available at `http://localhost:3001`.
 
+### Restart all services with one command
+
+If you want to restart everything without manually managing each terminal, run this from the repository root:
+
+```bash
+npm run dev:restart
+```
+
+What this script does:
+- Stops existing API/frontend processes and worker/scheduler watchers
+- Ensures Docker Redis and PostgreSQL are running
+- Starts API, worker, scheduler, and frontend in the background
+- Writes logs to:
+  - `/tmp/sl-api.log`
+  - `/tmp/sl-worker.log`
+  - `/tmp/sl-scheduler.log`
+  - `/tmp/sl-frontend.log`
+
+Useful follow-up commands:
+
+```bash
+tail -f /tmp/sl-api.log /tmp/sl-worker.log /tmp/sl-scheduler.log /tmp/sl-frontend.log
+```
+
 ### Validate the setup
 
 With all five terminals running, verify from any terminal:
