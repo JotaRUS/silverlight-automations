@@ -134,6 +134,8 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
     ],
     platformConfiguration: [
       ...sharedPlatformSteps,
+      'For OAuth 2.0 authorization code flow, use redirect URI: https://silverlight-automations.siblingssoftware.com.ar/api/v1/auth/linkedin/callback',
+      'Generate authorization links via GET /api/v1/auth/linkedin/authorize?providerAccountId=<providerAccountId>.',
       'Configure your upstream Sales Navigator webhook sender to POST JSON payloads to /webhooks/sales-nav/{providerAccountId}.',
       'Payload must include projectId, sourceUrl, normalizedUrl, and leads array in the expected schema.'
     ],
@@ -164,6 +166,7 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
     officialLinks: [
       { label: 'LinkedIn Developer Apps', url: 'https://www.linkedin.com/developers/apps' },
       { label: 'LinkedIn Client Credentials Flow', url: 'https://learn.microsoft.com/en-us/linkedin/shared/authentication/client-credentials-flow' },
+      { label: 'LinkedIn Authorization Code Flow', url: 'https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow?tabs=HTTPS1' },
       { label: 'LinkedIn FAQ (Client ID Location)', url: 'https://developer.linkedin.com/support/faq' }
     ],
     lastReviewed: '2026-02-28'

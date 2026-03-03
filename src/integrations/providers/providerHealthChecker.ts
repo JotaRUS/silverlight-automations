@@ -155,6 +155,64 @@ async function runLinkedInSalesNavigatorHealthCheck(
   };
 }
 
+async function runLinkedInUserTokenHealthCheck(
+  accessToken: string,
+  correlationId: string
+): Promise<HealthCheckResult> {
+  const endpoint = 'https://api.linkedin.com/v2/userinfo';
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: { authorization: `Bearer ${accessToken}` }
+  });
+
+  const responseText = await response.text().catch(() => '');
+  let responseJson: unknown = null;
+  try {
+    responseJson = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    responseJson = null;
+  }
+  const responseSnippet = responseText.slice(0, 500);
+
+  logger.info(
+    {
+      provider: 'linkedin-sales-navigator',
+      operation: 'health-user-token',
+      correlationId,
+      statusCode: response.status,
+      endpoint,
+      responseSnippet
+    },
+    'linkedin-sales-nav-user-token-health-check-response'
+  );
+
+  if (response.status === 200) {
+    return {
+      healthy: true,
+      details: {
+        phase: 'oauth_user_token',
+        statusCode: 200,
+        endpoint,
+        reason: 'LinkedIn OAuth2 user token valid.'
+      }
+    };
+  }
+
+  return {
+    healthy: false,
+    details: {
+      phase: 'oauth_user_token',
+      statusCode: response.status,
+      endpoint,
+      reason:
+        response.status === 401
+          ? 'LinkedIn OAuth2 user token invalid or expired.'
+          : `LinkedIn OAuth2 user token health probe failed (HTTP ${response.status}).`,
+      responseBody: responseJson ?? responseSnippet
+    }
+  };
+}
+
 function base64Url(value: string): string {
   return Buffer.from(value).toString('base64url');
 }
@@ -581,6 +639,17 @@ export async function runProviderHealthCheck(
   }
 
   if (input.providerType === 'SALES_NAV_WEBHOOK') {
+    const oauthAccessToken = credentialString(input.credentials, 'oauthAccessToken');
+    if (oauthAccessToken) {
+      const oauthUserTokenResult = await runLinkedInUserTokenHealthCheck(
+        oauthAccessToken,
+        input.correlationId
+      );
+      if (oauthUserTokenResult.healthy) {
+        return oauthUserTokenResult;
+      }
+    }
+
     const clientId = credentialString(input.credentials, 'clientId');
     const clientSecret = credentialString(input.credentials, 'clientSecret');
     return runLinkedInSalesNavigatorHealthCheck(clientId, clientSecret, input.correlationId);
@@ -732,6 +801,17 @@ export async function runProviderHealthCheck(
   }
 
   if (input.providerType === 'LINKEDIN') {
+    const oauthAccessToken = credentialString(input.credentials, 'oauthAccessToken');
+    if (oauthAccessToken) {
+      const oauthUserTokenResult = await runLinkedInUserTokenHealthCheck(
+        oauthAccessToken,
+        input.correlationId
+      );
+      if (oauthUserTokenResult.healthy) {
+        return oauthUserTokenResult;
+      }
+    }
+
     const clientId = credentialString(input.credentials, 'clientId');
     const clientSecret = credentialString(input.credentials, 'clientSecret');
     if (clientId && clientSecret) {
