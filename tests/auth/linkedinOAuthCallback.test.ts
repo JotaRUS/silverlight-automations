@@ -1,6 +1,14 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+
+vi.mock('../../src/queues/redis', () => ({
+  redisConnection: {
+    get: vi.fn().mockResolvedValue(null),
+    set: vi.fn().mockResolvedValue('OK'),
+    del: vi.fn().mockResolvedValue(1)
+  }
+}));
 
 import { createApp } from '../../src/app/createApp';
 

@@ -7,6 +7,7 @@ import { env } from '../../config/env';
 import { authenticate, authorize, type RequestWithAuth } from '../../core/auth/authMiddleware';
 import { clearCsrfToken, issueCsrfToken } from '../../core/auth/csrf';
 import { signAccessToken, type AuthRole } from '../../core/auth/jwt';
+import { LinkedInOAuthStateStore } from '../../core/auth/linkedInOAuthStateStore';
 import { AppError } from '../../core/errors/appError';
 import { getRequestContext } from '../../core/http/requestContext';
 import type { ProviderType } from '../../core/providers/providerTypes';
@@ -50,18 +51,10 @@ function mapDbRole(dbRole: string): AuthRole {
 }
 
 const COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-const LINKEDIN_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const LINKEDIN_OAUTH_STATE_TTL_SECONDS = 10 * 60;
 const LINKEDIN_DEFAULT_SCOPES = ['r_liteprofile'];
 
-const linkedInOAuthStateStore = new Map<
-  string,
-  {
-    providerAccountId: string;
-    issuedToUserId: string;
-    scopes: string[];
-    expiresAt: number;
-  }
->();
+const linkedInOAuthStateStore = new LinkedInOAuthStateStore(LINKEDIN_OAUTH_STATE_TTL_SECONDS);
 const providerAccountsService = new ProviderAccountsService(prisma);
 
 function normalizeLinkedInScopes(rawScope: string | undefined): string[] {
@@ -79,15 +72,6 @@ function normalizeLinkedInScopes(rawScope: string | undefined): string[] {
   }
 
   return Array.from(new Set(normalized));
-}
-
-function sanitizeLinkedInOAuthStateStore(): void {
-  const now = Date.now();
-  for (const [state, session] of linkedInOAuthStateStore.entries()) {
-    if (session.expiresAt <= now) {
-      linkedInOAuthStateStore.delete(state);
-    }
-  }
 }
 
 export const authRoutes = Router();
@@ -218,15 +202,12 @@ authRoutes.get(
         );
       }
 
-      sanitizeLinkedInOAuthStateStore();
-
       const state = randomUUID();
       const scopes = normalizeLinkedInScopes(parsedQuery.data.scope);
-      linkedInOAuthStateStore.set(state, {
+      await linkedInOAuthStateStore.set(state, {
         providerAccountId: parsedQuery.data.providerAccountId,
         issuedToUserId: auth.userId,
-        scopes,
-        expiresAt: Date.now() + LINKEDIN_OAUTH_STATE_TTL_MS
+        scopes
       });
 
       const redirectUri = buildLinkedInRedirectUri(env.EXTERNAL_APP_BASE_URL);
@@ -247,7 +228,7 @@ authRoutes.get(
         redirectUri,
         state,
         scopes,
-        expiresAt: new Date(Date.now() + LINKEDIN_OAUTH_STATE_TTL_MS).toISOString()
+        expiresAt: new Date(Date.now() + LINKEDIN_OAUTH_STATE_TTL_SECONDS * 1000).toISOString()
       });
     } catch (error) {
       next(error);
@@ -284,13 +265,10 @@ authRoutes.get('/linkedin/callback', async (request, response, next) => {
       );
     }
 
-    sanitizeLinkedInOAuthStateStore();
-    const stateSession = linkedInOAuthStateStore.get(parsedQuery.data.state);
-    if (!stateSession || stateSession.expiresAt <= Date.now()) {
-      linkedInOAuthStateStore.delete(parsedQuery.data.state);
+    const stateSession = await linkedInOAuthStateStore.consume(parsedQuery.data.state);
+    if (!stateSession) {
       throw new AppError('OAuth state expired or invalid', 400, 'invalid_oauth_state');
     }
-    linkedInOAuthStateStore.delete(parsedQuery.data.state);
 
     const providerAccount = await providerAccountsService.getActiveAccountOrThrow(
       stateSession.providerAccountId
