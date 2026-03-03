@@ -25,7 +25,7 @@ export function selectEmailsForOutreach(
 const CHANNEL_TO_PROVIDER_TYPE: Record<PrismaChannel, ProviderType> = {
   PHONE: 'YAY',
   EMAIL: 'EMAIL_PROVIDER',
-  LINKEDIN: 'LINKEDIN',
+  LINKEDIN: 'SALES_NAV_WEBHOOK',
   WHATSAPP: 'WHATSAPP_2CHAT',
   RESPONDIO: 'RESPONDIO',
   SMS: 'TWILIO',
@@ -47,10 +47,6 @@ export async function isChannelAvailableForProject(
   channel: PrismaChannel
 ): Promise<boolean> {
   const providerType = CHANNEL_TO_PROVIDER_TYPE[channel];
-  if (!providerType) {
-    return false;
-  }
-
   const bindingField: ProjectProviderBindingField = PROVIDER_TYPE_TO_PROJECT_BINDING_FIELD[providerType];
   const project = await prismaClient.project.findUnique({
     where: { id: projectId },

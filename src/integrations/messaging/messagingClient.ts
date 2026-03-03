@@ -6,6 +6,7 @@ import type { ProviderType } from '../../core/providers/providerTypes';
 import { clock } from '../../core/time/clock';
 import { prisma } from '../../db/client';
 import { EmailClient } from './emailClient';
+import { getSalesNavAccessToken } from '../sales-nav/salesNavOAuthClient';
 
 export interface SendMessageInput {
   projectId: string;
@@ -39,7 +40,7 @@ const channelProviderConfigs: Partial<Record<Channel, ChannelProviderConfig>> = 
     useSmtp: true
   },
   linkedin: {
-    providerType: 'LINKEDIN',
+    providerType: 'SALES_NAV_WEBHOOK',
     endpoint: 'https://api.linkedin.com/v2/messages',
     apiKeyHeader: 'authorization',
     bodyBuilder: (recipient, text) => {
@@ -218,6 +219,15 @@ export class MessagingClient {
       return this.sendViaSmtp(input, resolvedCredentials);
     }
 
+    let linkedInBearerToken: string | undefined;
+    if (input.channel === 'linkedin') {
+      const clientId = credentialString(resolvedCredentials.credentials, 'clientId');
+      const clientSecret = credentialString(resolvedCredentials.credentials, 'clientSecret');
+      if (clientId && clientSecret) {
+        linkedInBearerToken = await getSalesNavAccessToken(clientId, clientSecret);
+      }
+    }
+
     const endpoint = providerConfig.endpointBuilder
       ? providerConfig.endpointBuilder(resolvedCredentials.credentials)
       : providerConfig.endpoint;
@@ -231,9 +241,10 @@ export class MessagingClient {
       headers.authorization = `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`;
     } else if (!providerConfig.headerBuilder) {
       const credentialValue =
-        providerConfig.providerType === 'TELEGRAM'
+        linkedInBearerToken ??
+        (providerConfig.providerType === 'TELEGRAM'
           ? credentialString(resolvedCredentials.credentials, 'botToken')
-          : credentialString(resolvedCredentials.credentials, 'apiKey');
+          : credentialString(resolvedCredentials.credentials, 'apiKey'));
       if (credentialValue) {
         const headerName = providerConfig.apiKeyHeader ?? 'authorization';
         if (headerName === 'authorization') {

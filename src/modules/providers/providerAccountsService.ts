@@ -122,6 +122,15 @@ export class ProviderAccountsService {
   }
 
   public async create(input: ProviderAccountCreateInput, createdByAdminId: string): Promise<ProviderAccountSanitizedView> {
+    if (input.providerType === 'LINKEDIN') {
+      throw new AppError(
+        'LinkedIn provider has been unified into LinkedIn Sales Navigator. Use provider type SALES_NAV_WEBHOOK with Client ID + Client Secret.',
+        400,
+        'provider_type_deprecated',
+        { providerType: input.providerType, replacementProviderType: 'SALES_NAV_WEBHOOK' }
+      );
+    }
+
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(createdByAdminId)) {
       throw new AppError(

@@ -105,7 +105,7 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
   {
     slug: 'sales-navigator',
     providerType: 'SALES_NAV_WEBHOOK',
-    name: 'Sales Navigator',
+    name: 'LinkedIn Sales Navigator',
     category: 'Lead Sourcing',
     summary: 'LinkedIn Sales Navigator ingestion using OAuth client credentials and webhook delivery.',
     credentials: [
@@ -468,9 +468,9 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
   {
     slug: 'linkedin',
     providerType: 'LINKEDIN',
-    name: 'LinkedIn',
+    name: 'LinkedIn Messaging (Legacy)',
     category: 'Outreach & Messaging',
-    summary: 'LinkedIn outreach channel provider storing a valid LinkedIn access token/API credential.',
+    summary: 'Legacy LinkedIn outreach token provider. New sourcing integrations should use LinkedIn Sales Navigator.',
     credentials: [
       { key: 'apiKey', label: 'API Key / Access Token', required: true, description: 'LinkedIn API credential/token used for outbound calls.' }
     ],

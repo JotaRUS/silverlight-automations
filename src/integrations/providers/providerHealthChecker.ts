@@ -73,6 +73,88 @@ function salesNavOauthErrorMessage(error: unknown): string {
   return `OAuth token request failed: ${errorMessage(error)}`;
 }
 
+async function runLinkedInSalesNavigatorHealthCheck(
+  clientId: string,
+  clientSecret: string,
+  correlationId: string
+): Promise<HealthCheckResult> {
+  let token = '';
+  try {
+    const response = await requestJson<{ access_token?: string }>({
+      method: 'POST',
+      url: 'https://www.linkedin.com/oauth/v2/accessToken',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: clientId,
+        client_secret: clientSecret
+      }).toString(),
+      provider: 'linkedin-sales-navigator',
+      operation: 'health-token',
+      correlationId
+    });
+    token = response.access_token ?? '';
+  } catch (error) {
+    return {
+      healthy: false,
+      details: {
+        phase: 'oauth_token',
+        reason: salesNavOauthErrorMessage(error)
+      }
+    };
+  }
+
+  if (!token) {
+    return {
+      healthy: false,
+      details: {
+        phase: 'oauth_token',
+        reason: 'empty_access_token'
+      }
+    };
+  }
+
+  // Probe a Lead Sync REST endpoint to verify actual API reachability.
+  // 400/403 still indicates endpoint reached (for example, product review pending or missing owner filters).
+  const leadSyncResponse = await fetch('https://api.linkedin.com/rest/leadForms?q=owner', {
+    method: 'GET',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'Linkedin-Version': '202602',
+      'X-Restli-Protocol-Version': '2.0.0'
+    }
+  });
+  const responseText = await leadSyncResponse.text().catch(() => '');
+  const responseSnippet = responseText.slice(0, 300);
+
+  let healthy = false;
+  let reason = `Lead Sync probe failed (HTTP ${leadSyncResponse.status}).`;
+  if (leadSyncResponse.status >= 200 && leadSyncResponse.status < 300) {
+    healthy = true;
+    reason = 'Lead Sync endpoint reachable.';
+  } else if (leadSyncResponse.status === 400) {
+    // Expected when finder params are incomplete; still confirms endpoint access + auth.
+    healthy = true;
+    reason = 'Lead Sync endpoint reachable (request validation failed as expected for probe).';
+  } else if (leadSyncResponse.status === 401) {
+    reason = 'Lead Sync authentication failed (invalid/expired bearer token).';
+  } else if (leadSyncResponse.status === 403) {
+    reason =
+      'Lead Sync access denied. Your app may still be under review or missing Lead Sync permissions/roles.';
+  }
+
+  return {
+    healthy,
+    details: {
+      phase: 'lead_sync_probe',
+      reason,
+      statusCode: leadSyncResponse.status,
+      statusText: leadSyncResponse.statusText,
+      responseSnippet
+    }
+  };
+}
+
 function base64Url(value: string): string {
   return Buffer.from(value).toString('base64url');
 }
@@ -501,81 +583,7 @@ export async function runProviderHealthCheck(
   if (input.providerType === 'SALES_NAV_WEBHOOK') {
     const clientId = credentialString(input.credentials, 'clientId');
     const clientSecret = credentialString(input.credentials, 'clientSecret');
-    let token = '';
-    try {
-      const response = await requestJson<{ access_token?: string }>({
-        method: 'POST',
-        url: 'https://www.linkedin.com/oauth/v2/accessToken',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'client_credentials',
-          client_id: clientId,
-          client_secret: clientSecret
-        }).toString(),
-        provider: 'sales-nav',
-        operation: 'health-token',
-        correlationId: input.correlationId
-      });
-      token = response.access_token ?? '';
-    } catch (error) {
-      return {
-        healthy: false,
-        details: {
-          phase: 'oauth_token',
-          reason: salesNavOauthErrorMessage(error)
-        }
-      };
-    }
-
-    if (!token) {
-      return {
-        healthy: false,
-        details: {
-          phase: 'oauth_token',
-          reason: 'empty_access_token'
-        }
-      };
-    }
-
-    // Probe a Lead Sync REST endpoint to verify actual API reachability.
-    // 400/403 still indicates endpoint reached (for example, product review pending or missing owner filters).
-    const leadSyncResponse = await fetch('https://api.linkedin.com/rest/leadForms?q=owner', {
-      method: 'GET',
-      headers: {
-        authorization: `Bearer ${token}`,
-        'Linkedin-Version': '202602',
-        'X-Restli-Protocol-Version': '2.0.0'
-      }
-    });
-    const responseText = await leadSyncResponse.text().catch(() => '');
-    const responseSnippet = responseText.slice(0, 300);
-
-    let healthy = false;
-    let reason = `Lead Sync probe failed (HTTP ${leadSyncResponse.status}).`;
-    if (leadSyncResponse.status >= 200 && leadSyncResponse.status < 300) {
-      healthy = true;
-      reason = 'Lead Sync endpoint reachable.';
-    } else if (leadSyncResponse.status === 400) {
-      // Expected when finder params are incomplete; still confirms endpoint access + auth.
-      healthy = true;
-      reason = 'Lead Sync endpoint reachable (request validation failed as expected for probe).';
-    } else if (leadSyncResponse.status === 401) {
-      reason = 'Lead Sync authentication failed (invalid/expired bearer token).';
-    } else if (leadSyncResponse.status === 403) {
-      reason =
-        'Lead Sync access denied. Your app may still be under review or missing Lead Sync permissions/roles.';
-    }
-
-    return {
-      healthy,
-      details: {
-        phase: 'lead_sync_probe',
-        reason,
-        statusCode: leadSyncResponse.status,
-        statusText: leadSyncResponse.statusText,
-        responseSnippet
-      }
-    };
+    return runLinkedInSalesNavigatorHealthCheck(clientId, clientSecret, input.correlationId);
   }
 
   if (input.providerType === 'WIZA') {
@@ -724,6 +732,12 @@ export async function runProviderHealthCheck(
   }
 
   if (input.providerType === 'LINKEDIN') {
+    const clientId = credentialString(input.credentials, 'clientId');
+    const clientSecret = credentialString(input.credentials, 'clientSecret');
+    if (clientId && clientSecret) {
+      return runLinkedInSalesNavigatorHealthCheck(clientId, clientSecret, input.correlationId);
+    }
+
     const apiKey = credentialString(input.credentials, 'apiKey');
     const endpoint = 'https://api.linkedin.com/v2/userinfo';
 

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { PROVIDER_DISPLAY_NAMES } from '@/lib/providerConstants';
 import { listProjects } from '@/services/projectService';
 import { ApiError } from '@/services/apiClient';
 import {
@@ -31,7 +32,6 @@ const providerTypes: ProviderType[] = [
   'CONTACTOUT',
   'DATAGM',
   'PEOPLEDATALABS',
-  'LINKEDIN',
   'EMAIL_PROVIDER',
   'TWILIO',
   'WHATSAPP_2CHAT',
@@ -325,7 +325,9 @@ export default function ProviderAccountsPage(): JSX.Element {
 
       {Object.entries(groupedAccounts).map(([groupProviderType, accounts]) => (
         <Card key={groupProviderType} className="space-y-3">
-          <h3 className="text-base font-semibold">{groupProviderType}</h3>
+          <h3 className="text-base font-semibold">
+            {PROVIDER_DISPLAY_NAMES[groupProviderType as ProviderType] ?? groupProviderType}
+          </h3>
           <div className="space-y-2">
             {accounts.map((account) => (
               <div key={account.id} className="rounded border border-slate-200 p-3">
