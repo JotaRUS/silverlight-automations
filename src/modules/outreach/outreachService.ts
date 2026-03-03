@@ -164,7 +164,7 @@ export class OutreachService {
       input.channel
     );
 
-    const cooldownResult = await this.cooldownService.checkAndLog({
+    const cooldownResult = await this.cooldownService.check({
       projectId: input.projectId,
       expertId: input.expertId,
       channel: effectiveChannel,
@@ -222,6 +222,14 @@ export class OutreachService {
       recipient,
       body,
       correlationId
+    });
+
+    await this.cooldownService.enforce({
+      projectId: input.projectId,
+      expertId: input.expertId,
+      channel: effectiveChannel,
+      overrideCooldown: input.overrideCooldown,
+      reason: 'outreach_message_sent'
     });
 
     const message = await this.prismaClient.outreachMessage.create({
