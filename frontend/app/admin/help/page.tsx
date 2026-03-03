@@ -513,9 +513,10 @@ export default function HelpPage(): JSX.Element {
               'Paste both values into the corresponding fields in the Providers page.'
             ]}
             links={[
-              { label: 'LinkedIn Developer Portal', url: 'https://developer.linkedin.com/' }
+              { label: 'LinkedIn Developer Portal', url: 'https://developer.linkedin.com/' },
+              { label: 'Authorization Code Flow Guide', url: 'https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow?tabs=HTTPS1' }
             ]}
-            notes="Sales Navigator uses LinkedIn OAuth 2.0 Client Credentials Flow. Configure your Client ID and Client Secret from your LinkedIn Developer Portal app (Auth tab)."
+            notes="For OAuth 2.0 Authorization Code Flow, set redirect URI to https://silverlight-automations.siblingssoftware.com.ar/api/v1/auth/linkedin/callback and generate auth URLs from /api/v1/auth/linkedin/authorize."
           />
         </div>
 

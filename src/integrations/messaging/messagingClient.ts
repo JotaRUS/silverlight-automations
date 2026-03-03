@@ -221,9 +221,13 @@ export class MessagingClient {
 
     let linkedInBearerToken: string | undefined;
     if (input.channel === 'linkedin') {
+      const oauthAccessToken = credentialString(resolvedCredentials.credentials, 'oauthAccessToken');
+      if (oauthAccessToken) {
+        linkedInBearerToken = oauthAccessToken;
+      }
       const clientId = credentialString(resolvedCredentials.credentials, 'clientId');
       const clientSecret = credentialString(resolvedCredentials.credentials, 'clientSecret');
-      if (clientId && clientSecret) {
+      if (!linkedInBearerToken && clientId && clientSecret) {
         linkedInBearerToken = await getSalesNavAccessToken(clientId, clientSecret);
       }
     }

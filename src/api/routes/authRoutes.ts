@@ -1,13 +1,22 @@
 import bcrypt from 'bcryptjs';
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 
 import { env } from '../../config/env';
-import { authenticate, type RequestWithAuth } from '../../core/auth/authMiddleware';
+import { authenticate, authorize, type RequestWithAuth } from '../../core/auth/authMiddleware';
 import { clearCsrfToken, issueCsrfToken } from '../../core/auth/csrf';
 import { signAccessToken, type AuthRole } from '../../core/auth/jwt';
 import { AppError } from '../../core/errors/appError';
+import { getRequestContext } from '../../core/http/requestContext';
+import type { ProviderType } from '../../core/providers/providerTypes';
 import { prisma } from '../../db/client';
+import {
+  buildLinkedInAuthorizeUrl,
+  buildLinkedInRedirectUri,
+  exchangeLinkedInAuthorizationCode
+} from '../../integrations/sales-nav/linkedinAuthCodeClient';
+import { ProviderAccountsService } from '../../modules/providers/providerAccountsService';
 
 const loginRequestSchema = z.object({
   email: z.string().email(),
@@ -19,6 +28,19 @@ const devLoginRequestSchema = z.object({
   role: z.enum(['admin', 'ops', 'caller'])
 });
 
+const linkedInAuthCodeAuthorizeQuerySchema = z.object({
+  providerAccountId: z.string().uuid(),
+  scope: z.string().optional(),
+  responseMode: z.enum(['json', 'redirect']).optional().default('json')
+});
+
+const linkedInAuthCodeCallbackQuerySchema = z.object({
+  code: z.string().optional(),
+  state: z.string().optional(),
+  error: z.string().optional(),
+  error_description: z.string().optional()
+});
+
 function mapDbRole(dbRole: string): AuthRole {
   const lower = dbRole.toLowerCase();
   if (lower === 'admin' || lower === 'ops' || lower === 'caller') {
@@ -28,6 +50,45 @@ function mapDbRole(dbRole: string): AuthRole {
 }
 
 const COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const LINKEDIN_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const LINKEDIN_DEFAULT_SCOPES = ['r_liteprofile'];
+
+const linkedInOAuthStateStore = new Map<
+  string,
+  {
+    providerAccountId: string;
+    issuedToUserId: string;
+    scopes: string[];
+    expiresAt: number;
+  }
+>();
+const providerAccountsService = new ProviderAccountsService(prisma);
+
+function normalizeLinkedInScopes(rawScope: string | undefined): string[] {
+  if (!rawScope) {
+    return [...LINKEDIN_DEFAULT_SCOPES];
+  }
+
+  const normalized = rawScope
+    .split(/[,\s]+/)
+    .map((scope) => scope.trim())
+    .filter((scope) => scope.length > 0);
+
+  if (!normalized.length) {
+    return [...LINKEDIN_DEFAULT_SCOPES];
+  }
+
+  return Array.from(new Set(normalized));
+}
+
+function sanitizeLinkedInOAuthStateStore(): void {
+  const now = Date.now();
+  for (const [state, session] of linkedInOAuthStateStore.entries()) {
+    if (session.expiresAt <= now) {
+      linkedInOAuthStateStore.delete(state);
+    }
+  }
+}
 
 export const authRoutes = Router();
 
@@ -112,6 +173,192 @@ authRoutes.post('/logout', authenticate, (request, response) => {
   response.status(200).json({
     authenticated: false
   });
+});
+
+authRoutes.get(
+  '/linkedin/authorize',
+  authenticate,
+  authorize(['admin', 'ops']),
+  async (request, response, next) => {
+    try {
+      const parsedQuery = linkedInAuthCodeAuthorizeQuerySchema.safeParse(request.query);
+      if (!parsedQuery.success) {
+        throw new AppError('Invalid payload', 400, 'invalid_payload', parsedQuery.error.flatten());
+      }
+
+      const auth = (request as RequestWithAuth).auth;
+      if (!auth?.userId) {
+        throw new AppError('Unauthorized', 401, 'unauthorized');
+      }
+
+      const providerAccount = await providerAccountsService.getActiveAccountOrThrow(
+        parsedQuery.data.providerAccountId
+      );
+      const providerType = providerAccount.providerType as ProviderType;
+      if (providerType !== 'SALES_NAV_WEBHOOK' && providerType !== 'LINKEDIN') {
+        throw new AppError(
+          'Provider account is not a LinkedIn Sales Navigator account',
+          422,
+          'provider_type_not_supported'
+        );
+      }
+
+      const credentials = await providerAccountsService.getDecryptedCredentials(
+        parsedQuery.data.providerAccountId,
+        providerType
+      );
+      const clientId = typeof credentials.clientId === 'string' ? credentials.clientId : '';
+      const clientSecret =
+        typeof credentials.clientSecret === 'string' ? credentials.clientSecret : '';
+      if (!clientId || !clientSecret) {
+        throw new AppError(
+          'Provider credentials missing LinkedIn client ID or client secret',
+          422,
+          'missing_linkedin_client_credentials'
+        );
+      }
+
+      sanitizeLinkedInOAuthStateStore();
+
+      const state = randomUUID();
+      const scopes = normalizeLinkedInScopes(parsedQuery.data.scope);
+      linkedInOAuthStateStore.set(state, {
+        providerAccountId: parsedQuery.data.providerAccountId,
+        issuedToUserId: auth.userId,
+        scopes,
+        expiresAt: Date.now() + LINKEDIN_OAUTH_STATE_TTL_MS
+      });
+
+      const redirectUri = buildLinkedInRedirectUri(env.EXTERNAL_APP_BASE_URL);
+      const authorizeUrl = buildLinkedInAuthorizeUrl({
+        clientId,
+        redirectUri,
+        state,
+        scopes
+      });
+
+      if (parsedQuery.data.responseMode === 'redirect') {
+        response.redirect(302, authorizeUrl);
+        return;
+      }
+
+      response.status(200).json({
+        authorizeUrl,
+        redirectUri,
+        state,
+        scopes,
+        expiresAt: new Date(Date.now() + LINKEDIN_OAUTH_STATE_TTL_MS).toISOString()
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+authRoutes.get('/linkedin/callback', async (request, response, next) => {
+  try {
+    const parsedQuery = linkedInAuthCodeCallbackQuerySchema.safeParse(request.query);
+    if (!parsedQuery.success) {
+      throw new AppError('Invalid payload', 400, 'invalid_payload', parsedQuery.error.flatten());
+    }
+
+    if (parsedQuery.data.error) {
+      throw new AppError(
+        parsedQuery.data.error_description ?? parsedQuery.data.error,
+        400,
+        'linkedin_oauth_error',
+        {
+          provider: 'linkedin',
+          error: parsedQuery.data.error,
+          errorDescription: parsedQuery.data.error_description
+        }
+      );
+    }
+
+    if (!parsedQuery.data.state || !parsedQuery.data.code) {
+      throw new AppError(
+        'Missing OAuth code/state in callback',
+        400,
+        'invalid_payload',
+        { codePresent: Boolean(parsedQuery.data.code), statePresent: Boolean(parsedQuery.data.state) }
+      );
+    }
+
+    sanitizeLinkedInOAuthStateStore();
+    const stateSession = linkedInOAuthStateStore.get(parsedQuery.data.state);
+    if (!stateSession || stateSession.expiresAt <= Date.now()) {
+      linkedInOAuthStateStore.delete(parsedQuery.data.state);
+      throw new AppError('OAuth state expired or invalid', 400, 'invalid_oauth_state');
+    }
+    linkedInOAuthStateStore.delete(parsedQuery.data.state);
+
+    const providerAccount = await providerAccountsService.getActiveAccountOrThrow(
+      stateSession.providerAccountId
+    );
+    const providerType = providerAccount.providerType as ProviderType;
+    const credentials = await providerAccountsService.getDecryptedCredentials(
+      stateSession.providerAccountId,
+      providerType
+    );
+    const clientId = typeof credentials.clientId === 'string' ? credentials.clientId : '';
+    const clientSecret =
+      typeof credentials.clientSecret === 'string' ? credentials.clientSecret : '';
+    if (!clientId || !clientSecret) {
+      throw new AppError(
+        'Provider credentials missing LinkedIn client ID or client secret',
+        422,
+        'missing_linkedin_client_credentials'
+      );
+    }
+
+    const redirectUri = buildLinkedInRedirectUri(env.EXTERNAL_APP_BASE_URL);
+    const correlationId = getRequestContext()?.correlationId ?? 'system';
+    const tokenResponse = await exchangeLinkedInAuthorizationCode({
+      code: parsedQuery.data.code,
+      clientId,
+      clientSecret,
+      redirectUri,
+      correlationId
+    });
+
+    const now = Date.now();
+    const mergedCredentials: Record<string, unknown> = {
+      ...credentials,
+      oauthAccessToken: tokenResponse.access_token,
+      oauthAccessTokenExpiresAt: new Date(now + tokenResponse.expires_in * 1000).toISOString(),
+      oauthScope:
+        typeof tokenResponse.scope === 'string' && tokenResponse.scope.length > 0
+          ? tokenResponse.scope
+          : stateSession.scopes.join(' ')
+    };
+    if (typeof tokenResponse.refresh_token === 'string' && tokenResponse.refresh_token.length > 0) {
+      mergedCredentials.oauthRefreshToken = tokenResponse.refresh_token;
+    }
+    if (
+      typeof tokenResponse.refresh_token_expires_in === 'number' &&
+      Number.isFinite(tokenResponse.refresh_token_expires_in) &&
+      tokenResponse.refresh_token_expires_in > 0
+    ) {
+      mergedCredentials.oauthRefreshTokenExpiresAt = new Date(
+        now + tokenResponse.refresh_token_expires_in * 1000
+      ).toISOString();
+    }
+
+    await providerAccountsService.update(stateSession.providerAccountId, {
+      credentials: mergedCredentials
+    });
+
+    response.status(200).json({
+      connected: true,
+      providerAccountId: stateSession.providerAccountId,
+      redirectUri,
+      scope: mergedCredentials.oauthScope,
+      accessTokenExpiresAt: mergedCredentials.oauthAccessTokenExpiresAt,
+      refreshTokenExpiresAt: mergedCredentials.oauthRefreshTokenExpiresAt ?? null
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 const profileUpdateSchema = z

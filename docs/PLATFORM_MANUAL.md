@@ -282,26 +282,58 @@ No auth. Pings both PostgreSQL and Redis. Returns `{"status":"ready"}` or 500 if
 
 ### 4.2 Auth
 
-#### `POST /api/v1/auth/token`
+#### `POST /api/v1/auth/login`
 
-No auth. Creates a JWT access token.
-
-**Request body:**
-
-| Field    | Type   | Required | Values                       |
-|----------|--------|----------|------------------------------|
-| `userId` | string | yes      | Any non-empty string         |
-| `role`   | string | yes      | `admin`, `ops`, or `caller`  |
+In development/test, supports a simple dev login payload:
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/auth/token \
+curl -X POST http://localhost:3000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"userId": "ops-user-42", "role": "ops"}'
+  -d '{"userId":"admin-user","role":"admin"}'
+```
+
+This sets an `access_token` cookie.
+
+#### `GET /api/v1/auth/csrf`
+
+Auth cookie required. Returns a CSRF token for mutating authenticated requests:
+
+```json
+{"csrfToken":"..."}
 ```
 
 #### `GET /api/v1/auth/me`
 
 Auth: any role. Returns the authenticated user's `userId` and `role`.
+
+#### LinkedIn OAuth 2.0 Authorization Code Flow
+
+##### `GET /api/v1/auth/linkedin/authorize`
+
+Auth: `admin` or `ops`.
+
+Builds a LinkedIn authorization URL for a specific provider account:
+
+```bash
+curl "http://localhost:3000/api/v1/auth/linkedin/authorize?providerAccountId=<providerAccountId>&responseMode=json"
+```
+
+Response includes:
+- `authorizeUrl`
+- `redirectUri`
+- `state`
+- `scopes`
+- `expiresAt`
+
+##### `GET /api/v1/auth/linkedin/callback`
+
+LinkedIn redirect target for OAuth code exchange.
+
+Production redirect URI:
+
+`https://silverlight-automations.siblingssoftware.com.ar/api/v1/auth/linkedin/callback`
+
+The callback exchanges authorization `code` for tokens and stores them in provider credentials.
 
 #### `GET /api/v1/admin/ping`
 
@@ -978,6 +1010,7 @@ Channel names are normalized automatically (e.g., `kakao`, `kaokao` → `kakaota
 | `NODE_ENV`  | no       | `development` | Runtime environment     |
 | `PORT`      | no       | `3000`        | HTTP server port        |
 | `LOG_LEVEL` | no       | `info`        | Pino log level          |
+| `EXTERNAL_APP_BASE_URL` | no | `http://localhost:3000` | Base URL used to build OAuth callback redirect URIs |
 
 ### Data stores
 

@@ -9,14 +9,24 @@ const singleApiKeySchema = z.object({
 
 const salesNavCredentialSchema = z.object({
   clientId: z.string().min(1),
-  clientSecret: z.string().min(1)
+  clientSecret: z.string().min(1),
+  oauthAccessToken: z.string().min(1).optional(),
+  oauthRefreshToken: z.string().min(1).optional(),
+  oauthAccessTokenExpiresAt: z.string().datetime().optional(),
+  oauthRefreshTokenExpiresAt: z.string().datetime().optional(),
+  oauthScope: z.string().min(1).optional()
 });
 
 const linkedinCredentialSchema = z
   .object({
     apiKey: z.string().min(1).optional(),
     clientId: z.string().min(1).optional(),
-    clientSecret: z.string().min(1).optional()
+    clientSecret: z.string().min(1).optional(),
+    oauthAccessToken: z.string().min(1).optional(),
+    oauthRefreshToken: z.string().min(1).optional(),
+    oauthAccessTokenExpiresAt: z.string().datetime().optional(),
+    oauthRefreshTokenExpiresAt: z.string().datetime().optional(),
+    oauthScope: z.string().min(1).optional()
   })
   .refine(
     (credentials) =>
@@ -38,7 +48,12 @@ const linkedinCredentialSchema = z
     ) {
       return {
         clientId: credentials.clientId,
-        clientSecret: credentials.clientSecret
+        clientSecret: credentials.clientSecret,
+        oauthAccessToken: credentials.oauthAccessToken,
+        oauthRefreshToken: credentials.oauthRefreshToken,
+        oauthAccessTokenExpiresAt: credentials.oauthAccessTokenExpiresAt,
+        oauthRefreshTokenExpiresAt: credentials.oauthRefreshTokenExpiresAt,
+        oauthScope: credentials.oauthScope
       };
     }
 

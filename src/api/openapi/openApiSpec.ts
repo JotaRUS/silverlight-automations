@@ -40,6 +40,16 @@ export const openApiSpec = {
         summary: 'Get CSRF token for mutating authenticated requests'
       }
     },
+    '/api/v1/auth/linkedin/authorize': {
+      get: {
+        summary: 'Build LinkedIn OAuth authorization URL for a provider account'
+      }
+    },
+    '/api/v1/auth/linkedin/callback': {
+      get: {
+        summary: 'Handle LinkedIn OAuth authorization code callback'
+      }
+    },
     '/api/v1/projects': {
       post: {
         summary: 'Create project'
