@@ -8,6 +8,7 @@ import { getQueues } from '../../queues';
 import { buildJobId } from '../../queues/jobId';
 import { enqueueWithContext } from '../../queues/producers/enqueueWithContext';
 import type { LeadIngestionJob } from '../../queues/definitions/jobPayloadSchemas';
+import { normalizeEmail, normalizePhone } from '../enrichment/enrichmentValidators';
 import { ProjectCompletionService } from '../projects/projectCompletionService';
 
 function normalizeValue(value?: string): string | undefined {
@@ -141,6 +142,79 @@ export class LeadIngestionService {
           expertId: expert.id
         }
       });
+
+      for (const rawEmail of job.lead.emails) {
+        const normalized = normalizeEmail(rawEmail);
+        if (normalized) {
+          await transaction.expertContact.upsert({
+            where: {
+              expertId_type_valueNormalized: {
+                expertId: expert.id,
+                type: 'EMAIL',
+                valueNormalized: normalized
+              }
+            },
+            create: {
+              expertId: expert.id,
+              type: 'EMAIL',
+              label: 'PROFESSIONAL',
+              value: normalized,
+              valueNormalized: normalized,
+              verificationStatus: 'UNVERIFIED',
+              confidenceScore: 0.5
+            },
+            update: {}
+          });
+        }
+      }
+
+      for (const rawPhone of job.lead.phones) {
+        const normalized = normalizePhone(rawPhone);
+        if (normalized) {
+          await transaction.expertContact.upsert({
+            where: {
+              expertId_type_valueNormalized: {
+                expertId: expert.id,
+                type: 'PHONE',
+                valueNormalized: normalized
+              }
+            },
+            create: {
+              expertId: expert.id,
+              type: 'PHONE',
+              label: 'MOBILE',
+              value: normalized,
+              valueNormalized: normalized,
+              verificationStatus: 'UNVERIFIED',
+              confidenceScore: 0.5
+            },
+            update: {}
+          });
+        }
+      }
+
+      if (job.lead.linkedinUrl) {
+        const normalizedLinkedin = job.lead.linkedinUrl.trim().toLowerCase();
+        await transaction.expertContact.upsert({
+          where: {
+            expertId_type_valueNormalized: {
+              expertId: expert.id,
+              type: 'LINKEDIN',
+              valueNormalized: normalizedLinkedin
+            }
+          },
+          create: {
+            expertId: expert.id,
+            type: 'LINKEDIN',
+            label: 'PROFESSIONAL',
+            value: job.lead.linkedinUrl,
+            valueNormalized: normalizedLinkedin,
+            verificationStatus: 'UNVERIFIED',
+            confidenceScore: 0.5
+          },
+          update: {}
+        });
+      }
 
       await transaction.systemEvent.create({
         data: {

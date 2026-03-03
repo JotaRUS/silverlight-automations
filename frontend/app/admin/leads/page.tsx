@@ -34,6 +34,7 @@ interface LeadRecord {
   status: LeadStatus;
   enrichmentConfidence?: number;
   createdAt: string;
+  metadata?: { city?: string; state?: string; country?: string; [key: string]: unknown };
   project?: { id: string; name: string };
   expert?: {
     fullName?: string;
@@ -357,7 +358,9 @@ export default function LeadsPage(): JSX.Element {
                   <th className="px-4 py-3">Project</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Location</th>
-                  <th className="px-4 py-3">Contacts</th>
+                  <th className="px-4 py-3">Email</th>
+                  <th className="px-4 py-3">Phone</th>
+                  <th className="px-4 py-3">LinkedIn</th>
                   <th className="px-4 py-3">Confidence</th>
                   <th className="px-4 py-3">Added</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -369,6 +372,13 @@ export default function LeadsPage(): JSX.Element {
                   const contacts = lead.expert?.contacts ?? [];
                   const emails = contacts.filter((c) => c.type === 'EMAIL');
                   const phones = contacts.filter((c) => c.type === 'PHONE');
+                  const linkedinContact = contacts.find((c) => c.type === 'LINKEDIN');
+                  const linkedinUrl = lead.linkedinUrl ?? linkedinContact?.value;
+                  const locationParts = [
+                    lead.metadata?.city,
+                    lead.metadata?.state,
+                    lead.countryIso
+                  ].filter(Boolean);
                   return (
                     <tr key={lead.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-4 py-3">
@@ -378,16 +388,6 @@ export default function LeadsPage(): JSX.Element {
                           </p>
                           {lead.jobTitle && (
                             <p className="text-xs text-slate-400 line-clamp-1">{lead.jobTitle}</p>
-                          )}
-                          {lead.linkedinUrl && (
-                            <a
-                              href={lead.linkedinUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[10px] text-primary hover:underline"
-                            >
-                              LinkedIn ↗
-                            </a>
                           )}
                         </div>
                       </td>
@@ -400,30 +400,50 @@ export default function LeadsPage(): JSX.Element {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        {(lead.countryIso || lead.regionIso) ? (
-                          <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
-                            {[lead.countryIso, lead.regionIso].filter(Boolean).join(' / ')}
+                        {locationParts.length > 0 ? (
+                          <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600" title={locationParts.join(', ')}>
+                            {locationParts.join(', ')}
                           </span>
                         ) : (
                           <span className="text-xs text-slate-300">—</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="space-y-0.5">
-                          {emails.length > 0 && (
-                            <p className="text-xs text-slate-600 flex items-center gap-1">
-                              <span className="material-symbols-outlined text-xs text-slate-400">mail</span>
-                              {emails[0].value}
-                            </p>
-                          )}
-                          {phones.length > 0 && (
-                            <p className="text-xs text-slate-600 flex items-center gap-1">
-                              <span className="material-symbols-outlined text-xs text-slate-400">call</span>
-                              {phones[0].value}
-                            </p>
-                          )}
-                          {contacts.length === 0 && <span className="text-xs text-slate-300">—</span>}
-                        </div>
+                        {emails.length > 0 ? (
+                          <p className="text-xs text-slate-600 flex items-center gap-1 max-w-[200px]" title={emails[0].value}>
+                            <span className="material-symbols-outlined text-xs text-slate-400 shrink-0">mail</span>
+                            <span className="truncate">{emails[0].value}</span>
+                          </p>
+                        ) : (
+                          <span className="text-xs text-slate-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {phones.length > 0 ? (
+                          <p className="text-xs text-slate-600 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-xs text-slate-400 shrink-0">call</span>
+                            {phones[0].value}
+                          </p>
+                        ) : (
+                          <span className="text-xs text-slate-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {linkedinUrl ? (
+                          <a
+                            href={linkedinUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                          >
+                            <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z" />
+                            </svg>
+                            Profile
+                          </a>
+                        ) : (
+                          <span className="text-xs text-slate-300">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {lead.enrichmentConfidence != null ? (

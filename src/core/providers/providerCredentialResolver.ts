@@ -43,12 +43,14 @@ export class ProviderCredentialResolver {
     reason: string;
     statusCode?: number;
     quarantineSeconds?: number;
+    responseBody?: unknown;
   }): Promise<void> {
     await this.router.markProviderAccountFailure(options.providerAccountId, {
       reason: options.reason,
       statusCode: options.statusCode,
       providerType: options.providerType,
-      quarantineSeconds: options.quarantineSeconds
+      quarantineSeconds: options.quarantineSeconds,
+      responseBody: options.responseBody
     });
   }
 }

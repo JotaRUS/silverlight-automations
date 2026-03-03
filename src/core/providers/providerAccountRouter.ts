@@ -125,7 +125,8 @@ export class ProviderAccountRouter {
     const activeAccounts = await this.prismaClient.providerAccount.findMany({
       where: {
         providerType: providerType as never,
-        isActive: true
+        isActive: true,
+        NOT: { lastHealthStatus: 'out_of_credits' }
       },
       orderBy: [
         {
@@ -293,21 +294,58 @@ export class ProviderAccountRouter {
       statusCode?: number;
       providerType: ProviderType;
       quarantineSeconds?: number;
+      responseBody?: unknown;
     }
   ): Promise<void> {
+    const providerAccount = await this.prismaClient.providerAccount.findUnique({
+      where: { id: providerAccountId }
+    });
+    if (!providerAccount) {
+      return;
+    }
+
+    const label = providerAccount.accountLabel;
+
+    if (this.isOutOfCreditsFailure(options.statusCode, options.responseBody)) {
+      await this.prismaClient.providerAccount.update({
+        where: { id: providerAccountId },
+        data: {
+          lastHealthStatus: 'out_of_credits',
+          lastHealthError: `Account has run out of credits or the subscription has expired (HTTP ${options.statusCode ?? 'unknown'}). Run "Test Connection" after topping up to re-enable.`,
+          lastHealthCheckAt: new Date()
+        }
+      });
+      await this.prismaClient.systemEvent.create({
+        data: {
+          category: 'ENFORCEMENT',
+          entityType: 'provider_account',
+          entityId: providerAccountId,
+          message: 'provider-account-out-of-credits',
+          payload: toJsonValue({
+            providerType: options.providerType,
+            reason: options.reason,
+            statusCode: options.statusCode
+          })
+        }
+      });
+      emitNotification({
+        type: 'provider.failure',
+        severity: 'ERROR',
+        title: `${options.providerType} out of credits`,
+        message: `${label}: Account is out of credits or subscription expired. Disabled until a successful "Test Connection".`,
+        metadata: {
+          providerAccountId,
+          providerType: options.providerType,
+          statusCode: options.statusCode
+        }
+      });
+      return;
+    }
+
     const isRateLimitFailure = options.statusCode === 429 || options.reason.toLowerCase().includes('rate');
     const isTimeoutFailure = options.reason.toLowerCase().includes('timeout');
     const isNetworkFailure = options.reason.toLowerCase().includes('network');
     if (!isRateLimitFailure && !isTimeoutFailure && !isNetworkFailure) {
-      return;
-    }
-
-    const providerAccount = await this.prismaClient.providerAccount.findUnique({
-      where: {
-        id: providerAccountId
-      }
-    });
-    if (!providerAccount) {
       return;
     }
 
@@ -333,7 +371,6 @@ export class ProviderAccountRouter {
     });
 
     const severity = options.statusCode === 429 ? 'WARNING' as const : 'ERROR' as const;
-    const label = providerAccount.accountLabel;
     emitNotification({
       type: 'provider.failure',
       severity,
@@ -346,6 +383,22 @@ export class ProviderAccountRouter {
         quarantineSeconds
       }
     });
+  }
+
+  private isOutOfCreditsFailure(statusCode?: number, responseBody?: unknown): boolean {
+    if (statusCode === 402) return true;
+    if (statusCode === 403 || statusCode === 429) {
+      if (responseBody && typeof responseBody === 'object') {
+        const bodyStr = JSON.stringify(responseBody).toLowerCase();
+        return bodyStr.includes('credit') ||
+          bodyStr.includes('quota') ||
+          bodyStr.includes('subscription') ||
+          bodyStr.includes('billing') ||
+          bodyStr.includes('payment') ||
+          bodyStr.includes('plan limit');
+      }
+    }
+    return false;
   }
 }
 

@@ -72,7 +72,10 @@ export function createApolloLeadSourcingWorker(): Worker<CorrelatedJobData<Apoll
                 phones: [],
                 metadata: {
                   apolloId: person.apolloId,
-                  source: 'apollo_people_search'
+                  source: 'apollo_people_search',
+                  city: person.city ?? undefined,
+                  state: person.state ?? undefined,
+                  country: person.country ?? undefined
                 }
               }
             }

@@ -330,19 +330,39 @@ export default function ProviderAccountsPage(): JSX.Element {
           </h3>
           <div className="space-y-2">
             {accounts.map((account) => (
-              <div key={account.id} className="rounded border border-slate-200 p-3">
+              <div
+                key={account.id}
+                className={`rounded border p-3 ${
+                  account.lastHealthStatus === 'out_of_credits'
+                    ? 'border-amber-300 bg-amber-50/60'
+                    : 'border-slate-200'
+                }`}
+              >
                 <div className="mb-2 flex items-center justify-between">
                   <p className="font-medium">{account.accountLabel}</p>
-                  <Badge tone={account.isActive ? 'success' : 'warning'}>
-                    {account.isActive ? 'active' : 'inactive'}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    {account.lastHealthStatus === 'out_of_credits' ? (
+                      <Badge tone="danger">out of credits</Badge>
+                    ) : null}
+                    <Badge tone={account.isActive ? 'success' : 'warning'}>
+                      {account.isActive ? 'active' : 'inactive'}
+                    </Badge>
+                  </div>
                 </div>
+                {account.lastHealthStatus === 'out_of_credits' ? (
+                  <div className="mb-2 rounded-md border border-amber-200 bg-amber-100 px-3 py-2 text-sm text-amber-900">
+                    This account is out of credits or the subscription has expired.
+                    Top up your balance, then click <strong>Test Connection</strong> to re-enable it.
+                  </div>
+                ) : null}
                 <p className="text-xs text-slate-500">
                   Credentials: {account.credentialFields.join(', ') || 'none'}
                 </p>
                 <p className="text-xs text-slate-500">
                   Health: {account.lastHealthStatus ?? 'unknown'}{' '}
-                  {account.lastHealthError ? `(${formatHealthMessage(account.lastHealthError)})` : ''}
+                  {account.lastHealthError && account.lastHealthStatus !== 'out_of_credits'
+                    ? `(${formatHealthMessage(account.lastHealthError)})`
+                    : ''}
                 </p>
                 {account.lastHealthError ? (
                   <details className="mt-2 rounded border border-slate-200 bg-slate-50 p-2">

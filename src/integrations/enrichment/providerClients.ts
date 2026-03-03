@@ -123,7 +123,7 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
       if (!results?.length) {
         return { emails, phones };
       }
-      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+      const emailRegex = /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,15}\b/g;
       const phoneRegex = /\+?1?\s*[-.(]?\d{3}[-.)]\s*\d{3}[-.]?\d{4}/g;
       for (const result of results) {
         const textSources = [

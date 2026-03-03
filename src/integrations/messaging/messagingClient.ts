@@ -311,11 +311,15 @@ export class MessagingClient {
       });
 
     const markProviderFailure = async (error: unknown): Promise<void> => {
+      const details = error instanceof AppError && typeof error.details === 'object' && error.details !== null
+        ? error.details as { responseBody?: unknown }
+        : {};
       await this.providerCredentialResolver.markFailure({
         providerAccountId: resolvedCredentials.providerAccountId,
         providerType: providerConfig.providerType,
         reason: error instanceof Error ? error.message : 'unknown messaging provider error',
-        statusCode: providerStatusCode(error)
+        statusCode: providerStatusCode(error),
+        responseBody: details.responseBody
       });
     };
 

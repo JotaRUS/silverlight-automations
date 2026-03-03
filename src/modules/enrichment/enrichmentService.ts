@@ -3,6 +3,7 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 import { AppError } from '../../core/errors/appError';
 import { ProviderCredentialResolver } from '../../core/providers/providerCredentialResolver';
 import type { ProviderType } from '../../core/providers/providerTypes';
+import { PROVIDER_TYPE_TO_PROJECT_BINDING_FIELD } from '../../core/providers/providerTypes';
 import { providerLimiter } from '../../core/rate-limiter/providerLimiter';
 import { clock } from '../../core/time/clock';
 import { GenericEnrichmentClient } from '../../integrations/enrichment/genericEnrichmentClient';
@@ -93,18 +94,15 @@ class DynamicResolvedEnrichmentProviderClient implements ResolvedAwareProviderCl
     try {
       return await client.enrich(request, correlationId);
     } catch (error) {
+      const errorDetails = error instanceof AppError && typeof error.details === 'object' && error.details !== null
+        ? error.details as { statusCode?: number; responseBody?: unknown }
+        : {};
       await this.providerCredentialResolver.markFailure({
         providerAccountId: resolvedCredentials.providerAccountId,
         providerType: this.providerType,
         reason: error instanceof Error ? error.message : 'unknown provider error',
-        statusCode:
-          error instanceof AppError &&
-          typeof error.details === 'object' &&
-          error.details !== null &&
-          'statusCode' in error.details &&
-          typeof (error.details as { statusCode?: unknown }).statusCode === 'number'
-            ? ((error.details as { statusCode: number }).statusCode)
-            : undefined
+        statusCode: typeof errorDetails.statusCode === 'number' ? errorDetails.statusCode : undefined,
+        responseBody: errorDetails.responseBody
       });
       throw error;
     }
@@ -224,59 +222,89 @@ export class EnrichmentService {
   }
 
   public async enrich(job: EnrichmentJobInput, correlationId: string): Promise<void> {
-    const leadExists = await this.prismaClient.lead.findUnique({
+    const lead = await this.prismaClient.lead.findUnique({
       where: { id: job.leadId },
-      select: { id: true }
+      select: { id: true, expertId: true }
     });
-    if (!leadExists) {
+    if (!lead) {
       return;
-    }
-
-    const request = this.buildRequest(job);
-
-    const parallelProviders = this.providerClients.slice(0, 5);
-    const fallbackProviders = this.providerClients.slice(5);
-
-    const parallelResults = await Promise.all(
-      parallelProviders.map((providerClient) =>
-        this.runProvider(providerClient, request, correlationId, job.leadId)
-      )
-    );
-    const successfulParallelResults = parallelResults.filter(
-      (result): result is EnrichmentResult => Boolean(result)
-    );
-
-    let bestResult = this.pickBestResult(successfulParallelResults);
-    if (!bestResult || bestResult.confidenceScore < 0.7) {
-      for (const providerClient of fallbackProviders) {
-        const result = await this.runProvider(providerClient, request, correlationId, job.leadId);
-        if (result && (!bestResult || result.confidenceScore > bestResult.confidenceScore)) {
-          bestResult = result;
-        }
-        if (bestResult && bestResult.confidenceScore >= 0.7) {
-          break;
-        }
-      }
     }
 
     const completionService = new ProjectCompletionService(this.prismaClient);
 
-    if (!bestResult) {
+    let hasEmail = false;
+    let hasPhone = false;
+
+    if (lead.expertId) {
+      const existingContacts = await this.prismaClient.expertContact.findMany({
+        where: { expertId: lead.expertId },
+        select: { type: true }
+      });
+      hasEmail = existingContacts.some((c) => c.type === 'EMAIL');
+      hasPhone = existingContacts.some((c) => c.type === 'PHONE');
+    }
+
+    if (hasEmail && hasPhone) {
       await this.prismaClient.lead.update({
         where: { id: job.leadId },
-        data: {
-          status: 'ENRICHING'
-        }
+        data: { status: 'ENRICHED', enrichmentConfidence: 1.0 }
       });
       await completionService.recalculate(job.projectId);
       return;
     }
 
+    const project = await this.prismaClient.project.findUnique({
+      where: { id: job.projectId }
+    });
+    const projectRecord = project as unknown as Record<string, unknown> | null;
+    const eligibleProviders = this.providerClients.filter((client) => {
+      if (!client.providerType) return true;
+      const bindingField = PROVIDER_TYPE_TO_PROJECT_BINDING_FIELD[client.providerType];
+      if (!bindingField || !projectRecord) return true;
+      return Boolean(projectRecord[bindingField]);
+    });
+
+    const request = this.buildRequest(job);
+    const allResults: EnrichmentResult[] = [];
+
+    for (const providerClient of eligibleProviders) {
+      const result = await this.runProvider(providerClient, request, correlationId, job.leadId);
+      if (result) {
+        allResults.push(result);
+
+        const resultEmails = result.emails
+          .map((e) => normalizeEmail(e))
+          .filter((e): e is string => Boolean(e));
+        const resultPhones = result.phones
+          .map((p) => normalizePhone(p))
+          .filter((p): p is string => Boolean(p));
+
+        if (!hasEmail && resultEmails.length > 0) hasEmail = true;
+        if (!hasPhone && resultPhones.length > 0) hasPhone = true;
+
+        if (hasEmail && hasPhone) break;
+      }
+    }
+
+    const bestResult = this.pickBestResult(allResults);
+
+    if (!bestResult) {
+      await this.prismaClient.lead.update({
+        where: { id: job.leadId },
+        data: { status: 'ENRICHED', enrichmentConfidence: 0 }
+      });
+      await completionService.recalculate(job.projectId);
+      return;
+    }
+
+    const allEmails = allResults.flatMap((r) => r.emails);
+    const allPhones = allResults.flatMap((r) => r.phones);
+
     const normalizedEmails = Array.from(
-      new Set(bestResult.emails.map((email) => normalizeEmail(email)).filter((email): email is string => Boolean(email)))
+      new Set(allEmails.map((email) => normalizeEmail(email)).filter((email): email is string => Boolean(email)))
     );
     const normalizedPhones = Array.from(
-      new Set(bestResult.phones.map((phone) => normalizePhone(phone)).filter((phone): phone is string => Boolean(phone)))
+      new Set(allPhones.map((phone) => normalizePhone(phone)).filter((phone): phone is string => Boolean(phone)))
     );
 
     await this.prismaClient.lead.update({
@@ -288,10 +316,10 @@ export class EnrichmentService {
     });
     await completionService.recalculate(job.projectId);
 
-    const lead = await this.prismaClient.lead.findUnique({
+    const updatedLead = await this.prismaClient.lead.findUnique({
       where: { id: job.leadId }
     });
-    if (!lead?.expertId) {
+    if (!updatedLead?.expertId) {
       return;
     }
 
@@ -299,13 +327,13 @@ export class EnrichmentService {
       await this.prismaClient.expertContact.upsert({
         where: {
           expertId_type_valueNormalized: {
-            expertId: lead.expertId,
+            expertId: updatedLead.expertId,
             type: 'EMAIL',
             valueNormalized: email
           }
         },
         create: {
-          expertId: lead.expertId,
+          expertId: updatedLead.expertId,
           type: 'EMAIL',
           label: 'PROFESSIONAL',
           value: email,
@@ -324,13 +352,13 @@ export class EnrichmentService {
       await this.prismaClient.expertContact.upsert({
         where: {
           expertId_type_valueNormalized: {
-            expertId: lead.expertId,
+            expertId: updatedLead.expertId,
             type: 'PHONE',
             valueNormalized: phone
           }
         },
         create: {
-          expertId: lead.expertId,
+          expertId: updatedLead.expertId,
           type: 'PHONE',
           label: 'MOBILE',
           value: phone,
@@ -345,7 +373,7 @@ export class EnrichmentService {
       });
     }
 
-    await this.queuePhoneExports(lead.expertId, normalizedPhones, job.projectId, correlationId);
+    await this.queuePhoneExports(updatedLead.expertId, normalizedPhones, job.projectId, correlationId);
   }
 
   private async queuePhoneExports(

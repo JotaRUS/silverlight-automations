@@ -63,6 +63,8 @@ export interface ApolloPerson {
   companyName: string | null;
   linkedinUrl: string | null;
   email: string | null;
+  city: string | null;
+  state: string | null;
   country: string | null;
 }
 
@@ -123,20 +125,17 @@ export class ApolloClient {
 
   private async handleProviderError(providerAccountId: string, error: unknown): Promise<never> {
     const reason = error instanceof Error ? error.message : 'unknown provider error';
-    const statusCode =
-      error instanceof AppError &&
-      typeof error.details === 'object' &&
-      error.details !== null &&
-      'statusCode' in error.details &&
-      typeof (error.details as { statusCode?: unknown }).statusCode === 'number'
-        ? ((error.details as { statusCode: number }).statusCode)
-        : undefined;
+    const errorDetails = error instanceof AppError && typeof error.details === 'object' && error.details !== null
+      ? error.details as { statusCode?: number; responseBody?: unknown }
+      : {};
+    const statusCode = typeof errorDetails.statusCode === 'number' ? errorDetails.statusCode : undefined;
 
     await this.providerCredentialResolver.markFailure({
       providerAccountId,
       providerType: 'APOLLO',
       reason,
-      statusCode
+      statusCode,
+      responseBody: errorDetails.responseBody
     });
 
     emitNotification({
@@ -236,8 +235,11 @@ export class ApolloClient {
 
       for (const person of parsed.people) {
         const firstName = person.first_name ?? null;
-        const lastName = person.last_name ?? person.last_name_obfuscated ?? null;
-        const fullName = person.name ?? (firstName && lastName ? `${firstName} ${lastName}` : firstName);
+        const lastName = person.last_name ?? null;
+        const rawName = person.name;
+        const fullName = (rawName && !rawName.includes('*') ? rawName : null)
+          ?? (firstName && lastName ? `${firstName} ${lastName}` : null)
+          ?? firstName;
 
         allPeople.push({
           apolloId: person.id ?? `anon-${page}-${allPeople.length}`,
@@ -248,6 +250,8 @@ export class ApolloClient {
           companyName: person.organization?.name ?? person.organization_name ?? null,
           linkedinUrl: person.linkedin_url ?? null,
           email: person.email ?? null,
+          city: person.city ?? null,
+          state: person.state ?? null,
           country: person.country ?? null
         });
       }
