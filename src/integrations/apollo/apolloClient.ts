@@ -79,6 +79,14 @@ export interface ApolloPeopleSearchInput {
   personLocations?: string[];
   personTitles?: string[];
   personSeniorities?: string[];
+  personDepartments?: string[];
+  personFunctions?: string[];
+  personNotTitles?: string[];
+  personSkills?: string[];
+  organizationDomains?: string[];
+  organizationNames?: string[];
+  organizationLocations?: string[];
+  organizationNumEmployeesRanges?: string[];
   keywords?: string;
   correlationId: string;
   maxPages?: number;
@@ -179,6 +187,30 @@ export class ApolloClient {
       }
       if (input.personSeniorities?.length) {
         queryParams.person_seniorities = input.personSeniorities;
+      }
+      if (input.personDepartments?.length) {
+        queryParams.person_departments = input.personDepartments;
+      }
+      if (input.personFunctions?.length) {
+        queryParams.person_functions = input.personFunctions;
+      }
+      if (input.personNotTitles?.length) {
+        queryParams.person_not_titles = input.personNotTitles;
+      }
+      if (input.personSkills?.length) {
+        queryParams.person_skills = input.personSkills;
+      }
+      if (input.organizationDomains?.length) {
+        queryParams.q_organization_domains_list = input.organizationDomains;
+      }
+      if (input.organizationNames?.length) {
+        queryParams.q_organization_keyword_tags = input.organizationNames;
+      }
+      if (input.organizationLocations?.length) {
+        queryParams.organization_locations = input.organizationLocations;
+      }
+      if (input.organizationNumEmployeesRanges?.length) {
+        queryParams.organization_num_employees_ranges = input.organizationNumEmployeesRanges;
       }
       if (input.keywords) {
         queryParams.q_keywords = input.keywords;

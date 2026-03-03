@@ -9,6 +9,10 @@ import { closeQueues, getQueues } from '../queues';
 import { DEAD_LETTER_RETENTION_DAYS } from '../queues/dlq/deadLetterPolicy';
 import { buildJobId } from '../queues/jobId';
 import { emitNotification } from '../modules/notifications/emitNotification';
+import {
+  extractApolloFiltersFromSalesNavSearch,
+  mergeApolloSearchFilters
+} from '../modules/sales-nav/salesNavSearchParamExtractor';
 
 const deadLetterRepository = new DeadLetterJobRepository(prisma);
 const SCHEDULER_INTERVAL_MS = 60 * 1000;
@@ -18,6 +22,26 @@ let schedulerHandle: NodeJS.Timeout | undefined;
 let running = false;
 let stopping = false;
 let activeCyclePromise: Promise<void> | null = null;
+
+function mergeUniqueStringValues(...collections: (string[] | undefined)[]): string[] | undefined {
+  const deduped = new Map<string, string>();
+  for (const collection of collections) {
+    if (!Array.isArray(collection)) {
+      continue;
+    }
+    for (const item of collection) {
+      const value = item.trim();
+      if (!value) {
+        continue;
+      }
+      const key = value.toLowerCase();
+      if (!deduped.has(key)) {
+        deduped.set(key, value);
+      }
+    }
+  }
+  return deduped.size > 0 ? Array.from(deduped.values()) : undefined;
+}
 
 async function runScheduledMaintenance(): Promise<void> {
   const cutoff = subDays(clock.now(), DEAD_LETTER_RETENTION_DAYS);
@@ -374,9 +398,33 @@ async function queueApolloSourcingIfNeeded(
     take: 10,
     select: { titleNormalized: true }
   });
-  const personTitles = jobTitles.length > 0
-    ? jobTitles.map((jt) => jt.titleNormalized)
-    : undefined;
+  const activeSalesNavSearches = await prisma.salesNavSearch.findMany({
+    where: {
+      projectId: project.id,
+      isActive: true,
+      deletedAt: null
+    },
+    select: {
+      sourceUrl: true,
+      normalizedUrl: true,
+      metadata: true
+    },
+    take: 200
+  });
+  const salesNavFilters = mergeApolloSearchFilters(
+    activeSalesNavSearches.map((search) =>
+      extractApolloFiltersFromSalesNavSearch({
+        sourceUrl: search.sourceUrl,
+        normalizedUrl: search.normalizedUrl,
+        metadata: (search.metadata as Record<string, unknown> | null) ?? undefined
+      })
+    )
+  );
+  const personLocations = mergeUniqueStringValues(locations, salesNavFilters.personLocations);
+  const personTitles = mergeUniqueStringValues(
+    jobTitles.map((jt) => jt.titleNormalized),
+    salesNavFilters.personTitles
+  );
 
   await getQueues().apolloLeadSourcingQueue.add(
     'apollo-lead-sourcing.search',
@@ -384,8 +432,18 @@ async function queueApolloSourcingIfNeeded(
       correlationId: 'scheduler',
       data: {
         projectId: project.id,
-        personLocations: locations,
+        personLocations,
         personTitles,
+        personSeniorities: salesNavFilters.personSeniorities,
+        personDepartments: salesNavFilters.personDepartments,
+        personFunctions: salesNavFilters.personFunctions,
+        personNotTitles: salesNavFilters.personNotTitles,
+        personSkills: salesNavFilters.personSkills,
+        organizationDomains: salesNavFilters.organizationDomains,
+        organizationNames: salesNavFilters.organizationNames,
+        organizationLocations: salesNavFilters.organizationLocations,
+        organizationNumEmployeesRanges: salesNavFilters.organizationNumEmployeesRanges,
+        keywords: salesNavFilters.keywords,
         maxPages: 2,
         perPage: 25
       }

@@ -502,7 +502,7 @@ export default function HelpPage(): JSX.Element {
             notes="You must be an account admin to create API keys. API access depends on your Apollo pricing plan."
           />
           <ProviderGuide
-            name="Sales Navigator"
+            name="LinkedIn Sales Navigator"
             role="LinkedIn Sales Navigator lead ingestion via OAuth 2.0"
             fields={['Client ID', 'Client Secret']}
             steps={[
@@ -683,8 +683,8 @@ export default function HelpPage(): JSX.Element {
         </p>
         <div className="space-y-2">
           <ProviderGuide
-            name="LinkedIn"
-            role="Send LinkedIn messages to experts"
+            name="LinkedIn Messaging (Legacy)"
+            role="Legacy LinkedIn outreach token provider"
             fields={['API Key']}
             steps={[
               'Go to the LinkedIn Developer portal at developer.linkedin.com.',
@@ -695,6 +695,7 @@ export default function HelpPage(): JSX.Element {
             links={[
               { label: 'LinkedIn Developer Portal', url: 'https://developer.linkedin.com/' }
             ]}
+            notes="For sourcing and webhook ingestion, use the LinkedIn Sales Navigator provider with Client ID + Client Secret."
           />
           <ProviderGuide
             name="Email Provider"

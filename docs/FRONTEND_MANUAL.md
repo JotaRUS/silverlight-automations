@@ -349,7 +349,7 @@ POST /api/v1/projects/:projectId/sales-nav-searches
 Body: { "searches": [ { "sourceUrl": "...", "normalizedUrl": "..." }, ... ] }
 ```
 
-Minimum **6 searches** required. Show a counter: "4/6 minimum searches added".
+Minimum **1 search** required.
 
 **Form:** Repeating rows with URL inputs. Validate URLs client-side.
 
@@ -1021,4 +1021,4 @@ function useCreateProject() {
 | Method | Path                  | Auth mechanism              |
 |--------|-----------------------|-----------------------------|
 | POST   | `/webhooks/yay`       | HMAC signature headers      |
-| POST   | `/webhooks/sales-nav` | `x-sales-nav-secret` header |
+| POST   | `/webhooks/sales-nav/:providerAccountId` | `Authorization: Bearer <token>` or `x-sales-nav-client-id` |

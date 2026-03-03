@@ -419,7 +419,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"searches\": [\n    {\"sourceUrl\": \"https://linkedin.com/sales/search/1\", \"normalizedUrl\": \"https://linkedin.com/sales/search/1\"},\n    {\"sourceUrl\": \"https://linkedin.com/sales/search/2\", \"normalizedUrl\": \"https://linkedin.com/sales/search/2\"},\n    {\"sourceUrl\": \"https://linkedin.com/sales/search/3\", \"normalizedUrl\": \"https://linkedin.com/sales/search/3\"},\n    {\"sourceUrl\": \"https://linkedin.com/sales/search/4\", \"normalizedUrl\": \"https://linkedin.com/sales/search/4\"},\n    {\"sourceUrl\": \"https://linkedin.com/sales/search/5\", \"normalizedUrl\": \"https://linkedin.com/sales/search/5\"},\n    {\"sourceUrl\": \"https://linkedin.com/sales/search/6\", \"normalizedUrl\": \"https://linkedin.com/sales/search/6\"}\n  ]\n}"
+              "raw": "{\n  \"searches\": [\n    {\n      \"sourceUrl\": \"https://linkedin.com/sales/search/people?location=US&title=VP%20Engineering\",\n      \"normalizedUrl\": \"https://linkedin.com/sales/search/people?location=US&title=VP%20Engineering\",\n      \"metadata\": {\n        \"searchParameters\": {\n          \"personSeniorities\": [\"director\"],\n          \"organizationNames\": [\"Stripe\"]\n        }\n      }\n    }\n  ]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/sales-nav-searches",
@@ -434,7 +434,7 @@
                 "sales-nav-searches"
               ]
             },
-            "description": "Add LinkedIn Sales Navigator search URLs to a project. **Minimum 6 searches required.**\n\nEach search needs: sourceUrl (URL), normalizedUrl (URL), optional metadata.\n\n**Response:** `{\"created\": N}`"
+            "description": "Add LinkedIn Sales Navigator search URLs to a project. **Minimum 1 search required.**\n\nEach search needs: sourceUrl (URL), normalizedUrl (URL), optional metadata. Metadata can include structured search parameters to improve Apollo sourcing.\n\n**Response:** `{\"created\": N}`"
           },
           "response": []
         },
@@ -1409,8 +1409,8 @@
                 "value": "application/json"
               },
               {
-                "key": "x-sales-nav-secret",
-                "value": "<your-sales-nav-webhook-secret>"
+                "key": "x-sales-nav-client-id",
+                "value": "<linkedin-client-id>"
               }
             ],
             "body": {
@@ -1418,16 +1418,17 @@
               "raw": "{\n  \"projectId\": \"{{projectId}}\",\n  \"sourceUrl\": \"https://linkedin.com/sales/search/1\",\n  \"normalizedUrl\": \"https://linkedin.com/sales/search/1\",\n  \"metadata\": {},\n  \"leads\": [\n    {\n      \"firstName\": \"Jane\",\n      \"lastName\": \"Doe\",\n      \"fullName\": \"Jane Doe\",\n      \"companyName\": \"Stripe\",\n      \"jobTitle\": \"VP of Engineering\",\n      \"linkedinUrl\": \"https://linkedin.com/in/janedoe\",\n      \"countryIso\": \"US\",\n      \"emails\": [\"jane.doe@stripe.com\"],\n      \"phones\": [\"+14155551234\"]\n    },\n    {\n      \"firstName\": \"John\",\n      \"lastName\": \"Smith\",\n      \"fullName\": \"John Smith\",\n      \"companyName\": \"Wise\",\n      \"jobTitle\": \"Director of Product\",\n      \"linkedinUrl\": \"https://linkedin.com/in/johnsmith\",\n      \"countryIso\": \"GB\",\n      \"emails\": [\"john.smith@wise.com\"],\n      \"phones\": []\n    }\n  ]\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/webhooks/sales-nav",
+              "raw": "{{baseUrl}}/webhooks/sales-nav/{{providerAccountId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "webhooks",
-                "sales-nav"
+                "sales-nav",
+                "{{providerAccountId}}"
               ]
             },
-            "description": "Receives LinkedIn Sales Navigator lead data.\n\n**Verification:** The `x-sales-nav-secret` header must match the `SALES_NAV_WEBHOOK_SECRET` env var.\n\n**Payload:** projectId (UUID), sourceUrl, normalizedUrl, optional metadata, and an array of leads. Each lead is enqueued individually for ingestion and enrichment.\n\n**Response:** `{\"accepted\": true}` (202)"
+            "description": "Receives LinkedIn Sales Navigator lead data.\n\n**Verification:** Include either `Authorization: Bearer <token>` (LinkedIn OAuth client credentials token) OR `x-sales-nav-client-id` matching stored provider credentials.\n\n**Payload:** projectId (UUID), sourceUrl, normalizedUrl, optional metadata, and an array of leads. Each lead is enqueued individually for ingestion and enrichment.\n\n**Response:** `{\"accepted\": true}` (202)"
           },
           "response": []
         }

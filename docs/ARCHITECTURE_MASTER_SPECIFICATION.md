@@ -248,7 +248,7 @@ Tasks are assigned within a serializable transaction:
 - `LEADMAGIC`, `PROSPEO`, `EXA`, `ROCKETREACH`, `WIZA`, `FORAGER`, `ZELIQ`, `CONTACTOUT`, `DATAGM`, `PEOPLEDATALABS`
 
 **Outreach Channels** (11 providers)
-- `LINKEDIN`, `EMAIL_PROVIDER`, `TWILIO`, `WHATSAPP_2CHAT`, `RESPONDIO`, `LINE`, `WECHAT`, `VIBER`, `TELEGRAM`, `KAKAOTALK`, `VOICEMAIL_DROP`
+- `LINKEDIN` (legacy messaging token provider), `EMAIL_PROVIDER`, `TWILIO`, `WHATSAPP_2CHAT`, `RESPONDIO`, `LINE`, `WECHAT`, `VIBER`, `TELEGRAM`, `KAKAOTALK`, `VOICEMAIL_DROP`
 
 **Calling & Operations**
 - `YAY` — Yay telephony platform for call execution

@@ -12,6 +12,41 @@ const salesNavCredentialSchema = z.object({
   clientSecret: z.string().min(1)
 });
 
+const linkedinCredentialSchema = z
+  .object({
+    apiKey: z.string().min(1).optional(),
+    clientId: z.string().min(1).optional(),
+    clientSecret: z.string().min(1).optional()
+  })
+  .refine(
+    (credentials) =>
+      (typeof credentials.apiKey === 'string' && credentials.apiKey.length > 0) ||
+      (typeof credentials.clientId === 'string' &&
+        credentials.clientId.length > 0 &&
+        typeof credentials.clientSecret === 'string' &&
+        credentials.clientSecret.length > 0),
+    {
+      message: 'Provide either apiKey or clientId + clientSecret'
+    }
+  )
+  .transform((credentials) => {
+    if (
+      typeof credentials.clientId === 'string' &&
+      credentials.clientId.length > 0 &&
+      typeof credentials.clientSecret === 'string' &&
+      credentials.clientSecret.length > 0
+    ) {
+      return {
+        clientId: credentials.clientId,
+        clientSecret: credentials.clientSecret
+      };
+    }
+
+    return {
+      apiKey: credentials.apiKey ?? ''
+    };
+  });
+
 const twilioCredentialSchema = z.object({
   accountSid: z.string().min(1),
   authToken: z.string().min(1)
@@ -46,7 +81,7 @@ const providerCredentialParsers: Record<ProviderType, z.ZodType<Record<string, u
   CONTACTOUT: singleApiKeySchema,
   DATAGM: singleApiKeySchema,
   PEOPLEDATALABS: singleApiKeySchema,
-  LINKEDIN: singleApiKeySchema,
+  LINKEDIN: linkedinCredentialSchema,
   EMAIL_PROVIDER: singleApiKeySchema,
   TWILIO: twilioCredentialSchema,
   WHATSAPP_2CHAT: singleApiKeySchema,

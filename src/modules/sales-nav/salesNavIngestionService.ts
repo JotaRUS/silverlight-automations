@@ -4,6 +4,7 @@ import { getQueues } from '../../queues';
 import { buildJobId } from '../../queues/jobId';
 import type { SalesNavIngestionJob } from '../../queues/definitions/jobPayloadSchemas';
 import { enqueueWithContext } from '../../queues/producers/enqueueWithContext';
+import { extractApolloFiltersFromSalesNavSearch } from './salesNavSearchParamExtractor';
 
 export class SalesNavIngestionService {
   public constructor(private readonly prismaClient: PrismaClient) {}
@@ -13,6 +14,16 @@ export class SalesNavIngestionService {
   }
 
   public async ingest(payload: SalesNavIngestionJob): Promise<number> {
+    const apolloFilters = extractApolloFiltersFromSalesNavSearch({
+      sourceUrl: payload.sourceUrl,
+      normalizedUrl: payload.normalizedUrl,
+      metadata: payload.metadata
+    });
+    const normalizedMetadata = {
+      ...payload.metadata,
+      apolloFilters
+    };
+
     const search = await this.prismaClient.salesNavSearch.upsert({
       where: {
         projectId_normalizedUrl: {
@@ -24,12 +35,12 @@ export class SalesNavIngestionService {
         projectId: payload.projectId,
         sourceUrl: payload.sourceUrl,
         normalizedUrl: payload.normalizedUrl,
-        metadata: this.toJsonValue(payload.metadata),
+        metadata: this.toJsonValue(normalizedMetadata),
         paginationCursor: payload.pageCursor
       },
       update: {
         sourceUrl: payload.sourceUrl,
-        metadata: this.toJsonValue(payload.metadata),
+        metadata: this.toJsonValue(normalizedMetadata),
         paginationCursor: payload.pageCursor
       }
     });

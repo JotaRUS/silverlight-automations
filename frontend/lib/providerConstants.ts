@@ -2,7 +2,7 @@ import type { ProviderType } from '@/types/provider';
 
 export const PROVIDER_DISPLAY_NAMES: Record<ProviderType, string> = {
   APOLLO: 'Apollo',
-  SALES_NAV_WEBHOOK: 'Sales Navigator',
+  SALES_NAV_WEBHOOK: 'LinkedIn Sales Navigator',
   LEADMAGIC: 'LeadMagic',
   PROSPEO: 'Prospeo',
   EXA: 'Exa.ai',
@@ -13,7 +13,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderType, string> = {
   CONTACTOUT: 'ContactOut',
   DATAGM: 'Datagma',
   PEOPLEDATALABS: 'People Data Labs',
-  LINKEDIN: 'LinkedIn',
+  LINKEDIN: 'LinkedIn Messaging (Legacy)',
   EMAIL_PROVIDER: 'Email',
   TWILIO: 'Twilio',
   WHATSAPP_2CHAT: 'WhatsApp (2Chat)',
@@ -84,7 +84,7 @@ export const PROVIDER_CATEGORIES: ProviderCategory[] = [
     key: 'outreach',
     label: 'Outreach Channels',
     icon: 'campaign',
-    types: ['LINKEDIN', 'EMAIL_PROVIDER', 'TWILIO', 'WHATSAPP_2CHAT', 'RESPONDIO', 'LINE', 'WECHAT', 'VIBER', 'TELEGRAM', 'KAKAOTALK', 'VOICEMAIL_DROP']
+    types: ['EMAIL_PROVIDER', 'TWILIO', 'WHATSAPP_2CHAT', 'RESPONDIO', 'LINE', 'WECHAT', 'VIBER', 'TELEGRAM', 'KAKAOTALK', 'VOICEMAIL_DROP']
   },
   {
     key: 'operations',
