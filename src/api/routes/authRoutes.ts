@@ -10,6 +10,7 @@ import { signAccessToken, type AuthRole } from '../../core/auth/jwt';
 import { AppError } from '../../core/errors/appError';
 import { getRequestContext } from '../../core/http/requestContext';
 import type { ProviderType } from '../../core/providers/providerTypes';
+import { namespacedRedisKey } from '../../core/redis/namespace';
 import { prisma } from '../../db/client';
 import {
   buildLinkedInAuthorizeUrl,
@@ -17,6 +18,7 @@ import {
   exchangeLinkedInAuthorizationCode
 } from '../../integrations/sales-nav/linkedinAuthCodeClient';
 import { ProviderAccountsService } from '../../modules/providers/providerAccountsService';
+import { redisConnection } from '../../queues/redis';
 
 const loginRequestSchema = z.object({
   email: z.string().email(),
@@ -53,15 +55,32 @@ const COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const LINKEDIN_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const LINKEDIN_DEFAULT_SCOPES = ['r_liteprofile'];
 
-const linkedInOAuthStateStore = new Map<
-  string,
-  {
-    providerAccountId: string;
-    issuedToUserId: string;
-    scopes: string[];
-    expiresAt: number;
-  }
->();
+interface LinkedInOAuthStateSession {
+  providerAccountId: string;
+  issuedToUserId: string;
+  scopes: string[];
+  expiresAt: number;
+}
+
+function oauthStateRedisKey(state: string): string {
+  return namespacedRedisKey(`linkedin-oauth-state:${state}`);
+}
+
+async function setOAuthState(state: string, session: LinkedInOAuthStateSession): Promise<void> {
+  const ttlSeconds = Math.ceil(LINKEDIN_OAUTH_STATE_TTL_MS / 1000);
+  await redisConnection.set(oauthStateRedisKey(state), JSON.stringify(session), 'EX', ttlSeconds);
+}
+
+async function getAndDeleteOAuthState(state: string): Promise<LinkedInOAuthStateSession | null> {
+  const key = oauthStateRedisKey(state);
+  const raw = await redisConnection.get(key);
+  if (!raw) return null;
+  await redisConnection.del(key);
+  const session = JSON.parse(raw) as LinkedInOAuthStateSession;
+  if (session.expiresAt <= Date.now()) return null;
+  return session;
+}
+
 const providerAccountsService = new ProviderAccountsService(prisma);
 
 function normalizeLinkedInScopes(rawScope: string | undefined): string[] {
@@ -79,15 +98,6 @@ function normalizeLinkedInScopes(rawScope: string | undefined): string[] {
   }
 
   return Array.from(new Set(normalized));
-}
-
-function sanitizeLinkedInOAuthStateStore(): void {
-  const now = Date.now();
-  for (const [state, session] of linkedInOAuthStateStore.entries()) {
-    if (session.expiresAt <= now) {
-      linkedInOAuthStateStore.delete(state);
-    }
-  }
 }
 
 export const authRoutes = Router();
@@ -218,11 +228,9 @@ authRoutes.get(
         );
       }
 
-      sanitizeLinkedInOAuthStateStore();
-
       const state = randomUUID();
       const scopes = normalizeLinkedInScopes(parsedQuery.data.scope);
-      linkedInOAuthStateStore.set(state, {
+      await setOAuthState(state, {
         providerAccountId: parsedQuery.data.providerAccountId,
         issuedToUserId: auth.userId,
         scopes,
@@ -284,13 +292,10 @@ authRoutes.get('/linkedin/callback', async (request, response, next) => {
       );
     }
 
-    sanitizeLinkedInOAuthStateStore();
-    const stateSession = linkedInOAuthStateStore.get(parsedQuery.data.state);
-    if (!stateSession || stateSession.expiresAt <= Date.now()) {
-      linkedInOAuthStateStore.delete(parsedQuery.data.state);
+    const stateSession = await getAndDeleteOAuthState(parsedQuery.data.state);
+    if (!stateSession) {
       throw new AppError('OAuth state expired or invalid', 400, 'invalid_oauth_state');
     }
-    linkedInOAuthStateStore.delete(parsedQuery.data.state);
 
     const providerAccount = await providerAccountsService.getActiveAccountOrThrow(
       stateSession.providerAccountId
