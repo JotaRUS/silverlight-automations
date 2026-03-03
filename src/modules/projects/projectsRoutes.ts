@@ -156,25 +156,38 @@ projectsRoutes.post('/:projectId/kick', async (request, response, next) => {
     let enrichmentQueued = 0;
 
     if (project.apolloProviderAccountId) {
-      const locations = project.geographyIsoCodes?.length
-        ? project.geographyIsoCodes
-        : undefined;
+      const activeLeadCount = await prisma.lead.count({
+        where: {
+          projectId: params.projectId,
+          status: { not: 'DISQUALIFIED' },
+          deletedAt: null
+        }
+      });
+      const remainingSlots = Math.max(0, project.targetThreshold - activeLeadCount);
 
-      const jobId = buildJobId('apollo-sourcing', params.projectId, timeSlice);
-      await getQueues().apolloLeadSourcingQueue.add(
-        'apollo-lead-sourcing.search',
-        {
-          correlationId: request.headers['x-correlation-id'] as string || 'api-kick',
-          data: {
-            projectId: params.projectId,
-            personLocations: locations,
-            maxPages: 2,
-            perPage: 25
-          }
-        },
-        { jobId }
-      );
-      sourcingQueued = true;
+      if (remainingSlots > 0) {
+        const locations = project.geographyIsoCodes?.length
+          ? project.geographyIsoCodes
+          : undefined;
+
+        const perPage = Math.min(remainingSlots, 25);
+        const maxPages = Math.min(Math.ceil(remainingSlots / perPage), 3);
+        const jobId = buildJobId('apollo-sourcing', params.projectId, timeSlice);
+        await getQueues().apolloLeadSourcingQueue.add(
+          'apollo-lead-sourcing.search',
+          {
+            correlationId: request.headers['x-correlation-id'] as string || 'api-kick',
+            data: {
+              projectId: params.projectId,
+              personLocations: locations,
+              maxPages,
+              perPage
+            }
+          },
+          { jobId }
+        );
+        sourcingQueued = true;
+      }
     }
 
     const newLeads = await prisma.lead.findMany({

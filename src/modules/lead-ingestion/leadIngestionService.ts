@@ -8,6 +8,7 @@ import { getQueues } from '../../queues';
 import { buildJobId } from '../../queues/jobId';
 import { enqueueWithContext } from '../../queues/producers/enqueueWithContext';
 import type { LeadIngestionJob } from '../../queues/definitions/jobPayloadSchemas';
+import { ProjectCompletionService } from '../projects/projectCompletionService';
 
 function normalizeValue(value?: string): string | undefined {
   return value?.trim().toLowerCase();
@@ -61,7 +62,7 @@ export class LeadIngestionService {
 
   public async ingest(job: LeadIngestionJob): Promise<Lead> {
     const identity = buildLeadIdentity(job);
-    return withIdentityAdvisoryLock(this.prismaClient, `lead:${job.projectId}:${identity}`, async (transaction) => {
+    const lead = await withIdentityAdvisoryLock(this.prismaClient, `lead:${job.projectId}:${identity}`, async (transaction) => {
       const existing = await transaction.lead.findFirst({
         where: this.toLeadWhere(job)
       });
@@ -170,5 +171,10 @@ export class LeadIngestionService {
 
       return createdLead;
     });
+
+    const completionService = new ProjectCompletionService(this.prismaClient);
+    await completionService.recalculate(job.projectId);
+
+    return lead;
   }
 }

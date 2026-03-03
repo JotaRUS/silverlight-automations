@@ -9,6 +9,7 @@ import { closeQueues, getQueues } from '../queues';
 import { DEAD_LETTER_RETENTION_DAYS } from '../queues/dlq/deadLetterPolicy';
 import { buildJobId } from '../queues/jobId';
 import { emitNotification } from '../modules/notifications/emitNotification';
+import { ProjectCompletionService } from '../modules/projects/projectCompletionService';
 import {
   extractApolloFiltersFromSalesNavSearch,
   mergeApolloSearchFilters
@@ -352,6 +353,11 @@ async function queuePendingOutreach(
     queued += 1;
   }
 
+  if (queued > 0) {
+    const completionService = new ProjectCompletionService(prisma);
+    await completionService.recalculate(projectId);
+  }
+
   return queued;
 }
 
@@ -368,11 +374,14 @@ async function queueApolloSourcingIfNeeded(
     return 0;
   }
 
-  const totalLeadCount = await prisma.lead.count({
-    where: { projectId: project.id, deletedAt: null }
+  const activeLeadCount = await prisma.lead.count({
+    where: {
+      projectId: project.id,
+      status: { not: 'DISQUALIFIED' },
+      deletedAt: null
+    }
   });
-  const leadCap = Math.max(project.targetThreshold * 5, AUTO_SOURCING.ENRICHMENT_BATCH_SIZE);
-  if (totalLeadCount >= leadCap) {
+  if (activeLeadCount >= project.targetThreshold) {
     return 0;
   }
 
@@ -384,7 +393,8 @@ async function queueApolloSourcingIfNeeded(
     }
   });
 
-  if (pipelineCount >= AUTO_SOURCING.ENRICHMENT_BATCH_SIZE) {
+  const remainingSlots = project.targetThreshold - activeLeadCount;
+  if (remainingSlots <= 0 || pipelineCount >= remainingSlots) {
     return 0;
   }
 
@@ -426,6 +436,10 @@ async function queueApolloSourcingIfNeeded(
     salesNavFilters.personTitles
   );
 
+  const leadsNeeded = Math.max(1, remainingSlots - pipelineCount);
+  const perPage = Math.min(leadsNeeded, 25);
+  const maxPages = Math.min(Math.ceil(leadsNeeded / perPage), 3);
+
   await getQueues().apolloLeadSourcingQueue.add(
     'apollo-lead-sourcing.search',
     {
@@ -444,8 +458,8 @@ async function queueApolloSourcingIfNeeded(
         organizationLocations: salesNavFilters.organizationLocations,
         organizationNumEmployeesRanges: salesNavFilters.organizationNumEmployeesRanges,
         keywords: salesNavFilters.keywords,
-        maxPages: 2,
-        perPage: 25
+        maxPages,
+        perPage
       }
     },
     {

@@ -18,6 +18,7 @@ import type {
 import { getQueues } from '../../queues';
 import { buildJobId } from '../../queues/jobId';
 import { GOOGLE_SHEETS_TABS } from '../google-sheets-sync/googleSheetsTabMapping';
+import { ProjectCompletionService } from '../projects/projectCompletionService';
 import { normalizeEmail, normalizePhone } from './enrichmentValidators';
 
 export interface EnrichmentJobInput {
@@ -258,6 +259,8 @@ export class EnrichmentService {
       }
     }
 
+    const completionService = new ProjectCompletionService(this.prismaClient);
+
     if (!bestResult) {
       await this.prismaClient.lead.update({
         where: { id: job.leadId },
@@ -265,6 +268,7 @@ export class EnrichmentService {
           status: 'ENRICHING'
         }
       });
+      await completionService.recalculate(job.projectId);
       return;
     }
 
@@ -282,6 +286,7 @@ export class EnrichmentService {
         enrichmentConfidence: bestResult.confidenceScore
       }
     });
+    await completionService.recalculate(job.projectId);
 
     const lead = await this.prismaClient.lead.findUnique({
       where: { id: job.leadId }

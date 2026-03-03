@@ -8,6 +8,7 @@ import { publishRealtimeEvent } from '../../core/realtime/realtimePubSub';
 import { clock } from '../../core/time/clock';
 import { MessagingClient } from '../../integrations/messaging/messagingClient';
 import { CooldownService } from '../cooldown/cooldownService';
+import { ProjectCompletionService } from '../projects/projectCompletionService';
 import { isChannelAvailableForProject, selectEmailsForOutreach, type CandidateEmail } from './channelSelection';
 
 export interface SendOutreachMessageInput {
@@ -324,6 +325,9 @@ export class OutreachService {
       },
       data: { status: 'REPLIED' }
     });
+
+    const completionService = new ProjectCompletionService(this.prismaClient);
+    await completionService.recalculate(thread.projectId);
 
     await publishRealtimeEvent({
       namespace: 'admin',

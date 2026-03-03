@@ -7,6 +7,7 @@ import { AppError } from '../../core/errors/appError';
 import { publishRealtimeEvent } from '../../core/realtime/realtimePubSub';
 import { prisma } from '../../db/client';
 import { redisConnection } from '../../queues/redis';
+import { ProjectCompletionService } from '../projects/projectCompletionService';
 import { ScreeningService } from '../screening/screeningService';
 
 const leadQuerySchema = z.object({
@@ -210,6 +211,12 @@ adminRoutes.patch('/leads/:leadId', async (request, response, next) => {
       data: body.data,
       include: { project: { select: { id: true, name: true } } }
     });
+
+    if (body.data.status && existing.projectId) {
+      const completionService = new ProjectCompletionService(prisma);
+      await completionService.recalculate(existing.projectId);
+    }
+
     response.status(200).json(updated);
   } catch (error) {
     next(error);
