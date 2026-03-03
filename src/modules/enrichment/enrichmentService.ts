@@ -143,19 +143,43 @@ export class EnrichmentService {
     responsePayload: unknown,
     errorMessage?: string
   ): Promise<void> {
-    await this.prismaClient.enrichmentAttempt.create({
-      data: {
-        leadId,
-        provider: provider as never,
-        status,
-        confidenceScore: confidenceScore ?? undefined,
-        responsePayload: toJsonValue(responsePayload),
-        errorMessage,
-        rateLimited: status === 'RATE_LIMITED',
-        trialExhausted: status === 'TRIAL_EXHAUSTED',
-        attemptedAt: clock.now()
+    try {
+      await this.prismaClient.enrichmentAttempt.create({
+        data: {
+          leadId,
+          provider: provider as never,
+          status,
+          confidenceScore: confidenceScore ?? undefined,
+          responsePayload: toJsonValue(responsePayload),
+          errorMessage,
+          rateLimited: status === 'RATE_LIMITED',
+          trialExhausted: status === 'TRIAL_EXHAUSTED',
+          attemptedAt: clock.now()
+        }
+      });
+    } catch (error) {
+      const isFkViolation =
+        error instanceof Error &&
+        error.message.includes('Foreign key constraint violated');
+      if (!isFkViolation) {
+        throw error;
       }
-    });
+      await this.prismaClient.enrichmentAttempt.create({
+        data: {
+          leadId: null,
+          provider: provider as never,
+          status,
+          confidenceScore: confidenceScore ?? undefined,
+          responsePayload: toJsonValue(responsePayload),
+          errorMessage: errorMessage
+            ? `${errorMessage} [lead ${leadId} deleted]`
+            : `[lead ${leadId} deleted]`,
+          rateLimited: status === 'RATE_LIMITED',
+          trialExhausted: status === 'TRIAL_EXHAUSTED',
+          attemptedAt: clock.now()
+        }
+      });
+    }
   }
 
   private async runProvider(
@@ -199,6 +223,14 @@ export class EnrichmentService {
   }
 
   public async enrich(job: EnrichmentJobInput, correlationId: string): Promise<void> {
+    const leadExists = await this.prismaClient.lead.findUnique({
+      where: { id: job.leadId },
+      select: { id: true }
+    });
+    if (!leadExists) {
+      return;
+    }
+
     const request = this.buildRequest(job);
 
     const parallelProviders = this.providerClients.slice(0, 5);
