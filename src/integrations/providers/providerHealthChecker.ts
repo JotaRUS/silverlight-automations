@@ -76,6 +76,7 @@ function salesNavOauthErrorMessage(error: unknown): string {
 async function runLinkedInSalesNavigatorHealthCheck(
   clientId: string,
   clientSecret: string,
+  organizationId: string | undefined,
   correlationId: string
 ): Promise<HealthCheckResult> {
   let token = '';
@@ -114,9 +115,10 @@ async function runLinkedInSalesNavigatorHealthCheck(
     };
   }
 
-  // Probe a Lead Sync REST endpoint to verify actual API reachability.
-  // 400/403 still indicates endpoint reached (for example, product review pending or missing owner filters).
-  const leadSyncResponse = await fetch('https://api.linkedin.com/rest/leadForms?q=owner', {
+  const leadFormsUrl = organizationId
+    ? `https://api.linkedin.com/rest/leadForms?q=owner&owner=(organization:urn%3Ali%3Aorganization%3A${encodeURIComponent(organizationId)})&count=1`
+    : 'https://api.linkedin.com/rest/leadForms?q=owner';
+  const leadSyncResponse = await fetch(leadFormsUrl, {
     method: 'GET',
     headers: {
       authorization: `Bearer ${token}`,
@@ -652,7 +654,8 @@ export async function runProviderHealthCheck(
 
     const clientId = credentialString(input.credentials, 'clientId');
     const clientSecret = credentialString(input.credentials, 'clientSecret');
-    return runLinkedInSalesNavigatorHealthCheck(clientId, clientSecret, input.correlationId);
+    const organizationId = credentialString(input.credentials, 'organizationId') || undefined;
+    return runLinkedInSalesNavigatorHealthCheck(clientId, clientSecret, organizationId, input.correlationId);
   }
 
   if (input.providerType === 'WIZA') {
@@ -815,7 +818,7 @@ export async function runProviderHealthCheck(
     const clientId = credentialString(input.credentials, 'clientId');
     const clientSecret = credentialString(input.credentials, 'clientSecret');
     if (clientId && clientSecret) {
-      return runLinkedInSalesNavigatorHealthCheck(clientId, clientSecret, input.correlationId);
+      return runLinkedInSalesNavigatorHealthCheck(clientId, clientSecret, undefined, input.correlationId);
     }
 
     const apiKey = credentialString(input.credentials, 'apiKey');

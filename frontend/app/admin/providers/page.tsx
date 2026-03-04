@@ -13,9 +13,14 @@ import { ApiError } from '@/services/apiClient';
 import {
   bindProviderToProject,
   createProviderAccount,
+  deleteLinkedInWebhookSubscription,
+  listLinkedInLeadForms,
   listProviderAccounts,
+  registerLinkedInWebhook,
   testProviderConnection,
-  updateProviderAccount
+  updateProviderAccount,
+  updateSyncedForms,
+  type LeadFormSummary
 } from '@/services/providerService';
 import type { ProviderType } from '@/types/provider';
 
@@ -57,7 +62,8 @@ const CREDENTIAL_FIELDS: Record<ProviderType, CredentialFieldDef[]> = {
   APOLLO: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   SALES_NAV_WEBHOOK: [
     { key: 'clientId', label: 'Client ID', type: 'text', placeholder: 'e.g. 77vlauv23ezc0v' },
-    { key: 'clientSecret', label: 'Client Secret', type: 'password', placeholder: 'Enter primary client secret' }
+    { key: 'clientSecret', label: 'Client Secret', type: 'password', placeholder: 'Primary client secret' },
+    { key: 'organizationId', label: 'Organization ID', type: 'text', placeholder: 'LinkedIn org ID (numeric, from company page URL)' }
   ],
   LEADMAGIC: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   PROSPEO: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
@@ -180,6 +186,148 @@ function UpdateCredentialsForm({
   );
 }
 
+function LinkedInLeadSyncPanel({ accountId }: { accountId: string }): JSX.Element {
+  const queryClient = useQueryClient();
+  const [forms, setForms] = useState<LeadFormSummary[] | null>(null);
+  const [selectedFormIds, setSelectedFormIds] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState('');
+  const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+
+  const loadForms = async (): Promise<void> => {
+    setLoading('forms');
+    setMessage(null);
+    try {
+      const data = await listLinkedInLeadForms(accountId);
+      setForms(data);
+    } catch (err) {
+      setMessage({ tone: 'error', text: err instanceof Error ? err.message : 'Failed to load forms' });
+    } finally {
+      setLoading('');
+    }
+  };
+
+  const saveForms = async (): Promise<void> => {
+    setLoading('save-forms');
+    setMessage(null);
+    try {
+      await updateSyncedForms(accountId, Array.from(selectedFormIds));
+      setMessage({ tone: 'success', text: 'Synced forms updated.' });
+    } catch (err) {
+      setMessage({ tone: 'error', text: err instanceof Error ? err.message : 'Failed to save' });
+    } finally {
+      setLoading('');
+    }
+  };
+
+  const enableWebhook = async (): Promise<void> => {
+    setLoading('webhook');
+    setMessage(null);
+    try {
+      const result = await registerLinkedInWebhook(accountId);
+      setMessage({ tone: 'success', text: `Webhook registered (ID: ${result.subscriptionId})` });
+      void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
+    } catch (err) {
+      setMessage({ tone: 'error', text: err instanceof Error ? err.message : 'Failed to register webhook' });
+    } finally {
+      setLoading('');
+    }
+  };
+
+  const disableWebhook = async (subscriptionId: string): Promise<void> => {
+    setLoading('webhook');
+    setMessage(null);
+    try {
+      await deleteLinkedInWebhookSubscription(accountId, subscriptionId);
+      setMessage({ tone: 'success', text: 'Webhook subscription removed.' });
+      void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
+    } catch (err) {
+      setMessage({ tone: 'error', text: err instanceof Error ? err.message : 'Failed to remove webhook' });
+    } finally {
+      setLoading('');
+    }
+  };
+
+  return (
+    <div className="mt-3 space-y-3 rounded-md border border-indigo-200 bg-indigo-50/40 p-3">
+      <p className="text-sm font-semibold text-indigo-800">LinkedIn Lead Sync</p>
+
+      {message ? (
+        <p className={`text-xs ${message.tone === 'success' ? 'text-emerald-700' : 'text-red-600'}`}>
+          {message.text}
+        </p>
+      ) : null}
+
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-slate-700">Lead Forms</p>
+        {forms === null ? (
+          <Button
+            variant="secondary"
+            onClick={() => void loadForms()}
+            disabled={loading === 'forms'}
+          >
+            {loading === 'forms' ? 'Loading...' : 'Load Lead Forms'}
+          </Button>
+        ) : forms.length === 0 ? (
+          <p className="text-xs text-slate-500">No lead forms found for this organization.</p>
+        ) : (
+          <>
+            <div className="max-h-48 space-y-1 overflow-y-auto">
+              {forms.map((form) => (
+                <label key={form.id} className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={selectedFormIds.has(form.id)}
+                    onChange={(e) => {
+                      setSelectedFormIds((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.add(form.id);
+                        else next.delete(form.id);
+                        return next;
+                      });
+                    }}
+                  />
+                  <span className="font-medium">{form.name}</span>
+                  <Badge tone={form.state === 'PUBLISHED' ? 'success' : 'neutral'}>
+                    {form.state.toLowerCase()}
+                  </Badge>
+                  <span className="text-slate-400">{form.questionCount} questions</span>
+                </label>
+              ))}
+            </div>
+            <Button
+              variant="secondary"
+              onClick={() => void saveForms()}
+              disabled={loading === 'save-forms' || selectedFormIds.size === 0}
+            >
+              {loading === 'save-forms' ? 'Saving...' : 'Save Form Selection'}
+            </Button>
+          </>
+        )}
+      </div>
+
+      <div className="space-y-2 border-t border-indigo-200 pt-2">
+        <p className="text-xs font-medium text-slate-700">Real-time Webhook</p>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => void enableWebhook()}
+            disabled={loading === 'webhook'}
+          >
+            {loading === 'webhook' ? 'Processing...' : 'Enable Real-time Lead Sync'}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => void disableWebhook('latest')}
+            disabled={loading === 'webhook'}
+          >
+            Disable
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ProviderAccountsPage(): JSX.Element {
   const queryClient = useQueryClient();
   const [providerType, setProviderType] = useState<ProviderType>('APOLLO');
@@ -259,7 +407,7 @@ export default function ProviderAccountsPage(): JSX.Element {
             >
               {providerTypes.map((type) => (
                 <option key={type} value={type}>
-                  {type}
+                  {PROVIDER_DISPLAY_NAMES[type]}
                 </option>
               ))}
             </select>
@@ -506,6 +654,10 @@ export default function ProviderAccountsPage(): JSX.Element {
                     providerType={account.providerType as ProviderType}
                     onDone={() => setEditingCredentials(null)}
                   />
+                ) : null}
+                {account.providerType === 'SALES_NAV_WEBHOOK' &&
+                  account.lastHealthStatus === 'healthy' ? (
+                  <LinkedInLeadSyncPanel accountId={account.id} />
                 ) : null}
               </div>
             ))}

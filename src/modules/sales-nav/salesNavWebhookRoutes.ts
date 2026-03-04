@@ -1,15 +1,20 @@
-import { Router } from 'express';
+import { Router, raw as expressRaw } from 'express';
 import { z } from 'zod';
 
 import { AppError } from '../../core/errors/appError';
 import { getRequestContext } from '../../core/http/requestContext';
+import { logger } from '../../core/logging/logger';
 import type { ProviderType } from '../../core/providers/providerTypes';
 import { prisma } from '../../db/client';
 import { ProviderAccountsService } from '../providers/providerAccountsService';
 import { getQueues } from '../../queues';
 import { buildJobId } from '../../queues/jobId';
 import { enqueueWithContext } from '../../queues/producers/enqueueWithContext';
-import { salesNavWebhookPayloadSchema } from './salesNavWebhookSchemas';
+import { salesNavWebhookPayloadSchema, linkedInLeadNotificationSchema } from './salesNavWebhookSchemas';
+import {
+  computeLinkedInChallengeResponse,
+  verifyLinkedInWebhookSignature
+} from './linkedInWebhookSignature';
 
 export const salesNavWebhookRoutes = Router();
 const SALES_NAV_PROVIDER_TYPES: ProviderType[] = ['SALES_NAV_WEBHOOK', 'LINKEDIN'];
@@ -28,8 +33,6 @@ async function verifyLinkedInBearerToken(token: string): Promise<boolean> {
     }
   });
 
-  // 2xx confirms access, 400 confirms token+endpoint reachability but invalid query shape,
-  // 403 confirms token is syntactically valid but lacks product permissions. Only 401 is treated as invalid token.
   if (response.status >= 200 && response.status < 300) {
     return true;
   }
@@ -108,3 +111,126 @@ salesNavWebhookRoutes.post('/:providerAccountId', async (request, response, next
     next(error);
   }
 });
+
+// ---------------------------------------------------------------------------
+// LinkedIn leadNotifications webhook — challenge validation (GET)
+// ---------------------------------------------------------------------------
+
+salesNavWebhookRoutes.get('/:providerAccountId/notification', async (request, response, next) => {
+  try {
+    const challengeCode = request.query.challengeCode;
+    if (typeof challengeCode !== 'string' || challengeCode.length === 0) {
+      throw new AppError('Missing challengeCode query parameter', 400, 'missing_challenge_code');
+    }
+
+    const params = providerAccountParamsSchema.parse(request.params);
+    const providerAccount = await providerAccountsService.getActiveAccountOrThrow(params.providerAccountId);
+    const providerType = providerAccount.providerType as ProviderType;
+    if (!SALES_NAV_PROVIDER_TYPES.includes(providerType)) {
+      throw new AppError('Provider account is not a Sales Navigator type', 422, 'invalid_provider_type');
+    }
+
+    const credentials = await providerAccountsService.getDecryptedCredentials(
+      providerAccount.id,
+      providerType
+    );
+    const clientSecret = typeof credentials.clientSecret === 'string' ? credentials.clientSecret : '';
+    if (!clientSecret) {
+      throw new AppError('Missing client secret for challenge response', 422, 'missing_client_secret');
+    }
+
+    const challengeResponse = computeLinkedInChallengeResponse(challengeCode, clientSecret);
+
+    response.status(200).json({
+      challengeCode,
+      challengeResponse
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// LinkedIn leadNotifications webhook — incoming notification (POST)
+// ---------------------------------------------------------------------------
+
+salesNavWebhookRoutes.post(
+  '/:providerAccountId/notification',
+  expressRaw({ type: 'application/json' }),
+  async (request, response, next) => {
+    try {
+      const params = providerAccountParamsSchema.parse(request.params);
+      const providerAccount = await providerAccountsService.getActiveAccountOrThrow(params.providerAccountId);
+      const providerType = providerAccount.providerType as ProviderType;
+      if (!SALES_NAV_PROVIDER_TYPES.includes(providerType)) {
+        throw new AppError('Provider account is not a Sales Navigator type', 422, 'invalid_provider_type');
+      }
+
+      const credentials = await providerAccountsService.getDecryptedCredentials(
+        providerAccount.id,
+        providerType
+      );
+      const clientSecret = typeof credentials.clientSecret === 'string' ? credentials.clientSecret : '';
+
+      const signatureHeader = request.header('x-li-signature') ?? '';
+      const rawBody = Buffer.isBuffer(request.body) ? request.body : Buffer.from(JSON.stringify(request.body));
+
+      if (clientSecret && signatureHeader) {
+        if (!verifyLinkedInWebhookSignature(rawBody, signatureHeader, clientSecret)) {
+          throw new AppError('Invalid LinkedIn webhook signature', 401, 'invalid_webhook_signature');
+        }
+      }
+
+      const bodyParsed: unknown = Buffer.isBuffer(request.body)
+        ? JSON.parse(request.body.toString('utf8')) as unknown
+        : request.body;
+      const notification = linkedInLeadNotificationSchema.parse(bodyParsed);
+
+      if (notification.leadAction === 'CREATED') {
+        const organizationId =
+          typeof credentials.organizationId === 'string' ? credentials.organizationId : '';
+
+        await enqueueWithContext(
+          getQueues().salesNavIngestionQueue,
+          'linkedin-lead-sync.fetch-response',
+          {
+            providerAccountId: params.providerAccountId,
+            responseId: notification.leadGenFormResponse,
+            formUrn: notification.leadGenForm,
+            organizationId,
+            leadType: notification.leadType
+          },
+          {
+            jobId: buildJobId(
+              'li-lead-sync',
+              params.providerAccountId,
+              notification.leadGenFormResponse
+            )
+          }
+        );
+
+        logger.info(
+          {
+            providerAccountId: params.providerAccountId,
+            responseUrn: notification.leadGenFormResponse,
+            leadAction: notification.leadAction
+          },
+          'linkedin-lead-notification-enqueued'
+        );
+      } else {
+        logger.info(
+          {
+            providerAccountId: params.providerAccountId,
+            responseUrn: notification.leadGenFormResponse,
+            leadAction: notification.leadAction
+          },
+          'linkedin-lead-notification-ignored'
+        );
+      }
+
+      response.status(200).json({ accepted: true });
+    } catch (error) {
+      next(error);
+    }
+  }
+);

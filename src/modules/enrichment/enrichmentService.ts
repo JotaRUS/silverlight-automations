@@ -165,8 +165,7 @@ export class EnrichmentService {
       });
     } catch (error) {
       const isFkViolation =
-        error instanceof Error &&
-        error.message.includes('Foreign key constraint violated');
+        error instanceof Object && (error as { code?: string }).code === 'P2003';
       if (!isFkViolation) {
         throw error;
       }

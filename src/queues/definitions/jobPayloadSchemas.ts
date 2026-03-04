@@ -129,3 +129,14 @@ export const callAllocationJobSchema = z.object({
 });
 
 export type CallAllocationJob = z.infer<typeof callAllocationJobSchema>;
+
+export const linkedInFetchResponseJobSchema = z.object({
+  providerAccountId: z.string().uuid(),
+  responseId: z.string().min(1),
+  formUrn: z.string().optional(),
+  organizationId: z.string().min(1),
+  leadType: z.string().default('SPONSORED'),
+  projectId: z.string().uuid().optional()
+});
+
+export type LinkedInFetchResponseJob = z.infer<typeof linkedInFetchResponseJobSchema>;

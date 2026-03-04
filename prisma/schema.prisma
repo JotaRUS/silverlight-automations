@@ -302,6 +302,7 @@ model ProviderAccount {
   lastHealthCheckAt            DateTime?
   lastHealthStatus             String?
   lastHealthError              String?
+  syncMetadata                 Json?        @db.JsonB
   createdAt                    DateTime     @default(now())
   updatedAt                    DateTime     @updatedAt
   createdByAdmin               Caller       @relation(fields: [createdByAdminId], references: [id], onDelete: Restrict)

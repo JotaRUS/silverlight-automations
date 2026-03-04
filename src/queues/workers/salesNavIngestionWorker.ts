@@ -3,19 +3,33 @@ import { Worker } from 'bullmq';
 import { env } from '../../config/env';
 import { prisma } from '../../db/client';
 import { SalesNavIngestionService } from '../../modules/sales-nav/salesNavIngestionService';
-import { salesNavIngestionJobSchema, type SalesNavIngestionJob } from '../definitions/jobPayloadSchemas';
+import { LinkedInLeadSyncWorkerService } from '../../modules/sales-nav/linkedInLeadSyncWorkerService';
+import {
+  salesNavIngestionJobSchema,
+  linkedInFetchResponseJobSchema,
+  type SalesNavIngestionJob,
+  type LinkedInFetchResponseJob
+} from '../definitions/jobPayloadSchemas';
 import { QUEUE_NAMES } from '../definitions/queueNames';
 import { bullMqConnection } from '../redis';
 import { createJobLogger, type CorrelatedJobData } from './withWorkerContext';
 import { registerDeadLetterHandler } from './withDeadLetter';
 
 const salesNavIngestionService = new SalesNavIngestionService(prisma);
+const linkedInLeadSyncWorkerService = new LinkedInLeadSyncWorkerService(prisma);
 
-export function createSalesNavIngestionWorker(): Worker<CorrelatedJobData<SalesNavIngestionJob>> {
-  const worker = new Worker<CorrelatedJobData<SalesNavIngestionJob>>(
+export function createSalesNavIngestionWorker(): Worker<CorrelatedJobData<SalesNavIngestionJob | LinkedInFetchResponseJob>> {
+  const worker = new Worker<CorrelatedJobData<SalesNavIngestionJob | LinkedInFetchResponseJob>>(
     QUEUE_NAMES.SALES_NAV_INGESTION,
     async (job) => {
       const jobLogger = createJobLogger(job);
+
+      if (job.name === 'linkedin-lead-sync.fetch-response') {
+        const payload = linkedInFetchResponseJobSchema.parse(job.data.data);
+        await linkedInLeadSyncWorkerService.fetchAndIngestResponse(payload, jobLogger);
+        return;
+      }
+
       const payload = salesNavIngestionJobSchema.parse(job.data.data);
       const enqueued = await salesNavIngestionService.ingest(payload);
       jobLogger.info({ enqueued }, 'sales-nav-ingestion-complete');

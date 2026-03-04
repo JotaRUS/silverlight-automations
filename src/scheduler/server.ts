@@ -8,12 +8,17 @@ import { DeadLetterJobRepository } from '../db/repositories/deadLetterJobReposit
 import { closeQueues, getQueues } from '../queues';
 import { DEAD_LETTER_RETENTION_DAYS } from '../queues/dlq/deadLetterPolicy';
 import { buildJobId } from '../queues/jobId';
+import { enqueueWithContext } from '../queues/producers/enqueueWithContext';
 import { emitNotification } from '../modules/notifications/emitNotification';
 import { ProjectCompletionService } from '../modules/projects/projectCompletionService';
 import {
   extractApolloFiltersFromSalesNavSearch,
   mergeApolloSearchFilters
 } from '../modules/sales-nav/salesNavSearchParamExtractor';
+import type { Prisma } from '@prisma/client';
+import { getSalesNavAccessToken } from '../integrations/sales-nav/salesNavOAuthClient';
+import { listLeadFormResponses } from '../integrations/sales-nav/linkedInLeadSyncClient';
+import { decryptProviderCredentials } from '../core/providers/providerCredentialsCrypto';
 
 const deadLetterRepository = new DeadLetterJobRepository(prisma);
 const SCHEDULER_INTERVAL_MS = 60 * 1000;
@@ -185,6 +190,7 @@ async function runScheduledMaintenance(): Promise<void> {
   if (nowMs - lastAutoSourcingRunMs >= AUTO_SOURCING.INTERVAL_MS) {
     lastAutoSourcingRunMs = nowMs;
     await runAutoSourcingLoop();
+    await pollLinkedInLeadResponses();
   }
 }
 
@@ -235,6 +241,104 @@ async function runAutoSourcingLoop(): Promise<void> {
   );
 }
 
+interface SalesNavSyncMetadata {
+  webhookSubscriptionId?: string;
+  lastResponsePolledAt?: string;
+  syncedLeadFormIds?: string[];
+  processedResponseIds?: string[];
+}
+
+async function pollLinkedInLeadResponses(): Promise<void> {
+  const salesNavAccounts = await prisma.providerAccount.findMany({
+    where: {
+      providerType: 'SALES_NAV_WEBHOOK',
+      isActive: true,
+      lastHealthStatus: { notIn: ['out_of_credits'] }
+    }
+  });
+
+  let totalEnqueued = 0;
+
+  for (const account of salesNavAccounts) {
+    try {
+      let credentials: Record<string, unknown>;
+      try {
+        credentials = decryptProviderCredentials(account.credentialsJson);
+      } catch {
+        continue;
+      }
+
+      const clientId = typeof credentials.clientId === 'string' ? credentials.clientId : '';
+      const clientSecret = typeof credentials.clientSecret === 'string' ? credentials.clientSecret : '';
+      const organizationId = typeof credentials.organizationId === 'string' ? credentials.organizationId : '';
+      if (!clientId || !clientSecret || !organizationId) continue;
+
+      const syncMeta = (account.syncMetadata as SalesNavSyncMetadata | null) ?? {};
+      const processedIds = new Set(syncMeta.processedResponseIds ?? []);
+
+      const defaultLookbackMs = 10 * 60 * 1000;
+      const since = syncMeta.lastResponsePolledAt
+        ? new Date(syncMeta.lastResponsePolledAt).getTime()
+        : clock.now().getTime() - defaultLookbackMs;
+
+      const token = await getSalesNavAccessToken(clientId, clientSecret);
+      const responses = await listLeadFormResponses(token, organizationId, 'SPONSORED', {
+        start: since,
+        end: clock.now().getTime()
+      });
+
+      let enqueued = 0;
+      for (const formResponse of responses.elements) {
+        if (formResponse.testLead) continue;
+        if (processedIds.has(formResponse.id)) continue;
+
+        await enqueueWithContext(
+          getQueues().salesNavIngestionQueue,
+          'linkedin-lead-sync.fetch-response',
+          {
+            providerAccountId: account.id,
+            responseId: formResponse.id,
+            organizationId,
+            leadType: formResponse.leadType
+          },
+          {
+            jobId: buildJobId('li-lead-sync', account.id, formResponse.id)
+          }
+        );
+        enqueued += 1;
+      }
+
+      await prisma.providerAccount.update({
+        where: { id: account.id },
+        data: {
+          syncMetadata: {
+            ...syncMeta,
+            lastResponsePolledAt: clock.now().toISOString()
+          } as Prisma.InputJsonValue
+        }
+      });
+
+      totalEnqueued += enqueued;
+
+      if (enqueued > 0) {
+        logger.info(
+          { accountId: account.id, enqueued },
+          'linkedin-poll-leads-enqueued'
+        );
+      }
+    } catch (error) {
+      logger.error({ err: error, accountId: account.id }, 'linkedin-poll-failed');
+    }
+  }
+
+  if (totalEnqueued > 0 || salesNavAccounts.length > 0) {
+    logger.info(
+      { accountsChecked: salesNavAccounts.length, totalEnqueued },
+      'linkedin-poll-cycle-completed'
+    );
+  }
+}
+
 async function queuePendingEnrichment(projectId: string, timeSlice: string): Promise<number> {
   const newLeads = await prisma.lead.findMany({
     where: {
@@ -269,7 +373,7 @@ async function queuePendingEnrichment(projectId: string, timeSlice: string): Pro
           jobTitle: lead.jobTitle ?? undefined,
           linkedinUrl: lead.linkedinUrl ?? undefined,
           countryIso:
-            lead.countryIso && lead.countryIso.length === 2 ? lead.countryIso : undefined,
+            lead.countryIso?.length === 2 ? lead.countryIso : undefined,
           emails,
           phones
         }

@@ -59,3 +59,66 @@ export async function bindProviderToProject(providerAccountId: string, projectId
     }
   });
 }
+
+// ---------------------------------------------------------------------------
+// LinkedIn Lead Sync
+// ---------------------------------------------------------------------------
+
+export interface LeadFormSummary {
+  id: string;
+  name: string;
+  state: string;
+  created: number;
+  lastModified: number;
+  questionCount: number;
+  questions: Array<{ name: string; predefinedField?: string }>;
+}
+
+export async function listLinkedInLeadForms(providerAccountId: string): Promise<LeadFormSummary[]> {
+  return apiRequest<LeadFormSummary[]>(
+    `/api/v1/providers/${providerAccountId}/linkedin/lead-forms`
+  );
+}
+
+export async function updateSyncedForms(
+  providerAccountId: string,
+  formIds: string[]
+): Promise<Record<string, unknown>> {
+  return apiRequest<Record<string, unknown>>(
+    `/api/v1/providers/${providerAccountId}/linkedin/synced-forms`,
+    { method: 'PATCH', body: { formIds } }
+  );
+}
+
+export interface WebhookSubscription {
+  id: number;
+  webhook: string;
+  leadType: string;
+}
+
+export async function registerLinkedInWebhook(
+  providerAccountId: string
+): Promise<{ subscriptionId: string; webhookUrl: string }> {
+  return apiRequest<{ subscriptionId: string; webhookUrl: string }>(
+    `/api/v1/providers/${providerAccountId}/linkedin/webhook-subscription`,
+    { method: 'POST' }
+  );
+}
+
+export async function listLinkedInWebhookSubscriptions(
+  providerAccountId: string
+): Promise<WebhookSubscription[]> {
+  return apiRequest<WebhookSubscription[]>(
+    `/api/v1/providers/${providerAccountId}/linkedin/webhook-subscriptions`
+  );
+}
+
+export async function deleteLinkedInWebhookSubscription(
+  providerAccountId: string,
+  subscriptionId: string
+): Promise<void> {
+  await apiRequest(
+    `/api/v1/providers/${providerAccountId}/linkedin/webhook-subscriptions/${subscriptionId}`,
+    { method: 'DELETE' }
+  );
+}
