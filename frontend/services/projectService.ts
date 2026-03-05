@@ -35,6 +35,12 @@ export async function kickProject(projectId: string): Promise<{ sourcingQueued: 
   );
 }
 
+export async function deleteProject(projectId: string): Promise<void> {
+  await apiRequest<void>(`/api/v1/projects/${projectId}`, {
+    method: 'DELETE'
+  });
+}
+
 export async function addSalesNavSearches(
   projectId: string,
   searches: { sourceUrl: string; normalizedUrl: string; metadata?: Record<string, unknown> }[]

@@ -85,6 +85,20 @@ projectsRoutes.patch('/:projectId', async (request, response, next) => {
   }
 });
 
+projectsRoutes.delete('/:projectId', async (request, response, next) => {
+  try {
+    const params = parseOrThrow(pathParamsSchema, request.params);
+    const existing = await projectsService.getProject(params.projectId);
+    if (!existing) {
+      throw new AppError('Project not found', 404, 'project_not_found');
+    }
+    await projectsService.deleteProject(params.projectId);
+    response.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
 projectsRoutes.post('/:projectId/companies', async (request, response, next) => {
   try {
     const params = parseOrThrow(pathParamsSchema, request.params);

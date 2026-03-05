@@ -185,6 +185,13 @@ export class ProjectsService {
     });
   }
 
+  public async deleteProject(projectId: string): Promise<Project> {
+    return this.prismaClient.project.update({
+      where: { id: projectId },
+      data: { deletedAt: new Date(), status: 'ARCHIVED' }
+    });
+  }
+
   public async listProjects(): Promise<Project[]> {
     return this.prismaClient.project.findMany({
       where: {

@@ -18,7 +18,7 @@ import {
   PROVIDER_TYPE_TO_FIELD
 } from '@/lib/providerConstants';
 import { listProviderAccounts } from '@/services/providerService';
-import { getProject, kickProject, updateProject } from '@/services/projectService';
+import { deleteProject, getProject, kickProject, updateProject } from '@/services/projectService';
 import type { ProviderAccount, ProviderType } from '@/types/provider';
 import type { ProjectRecord, ProjectStatus } from '@/types/project';
 
@@ -55,6 +55,7 @@ export default function ProjectEditPage(): JSX.Element {
   const [overrideCooldown, setOverrideCooldown] = useState(false);
   const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({});
   const [initialized, setInitialized] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (projectQuery.data && !initialized) {
@@ -123,6 +124,18 @@ export default function ProjectEditPage(): JSX.Element {
     }
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteProject(projectId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['projects'] });
+      toast.success('Project deleted');
+      router.push('/admin/projects');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete project');
+    }
+  });
+
   const toggleProvider = useCallback((accountId: string, providerType: ProviderType) => {
     setSelectedProviders((prev) => {
       const next = { ...prev };
@@ -183,14 +196,7 @@ export default function ProjectEditPage(): JSX.Element {
             <p className="text-sm text-slate-500">{projectQuery.data?.name}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={() => saveMutation.mutate()}
-            disabled={!name || selectedGeos.length === 0 || saveMutation.isPending}
-          >
-            {saveMutation.isPending ? 'Saving...' : 'Save Changes'}
-          </Button>
-        </div>
+        <div className="flex items-center gap-2" />
       </div>
 
       {saveMutation.error && (
@@ -432,16 +438,73 @@ export default function ProjectEditPage(): JSX.Element {
         </Link>
       </Card>
 
-      {/* Bottom save bar */}
-      <div className="sticky bottom-4 flex justify-end">
+      {/* Save */}
+      <div className="flex justify-end">
         <Button
           onClick={() => saveMutation.mutate()}
           disabled={!name || selectedGeos.length === 0 || saveMutation.isPending}
-          className="shadow-lg"
         >
           {saveMutation.isPending ? 'Saving...' : 'Save Changes'}
         </Button>
       </div>
+
+      {/* Danger Zone */}
+      <Card className="border-red-200 space-y-3">
+        <h3 className="font-semibold text-red-700 flex items-center gap-2">
+          <span className="material-symbols-outlined text-base">warning</span>
+          Danger Zone
+        </h3>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-800">Delete this project</p>
+            <p className="text-xs text-slate-500">This will archive the project and hide it from the project list.</p>
+          </div>
+          <Button
+            variant="danger"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={deleteMutation.isPending}
+          >
+            <span className="material-symbols-outlined text-base mr-1">delete</span>
+            Delete Project
+          </Button>
+        </div>
+      </Card>
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-full bg-red-100">
+                <span className="material-symbols-outlined text-red-600">warning</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-slate-900">Delete project?</h3>
+                <p className="text-sm text-slate-500">
+                  Are you sure you want to delete <strong>{projectQuery.data?.name}</strong>? This action cannot be easily undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="secondary"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleteMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => deleteMutation.mutate()}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? 'Deleting...' : 'Yes, delete'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
