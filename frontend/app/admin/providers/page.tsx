@@ -8,10 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { PROVIDER_DISPLAY_NAMES } from '@/lib/providerConstants';
-import { listProjects } from '@/services/projectService';
 import { ApiError } from '@/services/apiClient';
 import {
-  bindProviderToProject,
   createProviderAccount,
   deleteLinkedInWebhookSubscription,
   listLinkedInLeadForms,
@@ -333,7 +331,6 @@ export default function ProviderAccountsPage(): JSX.Element {
   const [providerType, setProviderType] = useState<ProviderType>('APOLLO');
   const [accountLabel, setAccountLabel] = useState('');
   const [credentials, setCredentials] = useState<Record<string, string>>(() => buildEmptyCredentials('APOLLO'));
-  const [projectId, setProjectId] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [editingCredentials, setEditingCredentials] = useState<string | null>(null);
   const [accountActionFeedback, setAccountActionFeedback] = useState<
@@ -352,10 +349,6 @@ export default function ProviderAccountsPage(): JSX.Element {
   const providerAccountsQuery = useQuery({
     queryKey: ['provider-accounts'],
     queryFn: () => listProviderAccounts()
-  });
-  const projectsQuery = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => listProjects()
   });
 
   const activeFields = CREDENTIAL_FIELDS[providerType];
@@ -381,9 +374,6 @@ export default function ProviderAccountsPage(): JSX.Element {
       setErrorMessage(`${msg}${code}`);
     }
   });
-
-  const projectOptions = projectsQuery.data ?? [];
-  const selectedProjectId = projectId || projectOptions[0]?.id || '';
 
   const groupedAccounts = useMemo(() => {
     const activeAccounts = providerAccountsQuery.data ?? [];
@@ -454,21 +444,6 @@ export default function ProviderAccountsPage(): JSX.Element {
         >
           {createMutation.isPending ? 'Creating...' : 'Create Provider Account'}
         </Button>
-      </Card>
-
-      <Card className="space-y-3">
-        <h2 className="text-base font-semibold">Bind to Project</h2>
-        <select
-          value={selectedProjectId}
-          onChange={(event) => setProjectId(event.target.value)}
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-        >
-          {projectOptions.map((project) => (
-            <option key={project.id} value={project.id}>
-              {project.name}
-            </option>
-          ))}
-        </select>
       </Card>
 
       {Object.entries(groupedAccounts).map(([groupProviderType, accounts]) => (
@@ -603,38 +578,6 @@ export default function ProviderAccountsPage(): JSX.Element {
                     onClick={() => setEditingCredentials(editingCredentials === account.id ? null : account.id)}
                   >
                     Update Credentials
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      if (!selectedProjectId) {
-                        return;
-                      }
-                      void (async () => {
-                        try {
-                          await bindProviderToProject(account.id, selectedProjectId);
-                          setAccountActionFeedback((prev) => ({
-                            ...prev,
-                            [account.id]: {
-                              tone: 'success',
-                              message: 'Provider bound to project.'
-                            }
-                          }));
-                        } catch (error) {
-                          setAccountActionFeedback((prev) => ({
-                            ...prev,
-                            [account.id]: {
-                              tone: 'error',
-                              message:
-                                error instanceof Error
-                                  ? error.message
-                                  : 'Unable to bind provider to project.'
-                            }
-                          }));
-                        }
-                      })();
-                    }}
-                  >
-                    Bind to Project
                   </Button>
                 </div>
                 {accountActionFeedback[account.id] ? (

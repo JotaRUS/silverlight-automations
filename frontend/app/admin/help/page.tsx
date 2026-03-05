@@ -452,10 +452,9 @@ export default function HelpPage(): JSX.Element {
         <SubHeading>Binding Providers to Projects</SubHeading>
         <p className="text-sm text-slate-600 leading-relaxed">
           After creating a provider account, you need to bind it to one or more projects. This tells the system
-          which API key to use when working on leads for that project. You can bind providers on the Providers
-          page (select a project, then click &quot;Bind to Project&quot; on the account card). You can also bind
-          providers when creating a new project. The project creation wizard (Step 2: Lead Sources) shows all
-          configured providers as a grid of checkboxes, letting you select which tools to use for the project.
+          which API key to use when working on leads for that project. You can bind providers when creating or
+          editing a project. The project creation wizard (Step 2: Lead Sources) shows all configured providers
+          as a grid of checkboxes, letting you select which tools to use for the project.
         </p>
       </Card>
 
@@ -971,7 +970,7 @@ export default function HelpPage(): JSX.Element {
             },
             {
               q: 'How do I bind a provider to a project?',
-              a: 'On the Providers page, find the "Bind to Project" section and select the target project from the dropdown. Then scroll down to the provider account you want to bind and click the "Bind to Project" button on its card.'
+              a: 'Go to the Projects page and create or edit a project. In the project wizard (Step 2: Lead Sources), you can select which provider accounts to use for that project via the checkboxes grid.'
             },
             {
               q: 'My provider shows "unhealthy" status',

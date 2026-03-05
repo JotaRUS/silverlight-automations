@@ -53,7 +53,7 @@ const sharedPlatformSteps = [
   'Select the provider type and set an account label (for example "Production" or "Team A").',
   'Paste credentials and click "Create Provider Account".',
   'Run "Test Connection" from the provider card.',
-  'Bind the provider to one or more projects from the Providers page or from the project wizard.'
+  'Bind the provider to one or more projects from the project wizard (Step 2: Lead Sources).'
 ];
 
 export const providerGuideDocs: ProviderGuideDoc[] = [
