@@ -33,6 +33,78 @@ function extractLinkedinSlug(url: string): string | undefined {
   return match?.[1];
 }
 
+/**
+ * Heuristic: LinkedIn profile titles follow "FirstName LastName | Title | Company".
+ * Returns {firstName, lastName, fullName} or undefined if unparseable.
+ */
+function parseLinkedInProfileTitle(title: string): { firstName: string; lastName: string; fullName: string } | undefined {
+  const namePart = title.split('|')[0]?.trim();
+  if (!namePart) return undefined;
+  const words = namePart.split(/\s+/).filter(Boolean);
+  if (words.length < 2 || words.length > 5) return undefined;
+  const hasNumber = words.some(w => /\d/.test(w));
+  const allCapsOrTitle = words.every(w => /^[A-Z][a-z'-]+$/.test(w) || /^[A-Z]{1,3}$/.test(w));
+  if (hasNumber || !allCapsOrTitle) return undefined;
+  return {
+    firstName: words[0]!,
+    lastName: words.slice(1).join(' '),
+    fullName: namePart
+  };
+}
+
+const SLUG_STOP_WORDS = new Set([
+  'the', 'and', 'inc', 'llc', 'ltd', 'corp', 'group', 'global', 'digital',
+  'tech', 'ai', 'io', 'co', 'hq', 'official', 'real', 'ceo', 'cfo', 'cto',
+  'amazon', 'google', 'meta', 'apple', 'microsoft', 'netflix', 'tesla'
+]);
+
+/**
+ * Extracts a plausible first/last name from a LinkedIn slug.
+ * Handles hyphenated slugs ("john-doe-a1b2c3") and concatenated slugs ("johndoe")
+ * when knownFirstName can anchor the split.
+ */
+function parseLinkedInSlugName(
+  url: string,
+  knownFirstName?: string
+): { firstName: string; lastName: string; fullName: string } | undefined {
+  const slug = extractLinkedinSlug(url);
+  if (!slug) return undefined;
+  const cleaned = slug.replace(/-[a-f0-9]{6,}$/i, '').replace(/-\d{1,4}$/,'');
+  const parts = cleaned.split('-').filter(Boolean);
+  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+
+  if (parts.length >= 2 && parts.length <= 4) {
+    if (parts.every(p => /^[a-z']+$/i.test(p) && p.length >= 2)
+        && !parts.some(p => SLUG_STOP_WORDS.has(p.toLowerCase()))) {
+      const firstName = capitalize(parts[0]!);
+      const lastName = parts.slice(1).map(capitalize).join(' ');
+      if (!knownFirstName || firstName.toLowerCase() === knownFirstName.toLowerCase()) {
+        return { firstName, lastName, fullName: `${firstName} ${lastName}` };
+      }
+    }
+  }
+
+  if (knownFirstName && parts.length === 1) {
+    let lower = cleaned.toLowerCase().replace(/\d+$/, '');
+    for (const prefix of ['official', 'real', 'its', 'the']) {
+      if (lower.startsWith(prefix)) lower = lower.slice(prefix.length);
+    }
+    const knownLower = knownFirstName.toLowerCase();
+    if (lower.startsWith(knownLower) && lower.length > knownLower.length + 1) {
+      const rest = lower.slice(knownLower.length);
+      if (rest.length >= 2 && /^[a-z]+$/.test(rest) && !SLUG_STOP_WORDS.has(rest)) {
+        return {
+          firstName: capitalize(knownLower),
+          lastName: capitalize(rest),
+          fullName: `${capitalize(knownLower)} ${capitalize(rest)}`
+        };
+      }
+    }
+  }
+
+  return undefined;
+}
+
 function str(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
@@ -170,6 +242,28 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
         }
         if (!personData.fullName && str(result.author)) {
           personData.fullName = str(result.author);
+        }
+        if ((!personData.firstName || !personData.lastName) && typeof result.title === 'string') {
+          const parsed = parseLinkedInProfileTitle(result.title);
+          if (parsed) {
+            if (!personData.firstName) personData.firstName = parsed.firstName;
+            if (!personData.lastName) personData.lastName = parsed.lastName;
+            if (!personData.fullName) personData.fullName = parsed.fullName;
+          }
+        }
+      }
+      if (!personData.firstName || !personData.lastName) {
+        for (const result of results) {
+          const url = typeof result.url === 'string' ? result.url : '';
+          if (url.includes('linkedin.com/in/')) {
+            const slugParsed = parseLinkedInSlugName(url);
+            if (slugParsed) {
+              if (!personData.firstName) personData.firstName = slugParsed.firstName;
+              if (!personData.lastName) personData.lastName = slugParsed.lastName;
+              if (!personData.fullName) personData.fullName = slugParsed.fullName;
+              break;
+            }
+          }
         }
       }
       return {

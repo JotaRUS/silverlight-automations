@@ -6,6 +6,55 @@ import { ProviderCredentialResolver } from '../../core/providers/providerCredent
 import { emitNotification } from '../../modules/notifications/emitNotification';
 import { prisma } from '../../db/client';
 
+const SLUG_STOP_WORDS = new Set([
+  'the', 'and', 'inc', 'llc', 'ltd', 'corp', 'group', 'global', 'digital',
+  'tech', 'ai', 'io', 'co', 'hq', 'official', 'real', 'ceo', 'cfo', 'cto',
+  'amazon', 'google', 'meta', 'apple', 'microsoft', 'netflix', 'tesla'
+]);
+
+function parseLinkedInSlugName(
+  url: string,
+  knownFirstName?: string
+): { firstName: string; lastName: string; fullName: string } | undefined {
+  const match = url.match(/linkedin\.com\/in\/([^/?#]+)/);
+  const slug = match?.[1];
+  if (!slug) return undefined;
+  const cleaned = slug.replace(/-[a-f0-9]{6,}$/i, '').replace(/-\d{1,4}$/, '');
+  const parts = cleaned.split('-').filter(Boolean);
+  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+
+  if (parts.length >= 2 && parts.length <= 4) {
+    if (parts.every(p => /^[a-z']+$/i.test(p) && p.length >= 2)
+        && !parts.some(p => SLUG_STOP_WORDS.has(p.toLowerCase()))) {
+      const firstName = capitalize(parts[0]!);
+      const lastName = parts.slice(1).map(capitalize).join(' ');
+      if (!knownFirstName || firstName.toLowerCase() === knownFirstName.toLowerCase()) {
+        return { firstName, lastName, fullName: `${firstName} ${lastName}` };
+      }
+    }
+  }
+
+  if (knownFirstName && parts.length === 1) {
+    let lower = cleaned.toLowerCase().replace(/\d+$/, '');
+    for (const prefix of ['official', 'real', 'its', 'the']) {
+      if (lower.startsWith(prefix)) lower = lower.slice(prefix.length);
+    }
+    const knownLower = knownFirstName.toLowerCase();
+    if (lower.startsWith(knownLower) && lower.length > knownLower.length + 1) {
+      const rest = lower.slice(knownLower.length);
+      if (rest.length >= 2 && /^[a-z]+$/.test(rest) && !SLUG_STOP_WORDS.has(rest)) {
+        return {
+          firstName: capitalize(knownLower),
+          lastName: capitalize(rest),
+          fullName: `${capitalize(knownLower)} ${capitalize(rest)}`
+        };
+      }
+    }
+  }
+
+  return undefined;
+}
+
 const apolloPersonSchema = z.object({
   title: z.string().nullable().optional()
 });
@@ -234,12 +283,21 @@ export class ApolloClient {
       totalEntries = parsed.total_entries ?? parsed.pagination?.total_entries ?? 0;
 
       for (const person of parsed.people) {
-        const firstName = person.first_name ?? null;
-        const lastName = person.last_name ?? null;
+        let firstName = person.first_name ?? null;
+        let lastName = person.last_name ?? null;
         const rawName = person.name;
-        const fullName = (rawName && !rawName.includes('*') ? rawName : null)
+        let fullName = (rawName && !rawName.includes('*') ? rawName : null)
           ?? (firstName && lastName ? `${firstName} ${lastName}` : null)
           ?? firstName;
+
+        if (!lastName && person.linkedin_url) {
+          const slugName = parseLinkedInSlugName(person.linkedin_url, firstName ?? undefined);
+          if (slugName) {
+            if (!firstName) firstName = slugName.firstName;
+            lastName = slugName.lastName;
+            fullName = slugName.fullName;
+          }
+        }
 
         allPeople.push({
           apolloId: person.id ?? `anon-${page}-${allPeople.length}`,
