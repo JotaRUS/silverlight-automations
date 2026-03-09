@@ -15,6 +15,8 @@ export interface EnrichmentProviderDefinition {
   method?: 'GET' | 'POST';
   apiKeyInUrl?: boolean;
   apiKeyUrlParam?: string;
+  apiKeyInBody?: boolean;
+  apiKeyBodyParam?: string;
   buildRequestUrl?: (baseEndpoint: string, request: EnrichmentRequest) => string;
   buildRequestBody?: (request: EnrichmentRequest) => unknown;
   extractResponse?: (response: unknown) => ExtractedProviderData;
@@ -586,6 +588,61 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
       personData.city = str(data.location_locality);
       personData.state = str(data.location_region);
       personData.country = str(data.location_country);
+      return { emails: [...new Set(emails)], phones: [...new Set(phones)], personData };
+    }
+  },
+  {
+    providerType: 'ANYLEADS',
+    providerName: 'ANYLEADS',
+    endpoint: 'https://myapiconnect.com/api-product/incoming-webhook/find-emails-first-last',
+    apiKeyHeader: 'api_key',
+    apiKeyInBody: true,
+    apiKeyBodyParam: 'api_key',
+    buildRequestBody: (request) => {
+      const body: Record<string, unknown> = {};
+      if (request.fullName) {
+        const { first_name, last_name } = splitFullName(request.fullName);
+        body.first_name = first_name;
+        body.last_name = last_name;
+      }
+      if (request.firstName) body.first_name = request.firstName;
+      if (request.lastName) body.last_name = request.lastName;
+      if (request.companyName) body.domain = request.companyName;
+      return body;
+    },
+    extractResponse: (response) => {
+      const parsed = (response ?? {}) as Record<string, unknown>;
+      const emails: string[] = [];
+      const phones: string[] = [];
+      const personData: ExtractedPersonData = {};
+      const data = (parsed.data ?? parsed) as Record<string, unknown>;
+      if (typeof data.email === 'string' && data.email) emails.push(data.email);
+      const emailList = data.emails;
+      if (Array.isArray(emailList)) {
+        for (const e of emailList) {
+          if (typeof e === 'string' && e) emails.push(e);
+          if (typeof e === 'object' && e !== null) {
+            const obj = e as Record<string, unknown>;
+            if (typeof obj.email === 'string' && obj.email) emails.push(obj.email);
+          }
+        }
+      }
+      if (typeof data.phone === 'string' && data.phone) phones.push(data.phone);
+      const phoneList = data.phones;
+      if (Array.isArray(phoneList)) {
+        for (const p of phoneList) {
+          if (typeof p === 'string' && p) phones.push(p);
+        }
+      }
+      personData.firstName = str(data.first_name);
+      personData.lastName = str(data.last_name);
+      personData.fullName = str(data.full_name) ?? str(data.name);
+      personData.linkedinUrl = str(data.linkedin_url) ?? str(data.linkedin);
+      personData.jobTitle = str(data.title) ?? str(data.job_title);
+      personData.companyName = str(data.company) ?? str(data.company_name) ?? str(data.domain);
+      personData.city = str(data.city);
+      personData.state = str(data.state);
+      personData.country = str(data.country);
       return { emails: [...new Set(emails)], phones: [...new Set(phones)], personData };
     }
   }

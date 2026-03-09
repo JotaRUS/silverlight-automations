@@ -13,6 +13,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderType, string> = {
   CONTACTOUT: 'ContactOut',
   DATAGM: 'Datagma',
   PEOPLEDATALABS: 'People Data Labs',
+  ANYLEADS: 'Anyleads',
   LINKEDIN: 'LinkedIn Messaging (Legacy)',
   EMAIL_PROVIDER: 'Email',
   TWILIO: 'Twilio',
@@ -41,6 +42,7 @@ export const PROVIDER_TYPE_TO_FIELD: Record<ProviderType, string> = {
   CONTACTOUT: 'contactoutProviderAccountId',
   DATAGM: 'datagmProviderAccountId',
   PEOPLEDATALABS: 'peopledatalabsProviderAccountId',
+  ANYLEADS: 'anyleadsProviderAccountId',
   LINKEDIN: 'linkedinProviderAccountId',
   EMAIL_PROVIDER: 'emailProviderAccountId',
   TWILIO: 'twilioProviderAccountId',
@@ -78,7 +80,7 @@ export const PROVIDER_CATEGORIES: ProviderCategory[] = [
     key: 'enrichment',
     label: 'Data Enrichment',
     icon: 'database',
-    types: ['LEADMAGIC', 'PROSPEO', 'EXA', 'ROCKETREACH', 'WIZA', 'FORAGER', 'ZELIQ', 'CONTACTOUT', 'DATAGM', 'PEOPLEDATALABS']
+    types: ['LEADMAGIC', 'PROSPEO', 'EXA', 'ROCKETREACH', 'WIZA', 'FORAGER', 'ZELIQ', 'CONTACTOUT', 'DATAGM', 'PEOPLEDATALABS', 'ANYLEADS']
   },
   {
     key: 'outreach',

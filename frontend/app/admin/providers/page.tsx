@@ -35,6 +35,7 @@ const providerTypes: ProviderType[] = [
   'CONTACTOUT',
   'DATAGM',
   'PEOPLEDATALABS',
+  'ANYLEADS',
   'EMAIL_PROVIDER',
   'TWILIO',
   'WHATSAPP_2CHAT',
@@ -73,6 +74,7 @@ const CREDENTIAL_FIELDS: Record<ProviderType, CredentialFieldDef[]> = {
   CONTACTOUT: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   DATAGM: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   PEOPLEDATALABS: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  ANYLEADS: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter Anyleads API key' }],
   LINKEDIN: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   EMAIL_PROVIDER: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   TWILIO: [

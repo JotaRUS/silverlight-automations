@@ -13,6 +13,7 @@ export const providerTypeSchema = z.enum([
   'CONTACTOUT',
   'DATAGM',
   'PEOPLEDATALABS',
+  'ANYLEADS',
   'LINKEDIN',
   'EMAIL_PROVIDER',
   'TWILIO',
@@ -40,7 +41,8 @@ export const ENRICHMENT_PROVIDER_TYPES: ProviderType[] = [
   'ZELIQ',
   'CONTACTOUT',
   'DATAGM',
-  'PEOPLEDATALABS'
+  'PEOPLEDATALABS',
+  'ANYLEADS'
 ];
 
 export type ProjectProviderBindingField =
@@ -68,6 +70,7 @@ export type ProjectProviderBindingField =
   | 'kakaotalkProviderAccountId'
   | 'voicemailDropProviderAccountId'
   | 'yayProviderAccountId'
+  | 'anyleadsProviderAccountId'
   | 'googleSheetsProviderAccountId';
 
 export const PROVIDER_TYPE_TO_PROJECT_BINDING_FIELD: Record<ProviderType, ProjectProviderBindingField> = {
@@ -83,6 +86,7 @@ export const PROVIDER_TYPE_TO_PROJECT_BINDING_FIELD: Record<ProviderType, Projec
   CONTACTOUT: 'contactoutProviderAccountId',
   DATAGM: 'datagmProviderAccountId',
   PEOPLEDATALABS: 'peopledatalabsProviderAccountId',
+  ANYLEADS: 'anyleadsProviderAccountId',
   LINKEDIN: 'linkedinProviderAccountId',
   EMAIL_PROVIDER: 'emailProviderAccountId',
   TWILIO: 'twilioProviderAccountId',

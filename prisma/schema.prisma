@@ -65,6 +65,7 @@ enum EnrichmentProvider {
   CONTACTOUT
   DATAGM
   PEOPLEDATALABS
+  ANYLEADS
 }
 
 enum ProviderType {
@@ -92,6 +93,7 @@ enum ProviderType {
   KAKAOTALK
   VOICEMAIL_DROP
   YAY
+  ANYLEADS
   GOOGLE_SHEETS
 }
 
@@ -244,6 +246,7 @@ model Project {
   kakaotalkProviderAccountId       String?             @db.Uuid
   voicemailDropProviderAccountId   String?             @db.Uuid
   yayProviderAccountId             String?             @db.Uuid
+  anyleadsProviderAccountId        String?             @db.Uuid
   googleSheetsProviderAccountId    String?             @db.Uuid
   metadata                         Json?               @db.JsonB
   createdAt                        DateTime            @default(now())
@@ -285,6 +288,7 @@ model Project {
   kakaotalkProviderAccount         ProviderAccount?    @relation("project_kakaotalk_provider_account", fields: [kakaotalkProviderAccountId], references: [id], onDelete: SetNull)
   voicemailDropProviderAccount     ProviderAccount?    @relation("project_voicemail_drop_provider_account", fields: [voicemailDropProviderAccountId], references: [id], onDelete: SetNull)
   yayProviderAccount               ProviderAccount?    @relation("project_yay_provider_account", fields: [yayProviderAccountId], references: [id], onDelete: SetNull)
+  anyleadsProviderAccount          ProviderAccount?    @relation("project_anyleads_provider_account", fields: [anyleadsProviderAccountId], references: [id], onDelete: SetNull)
   googleSheetsProviderAccount      ProviderAccount?    @relation("project_google_sheets_provider_account", fields: [googleSheetsProviderAccountId], references: [id], onDelete: SetNull)
 
   @@index([status, priority, completionPercentage], map: "idx_project_ranking")
@@ -330,6 +334,7 @@ model ProviderAccount {
   kakaotalkBoundProjects       Project[]    @relation("project_kakaotalk_provider_account")
   voicemailDropBoundProjects   Project[]    @relation("project_voicemail_drop_provider_account")
   yayBoundProjects             Project[]    @relation("project_yay_provider_account")
+  anyleadsBoundProjects        Project[]    @relation("project_anyleads_provider_account")
   googleSheetsBoundProjects    Project[]    @relation("project_google_sheets_provider_account")
 
   @@unique([providerType, accountLabel], map: "uniq_provider_account_label")

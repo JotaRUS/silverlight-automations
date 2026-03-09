@@ -12,7 +12,8 @@ const enrichmentProviderTypeSchema = providerTypeSchema.refine(
     providerType === 'ZELIQ' ||
     providerType === 'CONTACTOUT' ||
     providerType === 'DATAGM' ||
-    providerType === 'PEOPLEDATALABS',
+    providerType === 'PEOPLEDATALABS' ||
+    providerType === 'ANYLEADS',
   {
     message: 'providerType must be an enrichment provider'
   }
@@ -46,6 +47,7 @@ const providerBindingSchema = z
     kakaotalkProviderAccountId: optionalUuidOrNull,
     voicemailDropProviderAccountId: optionalUuidOrNull,
     yayProviderAccountId: optionalUuidOrNull,
+    anyleadsProviderAccountId: optionalUuidOrNull,
     googleSheetsProviderAccountId: optionalUuidOrNull
   })
   .strict();

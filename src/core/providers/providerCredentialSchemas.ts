@@ -97,6 +97,7 @@ const providerCredentialParsers: Record<ProviderType, z.ZodType<Record<string, u
   CONTACTOUT: singleApiKeySchema,
   DATAGM: singleApiKeySchema,
   PEOPLEDATALABS: singleApiKeySchema,
+  ANYLEADS: singleApiKeySchema,
   LINKEDIN: linkedinCredentialSchema,
   EMAIL_PROVIDER: singleApiKeySchema,
   TWILIO: twilioCredentialSchema,

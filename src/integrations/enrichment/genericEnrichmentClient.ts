@@ -11,6 +11,8 @@ interface GenericEnrichmentClientInput {
   method?: 'GET' | 'POST';
   apiKeyInUrl?: boolean;
   apiKeyUrlParam?: string;
+  apiKeyInBody?: boolean;
+  apiKeyBodyParam?: string;
   buildRequestUrl?: (baseEndpoint: string, request: EnrichmentRequest) => string;
   buildRequestBody?: (request: EnrichmentRequest) => unknown;
   extractResponse?: (response: unknown) => ExtractedProviderData;
@@ -96,6 +98,8 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
   private readonly method: 'GET' | 'POST';
   private readonly apiKeyInUrl: boolean;
   private readonly apiKeyUrlParam: string;
+  private readonly apiKeyInBody: boolean;
+  private readonly apiKeyBodyParam: string;
   private readonly customBuildRequestUrl?: (baseEndpoint: string, request: EnrichmentRequest) => string;
   private readonly buildRequestBody?: (request: EnrichmentRequest) => unknown;
   private readonly customExtractResponse?: (response: unknown) => ExtractedProviderData;
@@ -108,6 +112,8 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
     this.method = input.method ?? 'POST';
     this.apiKeyInUrl = input.apiKeyInUrl ?? false;
     this.apiKeyUrlParam = input.apiKeyUrlParam ?? 'apiId';
+    this.apiKeyInBody = input.apiKeyInBody ?? false;
+    this.apiKeyBodyParam = input.apiKeyBodyParam ?? 'api_key';
     this.customBuildRequestUrl = input.buildRequestUrl;
     this.buildRequestBody = input.buildRequestBody;
     this.customExtractResponse = input.extractResponse;
@@ -121,7 +127,7 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
     }
 
     const headers: Record<string, string> = {};
-    if (!this.apiKeyInUrl) {
+    if (!this.apiKeyInUrl && !this.apiKeyInBody) {
       if (this.apiKeyHeader === 'authorization') {
         headers.authorization = `Bearer ${this.apiKey}`;
       } else {
@@ -137,9 +143,13 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
       const separator = url.includes('?') ? '&' : '?';
       url = `${url}${separator}${encodeURIComponent(this.apiKeyUrlParam)}=${encodeURIComponent(this.apiKey)}`;
     }
-    const body = this.method === 'GET'
+    let body = this.method === 'GET'
       ? undefined
       : (this.buildRequestBody ? this.buildRequestBody(request) : request);
+
+    if (this.apiKeyInBody && this.apiKey && body && typeof body === 'object') {
+      body = { ...(body as Record<string, unknown>), [this.apiKeyBodyParam]: this.apiKey };
+    }
 
     const response = await requestJson<unknown>({
       method: this.method,

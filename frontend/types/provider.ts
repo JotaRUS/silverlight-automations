@@ -11,6 +11,7 @@ export type ProviderType =
   | 'CONTACTOUT'
   | 'DATAGM'
   | 'PEOPLEDATALABS'
+  | 'ANYLEADS'
   | 'LINKEDIN'
   | 'EMAIL_PROVIDER'
   | 'TWILIO'

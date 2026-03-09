@@ -469,6 +469,34 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
     lastReviewed: '2026-02-28'
   },
   {
+    slug: 'anyleads',
+    providerType: 'ANYLEADS',
+    name: 'Anyleads',
+    category: 'Data Enrichment',
+    summary: 'Email discovery from first name, last name and company domain via Anyleads API.',
+    credentials: [
+      { key: 'apiKey', label: 'API Key', required: true, description: 'API key from dashboard.anyleads.com under API / Webhooks.' }
+    ],
+    prerequisites: ['Anyleads account with active subscription and API access.'],
+    credentialSteps: [
+      'Sign in to dashboard.anyleads.com.',
+      'Navigate to API / Webhooks → Use the API.',
+      'Copy the api_key value shown in the sample request payloads.',
+      'Store the key securely; use Reset API key value button to rotate.'
+    ],
+    platformConfiguration: [...sharedPlatformSteps],
+    validationChecklist: ['Health check succeeds.', 'Anyleads enrichment requests return email results for known contacts.'],
+    commonPitfalls: [
+      { issue: 'Empty results.', resolution: 'Ensure first name, last name and company domain are provided — all three are needed for the find-emails-first-last endpoint.' },
+      { issue: 'Auth errors.', resolution: 'Verify the API key matches the one in the Anyleads dashboard and the subscription is active.' }
+    ],
+    officialLinks: [
+      { label: 'Anyleads Dashboard', url: 'https://dashboard.anyleads.com' },
+      { label: 'Anyleads API Center', url: 'https://dashboard.anyleads.com/dashboard/api-center/incoming' }
+    ],
+    lastReviewed: '2026-03-09'
+  },
+  {
     slug: 'linkedin',
     providerType: 'LINKEDIN',
     name: 'LinkedIn Messaging (Legacy)',
