@@ -50,7 +50,9 @@ export function createApolloLeadSourcingWorker(): Worker<CorrelatedJobData<Apoll
           continue;
         }
 
-        const fullName = person.fullName ?? person.firstName ?? 'Unknown';
+        const fullName = person.fullName ?? (person.firstName && person.lastName
+          ? `${person.firstName} ${person.lastName}`
+          : undefined);
         const emails = person.email ? [person.email] : [];
 
         await getQueues().leadIngestionQueue.add(

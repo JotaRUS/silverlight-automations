@@ -6,6 +6,8 @@ import type { ProviderType } from '../../core/providers/providerTypes';
 import { PROVIDER_TYPE_TO_PROJECT_BINDING_FIELD } from '../../core/providers/providerTypes';
 import { providerLimiter } from '../../core/rate-limiter/providerLimiter';
 import { clock } from '../../core/time/clock';
+import { isoCodeToLocationName } from '../../config/constants';
+import { ApolloClient } from '../../integrations/apollo/apolloClient';
 import { GenericEnrichmentClient } from '../../integrations/enrichment/genericEnrichmentClient';
 import {
   enrichmentProviderDefinitions,
@@ -36,7 +38,16 @@ function parseLinkedInSlugName(
   const match = url.match(/linkedin\.com\/in\/([^/?#]+)/);
   const slug = match?.[1];
   if (!slug) return undefined;
-  const cleaned = slug.replace(/-[a-f0-9]{6,}$/i, '').replace(/-\d{1,4}$/, '');
+  let decoded = slug;
+  try {
+    decoded = decodeURIComponent(slug);
+  } catch {
+    decoded = slug;
+  }
+  if (decoded.includes('%')) {
+    return undefined;
+  }
+  const cleaned = decoded.replace(/-[a-f0-9]{6,}$/i, '').replace(/-\d{1,4}$/, '');
   const parts = cleaned.split('-').filter(Boolean);
   const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
@@ -70,6 +81,34 @@ function parseLinkedInSlugName(
   }
 
   return undefined;
+}
+
+function isWeakFullName(value: string | null | undefined, firstName?: string | null): boolean {
+  if (!value) return true;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.includes('*')) return true;
+  if (firstName && trimmed.toLowerCase() === firstName.trim().toLowerCase()) return true;
+  return trimmed.split(/\s+/).length < 2;
+}
+
+function isWeakLastName(value: string | null | undefined): boolean {
+  if (!value) return true;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.includes('*')) return true;
+  const parts = trimmed.toLowerCase().split(/\s+/);
+  return parts.some((part) => SLUG_STOP_WORDS.has(part));
+}
+
+function isPlausiblePersonName(value: string | null | undefined, firstName?: string | null): boolean {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.includes('*') || /[@\d]/.test(trimmed)) return false;
+  const words = trimmed.split(/\s+/);
+  if (words.length < 2 || words.length > 4) return false;
+  const companySuffixes = new Set(['inc', 'llc', 'ltd', 'limited', 'corp', 'corporation', 'pte', 'company', 'group']);
+  if (words.some((word) => companySuffixes.has(word.toLowerCase().replace(/[.,]/g, '')))) return false;
+  if (firstName && words[0]?.toLowerCase() !== firstName.trim().toLowerCase()) return false;
+  return words.every((word) => /^[A-Za-z'’-]+$/.test(word));
 }
 
 export interface EnrichmentJobInput {
@@ -183,6 +222,9 @@ export class EnrichmentService {
           definition,
           new ProviderCredentialResolver(prismaClient)
         )
+    ),
+    private readonly apolloClient: ApolloClient = new ApolloClient(
+      new ProviderCredentialResolver(prismaClient)
     )
   ) {
   }
@@ -295,6 +337,39 @@ export class EnrichmentService {
     }
   }
 
+  private async runApolloProvider(
+    input: {
+      leadId: string;
+      projectId: string;
+      correlationId: string;
+      apolloId?: string;
+      firstName?: string;
+      lastName?: string;
+      fullName?: string;
+      companyName?: string;
+      linkedinUrl?: string;
+    }
+  ): Promise<EnrichmentResult | null> {
+    try {
+      const result = await providerLimiter.run('APOLLO', async () => this.apolloClient.enrichPerson({
+        projectId: input.projectId,
+        correlationId: input.correlationId,
+        apolloId: input.apolloId,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        fullName: input.fullName,
+        companyName: input.companyName,
+        linkedinUrl: input.linkedinUrl
+      }));
+      if (!result) {
+        return null;
+      }
+      return result;
+    } catch (error) {
+      return null;
+    }
+  }
+
   private pickBestResult(results: EnrichmentResult[]): EnrichmentResult | null {
     if (!results.length) {
       return null;
@@ -313,16 +388,43 @@ export class EnrichmentService {
     incoming: ExtractedPersonData | undefined
   ): void {
     if (!incoming) return;
-    const keys: (keyof ExtractedPersonData)[] = [
-      'firstName', 'lastName', 'fullName', 'linkedinUrl',
-      'jobTitle', 'companyName', 'city', 'state', 'country'
-    ];
-    for (const key of keys) {
-      if (!accumulated[key] && incoming[key]) {
-        accumulated[key] = incoming[key];
-      }
+    if (incoming.firstName && !accumulated.firstName) {
+      accumulated.firstName = incoming.firstName;
     }
-    if (accumulated.firstName && accumulated.lastName && !accumulated.fullName) {
+    if (incoming.lastName && isWeakLastName(accumulated.lastName)) {
+      accumulated.lastName = incoming.lastName;
+    }
+    if (
+      incoming.fullName &&
+      isPlausiblePersonName(incoming.fullName, incoming.firstName ?? accumulated.firstName) &&
+      (isWeakFullName(accumulated.fullName, accumulated.firstName) ||
+        incoming.fullName.split(/\s+/).length > (accumulated.fullName?.split(/\s+/).length ?? 0))
+    ) {
+      accumulated.fullName = incoming.fullName;
+    }
+    if (incoming.linkedinUrl && !accumulated.linkedinUrl) {
+      accumulated.linkedinUrl = incoming.linkedinUrl;
+    }
+    if (incoming.jobTitle && !accumulated.jobTitle) {
+      accumulated.jobTitle = incoming.jobTitle;
+    }
+    if (incoming.companyName && !accumulated.companyName) {
+      accumulated.companyName = incoming.companyName;
+    }
+    if (incoming.city && !accumulated.city) {
+      accumulated.city = incoming.city;
+    }
+    if (incoming.state && !accumulated.state) {
+      accumulated.state = incoming.state;
+    }
+    if (incoming.country && !accumulated.country) {
+      accumulated.country = incoming.country;
+    }
+    if (
+      accumulated.firstName &&
+      accumulated.lastName &&
+      (!accumulated.fullName || isWeakFullName(accumulated.fullName, accumulated.firstName))
+    ) {
       accumulated.fullName = `${accumulated.firstName} ${accumulated.lastName}`;
     }
   }
@@ -354,7 +456,7 @@ export class EnrichmentService {
     const lead = await this.prismaClient.lead.findUnique({
       where: { id: job.leadId },
       select: { id: true, expertId: true, firstName: true, lastName: true, fullName: true,
-                jobTitle: true, linkedinUrl: true, countryIso: true }
+                jobTitle: true, linkedinUrl: true, countryIso: true, metadata: true }
     });
     if (!lead) {
       return;
@@ -368,17 +470,30 @@ export class EnrichmentService {
 
     if (lead.expertId) {
       const existingContacts = await this.prismaClient.expertContact.findMany({
-        where: { expertId: lead.expertId },
-        select: { type: true, value: true }
+        where: { expertId: lead.expertId, deletedAt: null },
+        select: { id: true, type: true, value: true }
       });
-      hasEmail = existingContacts.some((c) => c.type === 'EMAIL' && !isFakeEmail(c.value));
-      hasPhone = existingContacts.some((c) => c.type === 'PHONE' && !isFakePhone(c.value));
-      hasLinkedin = existingContacts.some((c) => c.type === 'LINKEDIN');
+      const fakeContactIds = existingContacts
+        .filter((contact) =>
+          (contact.type === 'EMAIL' && isFakeEmail(contact.value)) ||
+          (contact.type === 'PHONE' && isFakePhone(contact.value))
+        )
+        .map((contact) => contact.id);
+      if (fakeContactIds.length > 0) {
+        await this.prismaClient.expertContact.updateMany({
+          where: { id: { in: fakeContactIds } },
+          data: { deletedAt: clock.now() }
+        });
+      }
+      const validContacts = existingContacts.filter((contact) => !fakeContactIds.includes(contact.id));
+      hasEmail = validContacts.some((c) => c.type === 'EMAIL' && !isFakeEmail(c.value));
+      hasPhone = validContacts.some((c) => c.type === 'PHONE' && !isFakePhone(c.value));
+      hasLinkedin = validContacts.some((c) => c.type === 'LINKEDIN');
     }
 
     const allPersonFieldsAlreadyFilled =
       Boolean(lead.firstName) && Boolean(lead.lastName) &&
-      Boolean(lead.fullName) && Boolean(lead.linkedinUrl) &&
+      !isWeakFullName(lead.fullName, lead.firstName) && Boolean(lead.linkedinUrl) &&
       Boolean(lead.jobTitle);
 
     if (hasEmail && hasPhone && allPersonFieldsAlreadyFilled) {
@@ -420,6 +535,43 @@ export class EnrichmentService {
     }
     const collectedEmails: string[] = (job.emails ?? []).filter((e) => !isFakeEmail(e));
     const collectedPhones: string[] = (job.phones ?? []).filter((p) => !isFakePhone(p));
+    const leadMetadata = (lead.metadata as Record<string, unknown> | null) ?? {};
+
+    if (projectRecord?.apolloProviderAccountId) {
+      const apolloResult = await this.runApolloProvider({
+        leadId: job.leadId,
+        projectId: job.projectId,
+        correlationId,
+        apolloId: typeof leadMetadata.apolloId === 'string' ? leadMetadata.apolloId : undefined,
+        firstName: accumulatedPerson.firstName,
+        lastName: accumulatedPerson.lastName,
+        fullName: accumulatedPerson.fullName,
+        companyName: job.companyName,
+        linkedinUrl: accumulatedPerson.linkedinUrl
+      });
+      if (apolloResult) {
+        allResults.push(apolloResult);
+        if (apolloResult.personData?.firstName) {
+          accumulatedPerson.firstName = apolloResult.personData.firstName;
+        }
+        if (apolloResult.personData?.lastName) {
+          accumulatedPerson.lastName = apolloResult.personData.lastName;
+        }
+        if (
+          apolloResult.personData?.fullName &&
+          isPlausiblePersonName(apolloResult.personData.fullName, apolloResult.personData.firstName)
+        ) {
+          accumulatedPerson.fullName = apolloResult.personData.fullName;
+        } else if (accumulatedPerson.firstName && accumulatedPerson.lastName) {
+          accumulatedPerson.fullName = `${accumulatedPerson.firstName} ${accumulatedPerson.lastName}`;
+        }
+        this.mergePersonData(accumulatedPerson, apolloResult.personData);
+        collectedEmails.push(...apolloResult.emails);
+        collectedPhones.push(...apolloResult.phones);
+        if (apolloResult.emails.some((email) => !isFakeEmail(email))) hasEmail = true;
+        if (apolloResult.phones.some((phone) => !isFakePhone(phone))) hasPhone = true;
+      }
+    }
 
     for (const providerClient of eligibleProviders) {
       const enrichedRequest = this.feedForward(baseRequest, accumulatedPerson, collectedEmails, collectedPhones);
@@ -479,18 +631,41 @@ export class EnrichmentService {
     const normalizedPhones = Array.from(new Set(
       collectedPhones.map((p) => normalizePhone(p)).filter((p): p is string => Boolean(p))
     ));
+    const allowedCountries = (project?.geographyIsoCodes ?? []).map((code) => isoCodeToLocationName(code).toLowerCase());
+    const leadCountry = accumulatedPerson.country?.trim().toLowerCase();
+    const isOutOfGeo =
+      leadMetadata.source === 'apollo_people_search' &&
+      allowedCountries.length > 0 &&
+      Boolean(leadCountry) &&
+      !allowedCountries.includes(leadCountry!);
 
     const hasAnyContact = hasEmail || hasPhone || normalizedEmails.length > 0 || normalizedPhones.length > 0;
     const leadUpdateData: Record<string, unknown> = {
-      status: hasAnyContact ? 'ENRICHED' : 'NEW',
+      status: isOutOfGeo ? 'DISQUALIFIED' : (hasAnyContact ? 'ENRICHED' : 'NEW'),
       enrichmentConfidence: bestResult.confidenceScore
     };
-    if (accumulatedPerson.fullName && !lead.fullName) leadUpdateData.fullName = accumulatedPerson.fullName;
+    if (accumulatedPerson.fullName && (isWeakFullName(lead.fullName, lead.firstName) || lead.fullName !== accumulatedPerson.fullName)) {
+      leadUpdateData.fullName = accumulatedPerson.fullName;
+    }
     if (accumulatedPerson.firstName && !lead.firstName) leadUpdateData.firstName = accumulatedPerson.firstName;
-    if (accumulatedPerson.lastName && !lead.lastName) leadUpdateData.lastName = accumulatedPerson.lastName;
+    if (
+      accumulatedPerson.lastName &&
+      (isWeakLastName(lead.lastName) ||
+        lead.fullName === lead.firstName ||
+        leadMetadata.source === 'apollo_people_search')
+    ) {
+      leadUpdateData.lastName = accumulatedPerson.lastName;
+    }
     if (accumulatedPerson.jobTitle && !lead.jobTitle) leadUpdateData.jobTitle = accumulatedPerson.jobTitle;
     if (accumulatedPerson.linkedinUrl && !lead.linkedinUrl) leadUpdateData.linkedinUrl = accumulatedPerson.linkedinUrl;
-    if (accumulatedPerson.country && !lead.countryIso) leadUpdateData.countryIso = accumulatedPerson.country;
+    if (
+      accumulatedPerson.country &&
+      (!lead.countryIso ||
+        leadMetadata.source === 'apollo_people_search' ||
+        lead.countryIso !== accumulatedPerson.country)
+    ) {
+      leadUpdateData.countryIso = accumulatedPerson.country;
+    }
 
     const existingMeta = (await this.prismaClient.lead.findUnique({
       where: { id: job.leadId }, select: { metadata: true }
@@ -500,6 +675,10 @@ export class EnrichmentService {
     if (accumulatedPerson.state && !metaUpdate.state) metaUpdate.state = accumulatedPerson.state;
     if (accumulatedPerson.country && !metaUpdate.country) metaUpdate.country = accumulatedPerson.country;
     if (accumulatedPerson.companyName && !metaUpdate.companyName) metaUpdate.companyName = accumulatedPerson.companyName;
+    if (isOutOfGeo) {
+      metaUpdate.geoMismatch = true;
+      metaUpdate.allowedCountries = allowedCountries;
+    }
     leadUpdateData.metadata = toJsonValue(metaUpdate);
 
     await this.prismaClient.lead.update({
@@ -522,14 +701,21 @@ export class EnrichmentService {
                 currentCompany: true, countryIso: true, regionIso: true }
     });
     if (expert) {
-      if (accumulatedPerson.fullName && (!expert.fullName || expert.fullName.includes('*'))) {
+      if (accumulatedPerson.fullName && isWeakFullName(expert.fullName, expert.firstName)) {
         expertUpdateData.fullName = accumulatedPerson.fullName;
       }
       if (accumulatedPerson.firstName && !expert.firstName) expertUpdateData.firstName = accumulatedPerson.firstName;
-      if (accumulatedPerson.lastName && !expert.lastName) expertUpdateData.lastName = accumulatedPerson.lastName;
+      if (
+        accumulatedPerson.lastName &&
+        (isWeakLastName(expert.lastName) || leadMetadata.source === 'apollo_people_search')
+      ) {
+        expertUpdateData.lastName = accumulatedPerson.lastName;
+      }
       if (accumulatedPerson.jobTitle && !expert.currentRole) expertUpdateData.currentRole = accumulatedPerson.jobTitle;
       if (accumulatedPerson.companyName && !expert.currentCompany) expertUpdateData.currentCompany = accumulatedPerson.companyName;
-      if (accumulatedPerson.country && !expert.countryIso) expertUpdateData.countryIso = accumulatedPerson.country;
+      if (accumulatedPerson.country && (!expert.countryIso || expert.countryIso !== accumulatedPerson.country)) {
+        expertUpdateData.countryIso = accumulatedPerson.country;
+      }
       if (accumulatedPerson.state && !expert.regionIso) expertUpdateData.regionIso = accumulatedPerson.state;
       if (Object.keys(expertUpdateData).length > 0) {
         await this.prismaClient.expert.update({

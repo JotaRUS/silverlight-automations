@@ -5,6 +5,7 @@ import { requestJson } from '../../core/http/httpJsonClient';
 import { ProviderCredentialResolver } from '../../core/providers/providerCredentialResolver';
 import { emitNotification } from '../../modules/notifications/emitNotification';
 import { prisma } from '../../db/client';
+import type { EnrichmentResult, ExtractedPersonData } from '../enrichment/types';
 
 const SLUG_STOP_WORDS = new Set([
   'the', 'and', 'inc', 'llc', 'ltd', 'corp', 'group', 'global', 'digital',
@@ -103,6 +104,29 @@ const apolloPeopleSearchFullResponseSchema = z.object({
   }).optional()
 });
 
+const apolloBulkMatchSchema = z.object({
+  matches: z.array(z.object({
+    id: z.string().optional(),
+    first_name: z.string().nullable().optional(),
+    last_name: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
+    linkedin_url: z.string().nullable().optional(),
+    title: z.string().nullable().optional(),
+    city: z.string().nullable().optional(),
+    state: z.string().nullable().optional(),
+    country: z.string().nullable().optional(),
+    email: z.string().nullable().optional(),
+    personal_emails: z.array(z.string()).optional().default([]),
+    organization: z.object({
+      name: z.string().nullable().optional(),
+      phone: z.string().nullable().optional(),
+      primary_phone: z.object({
+        number: z.string().nullable().optional()
+      }).optional()
+    }).optional()
+  })).default([])
+});
+
 export interface ApolloPerson {
   apolloId: string;
   firstName: string | null;
@@ -147,6 +171,17 @@ export interface ApolloPeopleSearchInput {
 export interface ApolloPeopleSearchResult {
   people: ApolloPerson[];
   totalEntries: number;
+}
+
+export interface ApolloPersonEnrichmentInput {
+  projectId: string;
+  correlationId: string;
+  apolloId?: string;
+  firstName?: string;
+  lastName?: string;
+  fullName?: string;
+  companyName?: string;
+  linkedinUrl?: string;
 }
 
 export class ApolloClient {
@@ -287,10 +322,9 @@ export class ApolloClient {
         let lastName = person.last_name ?? null;
         const rawName = person.name;
         let fullName = (rawName && !rawName.includes('*') ? rawName : null)
-          ?? (firstName && lastName ? `${firstName} ${lastName}` : null)
-          ?? firstName;
+          ?? (firstName && lastName ? `${firstName} ${lastName}` : null);
 
-        if (!lastName && person.linkedin_url) {
+        if (!lastName && !person.last_name_obfuscated && person.linkedin_url) {
           const slugName = parseLinkedInSlugName(person.linkedin_url, firstName ?? undefined);
           if (slugName) {
             if (!firstName) firstName = slugName.firstName;
@@ -321,6 +355,75 @@ export class ApolloClient {
     }
 
     return { people: allPeople, totalEntries };
+  }
+
+  public async enrichPerson(input: ApolloPersonEnrichmentInput): Promise<EnrichmentResult | null> {
+    const { apiKey, providerAccountId } = await this.resolveApiKey(input.projectId, input.correlationId);
+    const detail: Record<string, string> = {};
+    if (input.apolloId) detail.id = input.apolloId;
+    if (input.linkedinUrl) detail.linkedin_url = input.linkedinUrl;
+    if (input.fullName) detail.name = input.fullName;
+    if (input.firstName) detail.first_name = input.firstName;
+    if (input.lastName) detail.last_name = input.lastName;
+    if (input.companyName) detail.organization_name = input.companyName;
+
+    if (Object.keys(detail).length === 0) {
+      return null;
+    }
+
+    let response: unknown;
+    try {
+      response = await requestJson<unknown>({
+        method: 'POST',
+        url: 'https://api.apollo.io/api/v1/people/bulk_match?reveal_personal_emails=true&reveal_phone_number=false',
+        headers: {
+          'x-api-key': apiKey,
+          accept: 'application/json',
+          'content-type': 'application/json'
+        },
+        body: { details: [detail] },
+        provider: 'apollo',
+        operation: 'people-bulk-match',
+        correlationId: input.correlationId
+      });
+    } catch (error) {
+      return this.handleProviderError(providerAccountId, error);
+    }
+
+    const parsed = apolloBulkMatchSchema.parse(response);
+    const match = parsed.matches[0];
+    if (!match) {
+      return null;
+    }
+
+    const emails = Array.from(new Set(
+      [match.email, ...(match.personal_emails ?? [])]
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    ));
+    const phones = Array.from(new Set(
+      [match.organization?.primary_phone?.number, match.organization?.phone]
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    ));
+    const personData: ExtractedPersonData = {
+      firstName: match.first_name ?? undefined,
+      lastName: match.last_name ?? undefined,
+      fullName: match.name ?? undefined,
+      linkedinUrl: match.linkedin_url ?? undefined,
+      jobTitle: match.title ?? undefined,
+      companyName: match.organization?.name ?? undefined,
+      city: match.city ?? undefined,
+      state: match.state ?? undefined,
+      country: match.country ?? undefined
+    };
+
+    return {
+      provider: 'APOLLO',
+      emails,
+      phones,
+      confidenceScore: emails.length > 0 || phones.length > 0 ? 0.95 : 0.7,
+      rawPayload: response,
+      personData
+    };
   }
 
   public async fetchJobTitles(input: ApolloJobTitleQueryInput): Promise<string[]> {

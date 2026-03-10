@@ -64,6 +64,8 @@ export class LeadIngestionService {
   public async ingest(job: LeadIngestionJob): Promise<Lead> {
     const identity = buildLeadIdentity(job);
     const lead = await withIdentityAdvisoryLock(this.prismaClient, `lead:${job.projectId}:${identity}`, async (transaction) => {
+      const nameFromParts = [job.lead.firstName, job.lead.lastName].filter(Boolean).join(' ');
+      const resolvedFullName = job.lead.fullName || nameFromParts || job.lead.firstName || 'Unknown';
       const existing = await transaction.lead.findFirst({
         where: this.toLeadWhere(job)
       });
@@ -78,7 +80,7 @@ export class LeadIngestionService {
           salesNavSearchId: job.salesNavSearchId,
           firstName: job.lead.firstName,
           lastName: job.lead.lastName,
-          fullName: job.lead.fullName,
+          fullName: resolvedFullName,
           jobTitle: job.lead.jobTitle,
           countryIso: job.lead.countryIso,
           regionIso: job.lead.regionIso,
@@ -119,7 +121,7 @@ export class LeadIngestionService {
             ? expertCriteria
             : [
                 {
-                  fullName: createdLead.fullName ?? 'Unknown Expert'
+                  fullName: createdLead.fullName ?? resolvedFullName
                 }
               ]
         }
@@ -129,7 +131,7 @@ export class LeadIngestionService {
         existingExpert ??
         (await transaction.expert.create({
           data: {
-            fullName: createdLead.fullName ?? 'Unknown Expert',
+            fullName: createdLead.fullName ?? resolvedFullName,
             countryIso: createdLead.countryIso ?? undefined,
             regionIso: createdLead.regionIso ?? undefined,
             metadata: {

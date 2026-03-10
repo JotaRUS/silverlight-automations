@@ -126,7 +126,7 @@ export class ProviderAccountRouter {
       where: {
         providerType: providerType as never,
         isActive: true,
-        NOT: { lastHealthStatus: 'out_of_credits' }
+        NOT: { lastHealthStatus: { in: ['out_of_credits', 'unhealthy'] } }
       },
       orderBy: [
         {
@@ -346,7 +346,41 @@ export class ProviderAccountRouter {
     const isRateLimitFailure = options.statusCode === 429 || options.reason.toLowerCase().includes('rate');
     const isTimeoutFailure = options.reason.toLowerCase().includes('timeout');
     const isNetworkFailure = options.reason.toLowerCase().includes('network');
-    if (!isRateLimitFailure && !isTimeoutFailure && !isNetworkFailure) {
+    const isTransient = isRateLimitFailure || isTimeoutFailure || isNetworkFailure;
+
+    if (!isTransient) {
+      await this.prismaClient.providerAccount.update({
+        where: { id: providerAccountId },
+        data: {
+          lastHealthStatus: 'unhealthy',
+          lastHealthError: `${options.reason} (HTTP ${options.statusCode ?? 'unknown'})`.slice(0, 500),
+          lastHealthCheckAt: new Date()
+        }
+      });
+      await this.prismaClient.systemEvent.create({
+        data: {
+          category: 'ENFORCEMENT',
+          entityType: 'provider_account',
+          entityId: providerAccountId,
+          message: 'provider-account-unhealthy',
+          payload: toJsonValue({
+            providerType: options.providerType,
+            reason: options.reason,
+            statusCode: options.statusCode
+          })
+        }
+      });
+      emitNotification({
+        type: 'provider.failure',
+        severity: 'ERROR',
+        title: `${options.providerType} provider unhealthy`,
+        message: `${label}: ${options.reason} — marked unhealthy and disabled. Run "Test Connection" to re-enable.`,
+        metadata: {
+          providerAccountId,
+          providerType: options.providerType,
+          statusCode: options.statusCode
+        }
+      });
       return;
     }
 

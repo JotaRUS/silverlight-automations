@@ -358,6 +358,9 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
       const phones: string[] = [];
       const personData: ExtractedPersonData = {};
       const data = (parsed.data ?? parsed) as Record<string, unknown>;
+      if (data.status === 'queued' || data.is_complete === false) {
+        return { emails, phones, personData };
+      }
       if (typeof data.email === 'string' && data.email) emails.push(data.email);
       if (typeof data.phone_number === 'string' && data.phone_number) phones.push(data.phone_number);
       if (typeof data.mobile_phone === 'string' && data.mobile_phone) phones.push(data.mobile_phone);
@@ -470,7 +473,15 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
       const emails: string[] = [];
       const phones: string[] = [];
       const personData: ExtractedPersonData = {};
+      const rawMessage = typeof parsed.message === 'string' ? parsed.message.toLowerCase() : '';
+      if (rawMessage.includes('sample response') || rawMessage.includes('book a call with our sales team')) {
+        return { emails, phones, personData };
+      }
       const profile = (parsed.profile ?? parsed) as Record<string, unknown>;
+      const sampleUrl = typeof profile.url === 'string' ? profile.url.toLowerCase() : '';
+      if (sampleUrl.includes('/example-person')) {
+        return { emails, phones, personData };
+      }
       for (const key of ['email', 'work_email', 'personal_email']) {
         const val = profile[key];
         if (Array.isArray(val)) {
@@ -494,6 +505,12 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
       personData.city = str(profile.city);
       personData.state = str(profile.state);
       personData.country = str(profile.country);
+      if (
+        emails.some((email) => email.toLowerCase().includes('@example.')) ||
+        phones.some((phone) => phone.replace(/\D/g, '').includes('1234567891'))
+      ) {
+        return { emails: [], phones: [], personData: {} };
+      }
       return { emails: [...new Set(emails)], phones: [...new Set(phones)], personData };
     }
   },
