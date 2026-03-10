@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ALL_COUNTRY_OPTIONS, getCountryLabel } from '@/lib/countries';
 
@@ -21,6 +21,19 @@ export function CountryMultiSelect({
 }: CountryMultiSelectProps): JSX.Element {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleClickOutside(event: MouseEvent): void {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+        setSearch('');
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
 
   const selectedSet = useMemo(() => new Set(selectedCodes), [selectedCodes]);
   const filteredOptions = useMemo(() => {
@@ -51,7 +64,7 @@ export function CountryMultiSelect({
         {helperText ? <p className="text-xs text-slate-500">{helperText}</p> : null}
       </div>
 
-      <div className="rounded-xl border border-slate-300 bg-white p-3">
+      <div ref={containerRef} className="rounded-xl border border-slate-300 bg-white p-3">
         <button
           type="button"
           onClick={() => setIsOpen((value) => !value)}
