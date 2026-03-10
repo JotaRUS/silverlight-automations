@@ -15,9 +15,34 @@ function normalizeValue(value?: string): string | undefined {
   return value?.trim().toLowerCase();
 }
 
+function normalizeLinkedinUrl(value?: string): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  try {
+    const parsed = new URL(value.trim());
+    const host = parsed.hostname.toLowerCase();
+    if (!host.includes('linkedin.com')) {
+      return value.trim();
+    }
+    parsed.protocol = 'https:';
+    parsed.hostname = host.startsWith('www.') ? host : `www.${host}`;
+    parsed.search = '';
+    parsed.hash = '';
+    parsed.pathname = parsed.pathname.replace(/\/+$/, '');
+    return parsed.toString();
+  } catch {
+    return value.trim();
+  }
+}
+
 function buildLeadIdentity(job: LeadIngestionJob): string {
+  const metadata = job.lead.metadata as Record<string, unknown> | undefined;
+  const apolloId = typeof metadata?.apolloId === 'string' ? metadata.apolloId : undefined;
+  const normalizedLinkedin = normalizeLinkedinUrl(job.lead.linkedinUrl);
   return (
-    normalizeValue(job.lead.linkedinUrl) ??
+    normalizeValue(apolloId) ??
+    normalizeValue(normalizedLinkedin) ??
     normalizeValue(job.lead.emails[0]) ??
     normalizeValue(job.lead.phones[0]) ??
     `${normalizeValue(job.lead.fullName) ?? 'unknown'}:${normalizeValue(job.lead.companyName) ?? 'unknown'}`
@@ -36,8 +61,19 @@ export class LeadIngestionService {
 
   private toLeadWhere(job: LeadIngestionJob): Prisma.LeadWhereInput {
     const conditions: Prisma.LeadWhereInput[] = [];
-    if (job.lead.linkedinUrl) {
-      conditions.push({ linkedinUrl: job.lead.linkedinUrl });
+    const metadata = job.lead.metadata as Record<string, unknown> | undefined;
+    const apolloId = typeof metadata?.apolloId === 'string' ? metadata.apolloId : undefined;
+    const normalizedLinkedin = normalizeLinkedinUrl(job.lead.linkedinUrl);
+    if (apolloId) {
+      conditions.push({
+        metadata: {
+          path: ['apolloId'],
+          equals: apolloId
+        }
+      });
+    }
+    if (normalizedLinkedin) {
+      conditions.push({ linkedinUrl: normalizedLinkedin });
     }
     if (job.lead.fullName && job.lead.companyName) {
       conditions.push({
@@ -66,6 +102,7 @@ export class LeadIngestionService {
     const lead = await withIdentityAdvisoryLock(this.prismaClient, `lead:${job.projectId}:${identity}`, async (transaction) => {
       const nameFromParts = [job.lead.firstName, job.lead.lastName].filter(Boolean).join(' ');
       const resolvedFullName = job.lead.fullName || nameFromParts || job.lead.firstName || 'Unknown';
+      const normalizedLinkedin = normalizeLinkedinUrl(job.lead.linkedinUrl);
       const existing = await transaction.lead.findFirst({
         where: this.toLeadWhere(job)
       });
@@ -84,7 +121,7 @@ export class LeadIngestionService {
           jobTitle: job.lead.jobTitle,
           countryIso: job.lead.countryIso,
           regionIso: job.lead.regionIso,
-          linkedinUrl: job.lead.linkedinUrl,
+          linkedinUrl: normalizedLinkedin,
           status: 'NEW',
           metadata: {
             companyName: job.lead.companyName,
@@ -104,7 +141,7 @@ export class LeadIngestionService {
       const phoneHash = firstPhone && !isFakePhone(firstPhone)
         ? this.hashOptional(normalizeValue(firstPhone))
         : undefined;
-      const linkedinHash = this.hashOptional(normalizeValue(job.lead.linkedinUrl));
+      const linkedinHash = this.hashOptional(normalizeValue(normalizedLinkedin));
       const expertCriteria: Prisma.ExpertWhereInput[] = [];
       if (emailHash) {
         expertCriteria.push({ emailHash });
@@ -201,22 +238,22 @@ export class LeadIngestionService {
         }
       }
 
-      if (job.lead.linkedinUrl) {
-        const normalizedLinkedin = job.lead.linkedinUrl.trim().toLowerCase();
+      if (normalizedLinkedin) {
+        const normalizedLinkedinValue = normalizedLinkedin.trim().toLowerCase();
         await transaction.expertContact.upsert({
           where: {
             expertId_type_valueNormalized: {
               expertId: expert.id,
               type: 'LINKEDIN',
-              valueNormalized: normalizedLinkedin
+              valueNormalized: normalizedLinkedinValue
             }
           },
           create: {
             expertId: expert.id,
             type: 'LINKEDIN',
             label: 'PROFESSIONAL',
-            value: job.lead.linkedinUrl,
-            valueNormalized: normalizedLinkedin,
+            value: normalizedLinkedin,
+            valueNormalized: normalizedLinkedinValue,
             verificationStatus: 'UNVERIFIED',
             confidenceScore: 0.5
           },
