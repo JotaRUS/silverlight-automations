@@ -541,6 +541,12 @@ async function queueApolloSourcingIfNeeded(
     take: 10,
     select: { titleNormalized: true }
   });
+  const companies = await prisma.company.findMany({
+    where: { projectId: project.id, deletedAt: null },
+    orderBy: { name: 'asc' },
+    take: 25,
+    select: { name: true }
+  });
   const activeSalesNavSearches = await prisma.salesNavSearch.findMany({
     where: {
       projectId: project.id,
@@ -587,7 +593,10 @@ async function queueApolloSourcingIfNeeded(
         personNotTitles: salesNavFilters.personNotTitles,
         personSkills: salesNavFilters.personSkills,
         organizationDomains: salesNavFilters.organizationDomains,
-        organizationNames: salesNavFilters.organizationNames,
+        organizationNames: mergeUniqueStringValues(
+          companies.map((company) => company.name),
+          salesNavFilters.organizationNames
+        ),
         organizationLocations: salesNavFilters.organizationLocations,
         organizationNumEmployeesRanges: salesNavFilters.organizationNumEmployeesRanges,
         keywords: salesNavFilters.keywords,

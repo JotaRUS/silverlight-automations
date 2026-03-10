@@ -33,6 +33,7 @@ interface QueueRegistry {
   performanceQueue: Queue;
   rankingQueue: Queue;
   googleSheetsSyncQueue: Queue;
+  supabaseSyncQueue: Queue;
   documentationQueue: Queue;
   yayCallEventsQueue: Queue;
   deadLetterQueue: Queue;
@@ -58,6 +59,7 @@ export function getQueues(): QueueRegistry {
     performanceQueue: createQueue(QUEUE_NAMES.PERFORMANCE),
     rankingQueue: createQueue(QUEUE_NAMES.RANKING),
     googleSheetsSyncQueue: createQueue(QUEUE_NAMES.GOOGLE_SHEETS_SYNC),
+    supabaseSyncQueue: createQueue(QUEUE_NAMES.SUPABASE_SYNC),
     documentationQueue: createQueue(QUEUE_NAMES.DOCUMENTATION),
     yayCallEventsQueue: createQueue(QUEUE_NAMES.YAY_CALL_EVENTS),
     deadLetterQueue: createQueue(QUEUE_NAMES.DEAD_LETTER)
@@ -83,6 +85,7 @@ export async function closeQueues(): Promise<void> {
     queueRegistry.performanceQueue,
     queueRegistry.rankingQueue,
     queueRegistry.googleSheetsSyncQueue,
+    queueRegistry.supabaseSyncQueue,
     queueRegistry.documentationQueue,
     queueRegistry.yayCallEventsQueue,
     queueRegistry.deadLetterQueue

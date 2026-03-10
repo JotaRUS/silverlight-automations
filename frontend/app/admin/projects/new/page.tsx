@@ -6,15 +6,21 @@ import { useCallback, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { CountryMultiSelect } from '@/components/ui/country-multi-select';
 import { Input } from '@/components/ui/input';
+import { TagInput } from '@/components/ui/tag-input';
 import {
-  GEOGRAPHY_OPTIONS,
   PROVIDER_CATEGORIES,
   PROVIDER_DISPLAY_NAMES,
   PROVIDER_TYPE_TO_FIELD
 } from '@/lib/providerConstants';
 import { listProviderAccounts } from '@/services/providerService';
-import { createProject, updateProject } from '@/services/projectService';
+import {
+  addProjectCompanies,
+  addProjectJobTitles,
+  createProject,
+  updateProject
+} from '@/services/projectService';
 import type { ProviderAccount, ProviderType } from '@/types/provider';
 
 type WizardStep = 'basics' | 'sources' | 'done';
@@ -28,6 +34,8 @@ export default function NewProjectWizardPage(): JSX.Element {
   const [targetThreshold, setTargetThreshold] = useState('10');
   const [priority, setPriority] = useState('0');
   const [selectedGeos, setSelectedGeos] = useState<string[]>(['US']);
+  const [companyNames, setCompanyNames] = useState<string[]>([]);
+  const [jobTitles, setJobTitles] = useState<string[]>([]);
 
   const [projectId, setProjectId] = useState('');
   const [createError, setCreateError] = useState('');
@@ -53,7 +61,7 @@ export default function NewProjectWizardPage(): JSX.Element {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      return createProject({
+      const project = await createProject({
         name,
         description: description || undefined,
         targetThreshold: Number(targetThreshold) || 10,
@@ -62,6 +70,23 @@ export default function NewProjectWizardPage(): JSX.Element {
         overrideCooldown: false,
         regionConfig: {}
       });
+
+      await Promise.all([
+        companyNames.length
+          ? addProjectCompanies(
+              project.id,
+              companyNames.map((companyName) => ({ name: companyName }))
+            )
+          : Promise.resolve(),
+        jobTitles.length
+          ? addProjectJobTitles(
+              project.id,
+              jobTitles.map((title) => ({ title }))
+            )
+          : Promise.resolve()
+      ]);
+
+      return project;
     },
     onSuccess: (project) => {
       setProjectId(project.id);
@@ -117,12 +142,6 @@ export default function NewProjectWizardPage(): JSX.Element {
       return next;
     });
   }, [providersQuery.data]);
-
-  const toggleGeo = useCallback((code: string) => {
-    setSelectedGeos((prev) =>
-      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
-    );
-  }, []);
 
   const goToLeads = useCallback(() => {
     router.push(`/admin/leads?projectId=${projectId}`);
@@ -183,27 +202,29 @@ export default function NewProjectWizardPage(): JSX.Element {
                 </select>
               </div>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Target Geography *</label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {GEOGRAPHY_OPTIONS.map((geo) => (
-                  <button
-                    key={geo.code}
-                    onClick={() => toggleGeo(geo.code)}
-                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                      selectedGeos.includes(geo.code)
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
-                    }`}
-                  >
-                    {geo.code} — {geo.label}
-                  </button>
-                ))}
-              </div>
-              {selectedGeos.length === 0 && (
-                <p className="mt-1 text-xs text-red-500">Select at least one geography</p>
-              )}
-            </div>
+            <CountryMultiSelect
+              label="Target Geography *"
+              helperText="Search and select any country in the world for this project."
+              selectedCodes={selectedGeos}
+              onChange={setSelectedGeos}
+            />
+            {selectedGeos.length === 0 && (
+              <p className="-mt-2 text-xs text-red-500">Select at least one geography</p>
+            )}
+            <TagInput
+              label="Company Filters"
+              helperText="These company names are stored on the project and used for Apollo search targeting."
+              values={companyNames}
+              onChange={setCompanyNames}
+              placeholder="Type a company name and press Enter"
+            />
+            <TagInput
+              label="Job Title Filters"
+              helperText="These titles seed sourcing and enrichment prioritization for the project."
+              values={jobTitles}
+              onChange={setJobTitles}
+              placeholder="Type a job title and press Enter"
+            />
           </div>
 
           {createError && <p className="text-sm text-red-600">{createError}</p>}

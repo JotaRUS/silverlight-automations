@@ -48,7 +48,8 @@ const providerBindingSchema = z
     voicemailDropProviderAccountId: optionalUuidOrNull,
     yayProviderAccountId: optionalUuidOrNull,
     anyleadsProviderAccountId: optionalUuidOrNull,
-    googleSheetsProviderAccountId: optionalUuidOrNull
+    googleSheetsProviderAccountId: optionalUuidOrNull,
+    supabaseProviderAccountId: optionalUuidOrNull
   })
   .strict();
 
@@ -92,7 +93,16 @@ export const attachCompaniesSchema = z.object({
         metadata: z.record(z.unknown()).optional()
       })
     )
-    .min(1)
+});
+
+export const attachJobTitlesSchema = z.object({
+  jobTitles: z
+    .array(
+      z.object({
+        title: z.string().min(1),
+        relevanceScore: z.number().min(0).max(1).optional()
+      })
+    )
 });
 
 export const salesNavSearchCreateSchema = z.object({

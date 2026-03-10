@@ -47,7 +47,8 @@ const providerTypes: ProviderType[] = [
   'KAKAOTALK',
   'VOICEMAIL_DROP',
   'YAY',
-  'GOOGLE_SHEETS'
+  'GOOGLE_SHEETS',
+  'SUPABASE'
 ];
 
 interface CredentialFieldDef {
@@ -99,6 +100,13 @@ const CREDENTIAL_FIELDS: Record<ProviderType, CredentialFieldDef[]> = {
   GOOGLE_SHEETS: [
     { key: 'spreadsheetId', label: 'Spreadsheet ID', type: 'text', placeholder: 'e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms' },
     { key: 'serviceAccountJson', label: 'Service Account JSON', type: 'textarea', placeholder: 'Paste service account JSON here' }
+  ],
+  SUPABASE: [
+    { key: 'projectUrl', label: 'Project URL', type: 'text', placeholder: 'https://your-project.supabase.co' },
+    { key: 'serviceRoleKey', label: 'Service Role Key', type: 'password', placeholder: 'Supabase service role key' },
+    { key: 'schema', label: 'Schema', type: 'text', placeholder: 'public' },
+    { key: 'tableName', label: 'Table Name', type: 'text', placeholder: 'enriched_leads' },
+    { key: 'upsertKey', label: 'Upsert Key', type: 'text', placeholder: 'lead_id' }
   ]
 };
 

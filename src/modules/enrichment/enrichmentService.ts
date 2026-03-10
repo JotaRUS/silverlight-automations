@@ -799,6 +799,9 @@ export class EnrichmentService {
     }
 
     await this.queuePhoneExports(updatedLead.expertId, normalizedPhones, job.projectId, correlationId);
+    if (updatedLead.status === 'ENRICHED') {
+      await this.queueSupabaseSync(updatedLead.id, job.projectId, correlationId);
+    }
   }
 
   private async queuePhoneExports(
@@ -852,5 +855,33 @@ export class EnrichmentService {
         }
       );
     }
+  }
+
+  private async queueSupabaseSync(
+    leadId: string,
+    projectId: string,
+    correlationId: string
+  ): Promise<void> {
+    const project = await this.prismaClient.project.findUnique({
+      where: { id: projectId },
+      select: { supabaseProviderAccountId: true }
+    });
+    if (!project?.supabaseProviderAccountId) {
+      return;
+    }
+
+    await getQueues().supabaseSyncQueue.add(
+      'supabase-sync.enriched-lead',
+      {
+        correlationId,
+        data: {
+          projectId,
+          leadId
+        }
+      },
+      {
+        jobId: buildJobId('supabase-sync', projectId, leadId)
+      }
+    );
   }
 }

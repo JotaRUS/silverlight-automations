@@ -11,6 +11,7 @@ export const QUEUE_NAMES = {
   PERFORMANCE: 'performance',
   RANKING: 'ranking',
   GOOGLE_SHEETS_SYNC: 'google-sheets-sync',
+  SUPABASE_SYNC: 'supabase-sync',
   DOCUMENTATION: 'documentation',
   YAY_CALL_EVENTS: 'yay-call-events',
   DEAD_LETTER: 'dead-letter'

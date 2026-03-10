@@ -95,6 +95,15 @@ enum ProviderType {
   YAY
   ANYLEADS
   GOOGLE_SHEETS
+  SUPABASE
+}
+
+enum ApiKeyScope {
+  READ_PROJECTS
+  READ_LEADS
+  WRITE_PROJECTS
+  WRITE_LEADS
+  ADMIN_PROVIDERS
 }
 
 enum EnrichmentAttemptStatus {
@@ -248,6 +257,7 @@ model Project {
   yayProviderAccountId             String?             @db.Uuid
   anyleadsProviderAccountId        String?             @db.Uuid
   googleSheetsProviderAccountId    String?             @db.Uuid
+  supabaseProviderAccountId        String?             @db.Uuid
   metadata                         Json?               @db.JsonB
   createdAt                        DateTime            @default(now())
   updatedAt                        DateTime            @updatedAt
@@ -290,6 +300,7 @@ model Project {
   yayProviderAccount               ProviderAccount?    @relation("project_yay_provider_account", fields: [yayProviderAccountId], references: [id], onDelete: SetNull)
   anyleadsProviderAccount          ProviderAccount?    @relation("project_anyleads_provider_account", fields: [anyleadsProviderAccountId], references: [id], onDelete: SetNull)
   googleSheetsProviderAccount      ProviderAccount?    @relation("project_google_sheets_provider_account", fields: [googleSheetsProviderAccountId], references: [id], onDelete: SetNull)
+  supabaseProviderAccount          ProviderAccount?    @relation("project_supabase_provider_account", fields: [supabaseProviderAccountId], references: [id], onDelete: SetNull)
 
   @@index([status, priority, completionPercentage], map: "idx_project_ranking")
   @@index([deletedAt], map: "idx_project_deleted_at")
@@ -336,6 +347,7 @@ model ProviderAccount {
   yayBoundProjects             Project[]    @relation("project_yay_provider_account")
   anyleadsBoundProjects        Project[]    @relation("project_anyleads_provider_account")
   googleSheetsBoundProjects    Project[]    @relation("project_google_sheets_provider_account")
+  supabaseBoundProjects        Project[]    @relation("project_supabase_provider_account")
 
   @@unique([providerType, accountLabel], map: "uniq_provider_account_label")
   @@index([providerType, isActive], map: "idx_provider_account_type_active")
@@ -622,8 +634,27 @@ model Caller {
   callLogs                CallLog[]
   performanceMetrics      CallerPerformanceMetric[]
   createdProviderAccounts ProviderAccount[]
+  apiKeys                 ApiKey[]
 
   @@index([allocationStatus, fraudStatus], map: "idx_caller_alloc_fraud")
+}
+
+model ApiKey {
+  id         String        @id @default(uuid()) @db.Uuid
+  callerId   String        @db.Uuid
+  name       String
+  keyPrefix  String        @unique
+  keyHash    String        @unique
+  scopes     ApiKeyScope[]
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  caller     Caller        @relation(fields: [callerId], references: [id], onDelete: Cascade)
+
+  @@index([callerId, revokedAt], map: "idx_api_key_caller_revoked")
+  @@index([keyPrefix], map: "idx_api_key_prefix")
 }
 
 model CallTask {

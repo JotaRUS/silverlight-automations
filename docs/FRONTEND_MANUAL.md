@@ -49,11 +49,13 @@ Every request that sends a JSON body must include:
 Content-Type: application/json
 ```
 
-Every authenticated request must include:
+Every external API request can use:
 
 ```
-Authorization: Bearer <token>
+Authorization: Bearer <api-key>
 ```
+
+The browser admin UI itself uses a cookie session plus `x-csrf-token` on mutating requests.
 
 ### Correlation IDs
 
@@ -81,65 +83,64 @@ Maximum request body: **1 MB**. This is relevant for bulk operations like attach
 
 ## 2. Authentication Flow
 
-The platform uses stateless JWT tokens with three roles. There is no session management server-side — all state is in the token.
+The platform supports two auth modes:
+
+- Browser admin UI: `POST /api/v1/auth/login` sets an `access_token` cookie and returns a CSRF token
+- External integrations: personal API keys sent as bearer auth or `x-api-key`
 
 ### Login Flow
 
 ```
-┌─────────────┐      POST /api/v1/auth/token       ┌─────────────┐
+┌─────────────┐      POST /api/v1/auth/login       ┌─────────────┐
 │  Login Form │  ─────────────────────────────────► │   Backend   │
-│  userId     │                                     │             │
-│  role       │  ◄─────────────────────────────────  │  Returns:   │
-└─────────────┘    { accessToken, tokenType }        │  JWT token  │
+│  email      │                                     │             │
+│  password   │  ◄─────────────────────────────────  │  Returns:   │
+└─────────────┘    { authenticated, csrfToken }      │  Cookie + CSRF │
                                                      └─────────────┘
 ```
 
 **Request:**
 
 ```typescript
-const response = await fetch('/api/v1/auth/token', {
+const response = await fetch('/api/v1/auth/login', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ userId: 'user@company.com', role: 'admin' })
+  body: JSON.stringify({ email: 'admin@example.com', password: 'secret' })
 });
 
-const { accessToken } = await response.json();
+const { csrfToken } = await response.json();
 ```
 
-**Token storage options:**
+**Auth storage options:**
 
-| Method          | Pros                        | Cons                         |
-|-----------------|-----------------------------|------------------------------|
-| `localStorage`  | Persists across tabs        | Vulnerable to XSS            |
-| `sessionStorage`| Cleared on tab close        | Lost on new tab              |
-| HTTP-only cookie| Immune to XSS              | Requires proxy/BFF setup     |
-| In-memory state | Safest from XSS             | Lost on refresh              |
+| Method          | Notes                                                     |
+|-----------------|-----------------------------------------------------------|
+| HTTP-only cookie| Used by the admin UI; sent automatically by the browser. |
+| CSRF token      | Returned by login / `/api/v1/auth/csrf` for mutating session requests. |
+| Personal API key| Best for Postman and external platforms.                  |
 
-**Recommended:** Store in memory (React context/Zustand/Redux) + `sessionStorage` as fallback for page refreshes.
+**Recommended:** for the web UI, rely on the cookie session and keep the CSRF token in app state. For external apps, store the API key in the target platform's secret manager.
 
-### Token Expiration
+### API key usage
 
-Tokens expire after **3600 seconds** (1 hour) by default. Your frontend should:
-
-1. Decode the JWT to read the `exp` claim.
-2. Set a timer to refresh the token ~5 minutes before expiry.
-3. On 401 responses, redirect to login.
+External tools can authenticate with:
 
 ```typescript
-function isTokenExpired(token: string): boolean {
-  const payload = JSON.parse(atob(token.split('.')[1]));
-  return payload.exp * 1000 < Date.now();
-}
+await fetch('/api/v1/projects', {
+  headers: {
+    Authorization: `Bearer ${apiKey}`
+  }
+});
 ```
 
 ### Verify Current Session
 
 ```
 GET /api/v1/auth/me
-Authorization: Bearer <token>
+Authorization: Bearer <api-key>
 ```
 
-Returns `{ userId, role }`. Call this on app load to validate the stored token.
+Returns `{ userId, role, authType }`. Call this on app load to validate the current cookie session or API key.
 
 ### Role-Based Access
 
@@ -221,8 +222,8 @@ function canAccess(role: string, path: string): boolean {
 **API call:**
 
 ```
-POST /api/v1/auth/token
-Body: { "userId": "<input>", "role": "<select>" }
+POST /api/v1/auth/login
+Body: { "email": "<input>", "password": "<input>" }
 ```
 
 **UI elements:**
@@ -546,7 +547,7 @@ Body: { "outcome": "<value>" }
 
 ```
 GET /api/v1/call-tasks/operator/tasks?status=PENDING&projectId=<uuid>&limit=20
-Authorization: Bearer <token>
+Authorization: Bearer <api-key>
 ```
 
 **Filter bar:**
@@ -970,7 +971,7 @@ function useCreateProject() {
 |--------|---------------------------|------------------------|
 | GET    | `/api/v1/system/health`   | Process alive check    |
 | GET    | `/api/v1/system/ready`    | Postgres + Redis check |
-| POST   | `/api/v1/auth/token`      | Create JWT token       |
+| POST   | `/api/v1/auth/login`      | Create browser session |
 | GET    | `/api/v1/openapi.json`    | OpenAPI 3.1.0 spec     |
 
 ### Auth: Any Role
@@ -1021,4 +1022,4 @@ function useCreateProject() {
 | Method | Path                  | Auth mechanism              |
 |--------|-----------------------|-----------------------------|
 | POST   | `/webhooks/yay`       | HMAC signature headers      |
-| POST   | `/webhooks/sales-nav/:providerAccountId` | `Authorization: Bearer <token>` or `x-sales-nav-client-id` |
+| POST   | `/webhooks/sales-nav/:providerAccountId` | `Authorization: Bearer <provider token>` or `x-sales-nav-client-id` |

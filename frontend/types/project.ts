@@ -40,4 +40,20 @@ export interface ProjectRecord {
   voicemailDropProviderAccountId?: string | null;
   yayProviderAccountId?: string | null;
   googleSheetsProviderAccountId?: string | null;
+  supabaseProviderAccountId?: string | null;
+}
+
+export interface ProjectCompanyRecord {
+  id: string;
+  name: string;
+  domain?: string | null;
+  countryIso?: string | null;
+}
+
+export interface ProjectJobTitleRecord {
+  id: string;
+  titleOriginal: string;
+  titleNormalized: string;
+  relevanceScore: number;
+  source: string;
 }

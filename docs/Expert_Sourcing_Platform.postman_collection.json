@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a5a30d79-eb74-4c94-815e-c3f2475978a0",
     "name": "Expert Sourcing Automation Platform",
-    "description": "Complete API collection for the Expert Sourcing Automation Platform.\n\n## Setup\n1. Set the `baseUrl` variable (default: `http://localhost:3000`)\n2. Run **Auth > Create Token (Admin)** first — it auto-saves the token\n3. All authenticated requests use `{{token}}` from the collection variables\n\n## Roles\n- **admin** — full access\n- **ops** — projects, callers, outreach, screening, operator call tasks\n- **caller** — call-tasks/current, call-tasks/:taskId/outcome",
+    "description": "Complete API collection for the Expert Sourcing Automation Platform.\n\n## Setup\n1. Set the `baseUrl` variable (default: `http://localhost:3000`)\n2. Paste a personal platform API key into the `token` collection variable for external API calls\n3. Optionally run **Auth > Login (Dev Session)** requests to establish a browser-style session cookie while developing locally\n4. For session-based mutating calls, reuse the saved `{{csrfToken}}` value\n\n## Auth Modes\n- `{{token}}` is treated as a personal platform API key in Bearer auth headers\n- Dev login requests set a session cookie and save `{{csrfToken}}`\n- Provider/API-key management endpoints are best exercised with the session flow\n\n## Roles\n- **admin** — full access\n- **ops** — projects, callers, outreach, screening, operator call tasks\n- **caller** — call-tasks/current, call-tasks/:taskId/outcome",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -61,7 +61,7 @@
       "name": "Auth",
       "item": [
         {
-          "name": "Create Token (Admin)",
+          "name": "Login (Dev Session - Admin)",
           "event": [
             {
               "listen": "test",
@@ -70,7 +70,7 @@
                 "exec": [
                   "if (pm.response.code === 200) {",
                   "    const body = pm.response.json();",
-                  "    pm.collectionVariables.set('token', body.accessToken);",
+                  "    pm.collectionVariables.set('csrfToken', body.csrfToken || '');",
                   "}"
                 ]
               }
@@ -87,10 +87,10 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": \"admin-user-1\",\n  \"role\": \"admin\"\n}"
+              "raw": "{\n  \"userId\": \"admin-user\",\n  \"role\": \"admin\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/token",
+              "raw": "{{baseUrl}}/api/v1/auth/login",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -98,15 +98,15 @@
                 "api",
                 "v1",
                 "auth",
-                "token"
+                "login"
               ]
             },
-            "description": "Creates an admin JWT token. The token is automatically saved to the `{{token}}` collection variable.\n\n**No auth required.**"
+            "description": "Creates a local development session cookie and saves the returned CSRF token into `{{csrfToken}}`.\n\n**No auth required. Development/test only.**"
           },
           "response": []
         },
         {
-          "name": "Create Token (Ops)",
+          "name": "Login (Dev Session - Ops)",
           "event": [
             {
               "listen": "test",
@@ -115,7 +115,7 @@
                 "exec": [
                   "if (pm.response.code === 200) {",
                   "    const body = pm.response.json();",
-                  "    pm.collectionVariables.set('token', body.accessToken);",
+                  "    pm.collectionVariables.set('csrfToken', body.csrfToken || '');",
                   "}"
                 ]
               }
@@ -135,7 +135,7 @@
               "raw": "{\n  \"userId\": \"ops-user-1\",\n  \"role\": \"ops\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/token",
+              "raw": "{{baseUrl}}/api/v1/auth/login",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -143,15 +143,15 @@
                 "api",
                 "v1",
                 "auth",
-                "token"
+                "login"
               ]
             },
-            "description": "Creates an ops JWT token. Saved to `{{token}}`."
+            "description": "Creates a local development session cookie for an ops user and saves `{{csrfToken}}`."
           },
           "response": []
         },
         {
-          "name": "Create Token (Caller)",
+          "name": "Login (Dev Session - Caller)",
           "event": [
             {
               "listen": "test",
@@ -160,7 +160,7 @@
                 "exec": [
                   "if (pm.response.code === 200) {",
                   "    const body = pm.response.json();",
-                  "    pm.collectionVariables.set('callerToken', body.accessToken);",
+                  "    pm.collectionVariables.set('csrfToken', body.csrfToken || '');",
                   "}"
                 ]
               }
@@ -180,7 +180,7 @@
               "raw": "{\n  \"userId\": \"caller-user-1\",\n  \"role\": \"caller\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/token",
+              "raw": "{{baseUrl}}/api/v1/auth/login",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -188,10 +188,10 @@
                 "api",
                 "v1",
                 "auth",
-                "token"
+                "login"
               ]
             },
-            "description": "Creates a caller JWT token. Saved to `{{callerToken}}` for use in call task endpoints."
+            "description": "Creates a local development session cookie for a caller user and saves `{{csrfToken}}`."
           },
           "response": []
         },
@@ -218,7 +218,7 @@
                 "me"
               ]
             },
-            "description": "Returns the `userId` and `role` of the authenticated user.\n\n**Auth:** any role."
+            "description": "Returns the authenticated user. Use either a browser session cookie or `Authorization: Bearer {{token}}` with a personal platform API key."
           },
           "response": []
         },
@@ -251,7 +251,93 @@
         }
       ],
       "id": "deeb2275-5a4d-4771-a323-607a7a63fe66",
-      "description": "Token creation and identity verification.\n\nRun **Create Token (Admin)** first to populate the `{{token}}` variable for all other requests."
+      "description": "Session login and identity verification.\n\nMost collection requests expect `{{token}}` to contain a personal platform API key. Dev login requests are still available for cookie-based local testing."
+    },
+    {
+      "name": "API Keys",
+      "item": [
+        {
+          "name": "List API Keys",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api-keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api-keys"
+              ]
+            },
+            "description": "Lists API keys for the signed-in user.\n\n**Auth:** session cookie."
+          },
+          "response": []
+        },
+        {
+          "name": "Create API Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman External Access\",\n  \"scopes\": [\"read:projects\", \"read:leads\", \"write:projects\", \"write:leads\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api-keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api-keys"
+              ]
+            },
+            "description": "Creates a new personal API key for the current user.\n\n**Auth:** session cookie + `x-csrf-token`."
+          },
+          "response": []
+        },
+        {
+          "name": "Revoke API Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/api-keys/{{apiKeyId}}/revoke",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "api-keys",
+                "{{apiKeyId}}",
+                "revoke"
+              ]
+            },
+            "description": "Revokes a personal API key.\n\n**Auth:** session cookie + `x-csrf-token`."
+          },
+          "response": []
+        }
+      ],
+      "description": "Create, list, and revoke personal API keys using a signed-in browser session."
     },
     {
       "name": "Projects",
@@ -1517,6 +1603,18 @@
     {
       "id": "670e8fa1-03ce-4b49-84f2-903ed6da861d",
       "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "id": "0a45bcc3-a7a5-4bb0-880d-cc58a019c6f8",
+      "key": "csrfToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "id": "bc693669-f9c8-4a56-a8d8-5d510acfb429",
+      "key": "apiKeyId",
       "value": "",
       "type": "string"
     },

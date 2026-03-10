@@ -24,7 +24,8 @@ export type ProviderType =
   | 'KAKAOTALK'
   | 'VOICEMAIL_DROP'
   | 'YAY'
-  | 'GOOGLE_SHEETS';
+  | 'GOOGLE_SHEETS'
+  | 'SUPABASE';
 
 export interface ProviderAccount {
   id: string;

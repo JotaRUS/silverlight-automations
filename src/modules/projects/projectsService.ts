@@ -36,6 +36,7 @@ export interface ProjectCreateInput {
   voicemailDropProviderAccountId?: string | null;
   yayProviderAccountId?: string | null;
   googleSheetsProviderAccountId?: string | null;
+  supabaseProviderAccountId?: string | null;
 }
 
 export interface ProjectUpdateInput {
@@ -73,6 +74,7 @@ export interface ProjectUpdateInput {
   voicemailDropProviderAccountId?: string | null;
   yayProviderAccountId?: string | null;
   googleSheetsProviderAccountId?: string | null;
+  supabaseProviderAccountId?: string | null;
 }
 
 export interface AttachCompaniesInput {
@@ -81,6 +83,13 @@ export interface AttachCompaniesInput {
     domain?: string;
     countryIso?: string;
     metadata?: Record<string, unknown>;
+  }[];
+}
+
+export interface AttachJobTitlesInput {
+  jobTitles: {
+    title: string;
+    relevanceScore?: number;
   }[];
 }
 
@@ -113,8 +122,12 @@ function toJsonValue(value: Record<string, unknown> | undefined): Prisma.InputJs
 export class ProjectsService {
   public constructor(private readonly prismaClient: PrismaClient) {}
 
+  private normalizeJobTitle(title: string): string {
+    return title.trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
   private projectProviderBindings(
-    input: Partial<Pick<ProjectUpdateInput, 'apolloProviderAccountId' | 'salesNavWebhookProviderAccountId' | 'leadmagicProviderAccountId' | 'prospeoProviderAccountId' | 'exaProviderAccountId' | 'rocketreachProviderAccountId' | 'wizaProviderAccountId' | 'foragerProviderAccountId' | 'zeliqProviderAccountId' | 'contactoutProviderAccountId' | 'datagmProviderAccountId' | 'peopledatalabsProviderAccountId' | 'linkedinProviderAccountId' | 'emailProviderAccountId' | 'twilioProviderAccountId' | 'whatsapp2chatProviderAccountId' | 'respondioProviderAccountId' | 'lineProviderAccountId' | 'wechatProviderAccountId' | 'viberProviderAccountId' | 'telegramProviderAccountId' | 'kakaotalkProviderAccountId' | 'voicemailDropProviderAccountId' | 'yayProviderAccountId' | 'googleSheetsProviderAccountId'>>
+    input: Partial<Pick<ProjectUpdateInput, 'apolloProviderAccountId' | 'salesNavWebhookProviderAccountId' | 'leadmagicProviderAccountId' | 'prospeoProviderAccountId' | 'exaProviderAccountId' | 'rocketreachProviderAccountId' | 'wizaProviderAccountId' | 'foragerProviderAccountId' | 'zeliqProviderAccountId' | 'contactoutProviderAccountId' | 'datagmProviderAccountId' | 'peopledatalabsProviderAccountId' | 'linkedinProviderAccountId' | 'emailProviderAccountId' | 'twilioProviderAccountId' | 'whatsapp2chatProviderAccountId' | 'respondioProviderAccountId' | 'lineProviderAccountId' | 'wechatProviderAccountId' | 'viberProviderAccountId' | 'telegramProviderAccountId' | 'kakaotalkProviderAccountId' | 'voicemailDropProviderAccountId' | 'yayProviderAccountId' | 'googleSheetsProviderAccountId' | 'supabaseProviderAccountId'>>
   ): Record<string, string | null | undefined> {
     return {
       apolloProviderAccountId: input.apolloProviderAccountId,
@@ -141,7 +154,8 @@ export class ProjectsService {
       kakaotalkProviderAccountId: input.kakaotalkProviderAccountId,
       voicemailDropProviderAccountId: input.voicemailDropProviderAccountId,
       yayProviderAccountId: input.yayProviderAccountId,
-      googleSheetsProviderAccountId: input.googleSheetsProviderAccountId
+      googleSheetsProviderAccountId: input.googleSheetsProviderAccountId,
+      supabaseProviderAccountId: input.supabaseProviderAccountId
     };
   }
 
@@ -204,19 +218,33 @@ export class ProjectsService {
   }
 
   public async attachCompanies(projectId: string, input: AttachCompaniesInput): Promise<number> {
+    const desiredNames = input.companies.map((company) => company.name.trim()).filter(Boolean);
     const createdCompanies = await this.prismaClient.$transaction(async (transaction) => {
+      await transaction.company.updateMany({
+        where: {
+          projectId,
+          deletedAt: null,
+          ...(desiredNames.length
+            ? { name: { notIn: desiredNames } }
+            : {})
+        },
+        data: {
+          deletedAt: new Date()
+        }
+      });
+
       const results = await Promise.all(
         input.companies.map((company) =>
           transaction.company.upsert({
             where: {
               projectId_name: {
                 projectId,
-                name: company.name
+                name: company.name.trim()
               }
             },
             create: {
               projectId,
-              name: company.name,
+              name: company.name.trim(),
               domain: company.domain,
               countryIso: company.countryIso,
               metadata: toJsonValue(company.metadata)
@@ -224,7 +252,8 @@ export class ProjectsService {
             update: {
               domain: company.domain,
               countryIso: company.countryIso,
-              metadata: toJsonValue(company.metadata)
+              metadata: toJsonValue(company.metadata),
+              deletedAt: null
             }
           })
         )
@@ -234,6 +263,65 @@ export class ProjectsService {
     });
 
     return createdCompanies;
+  }
+
+  public async listCompanies(projectId: string) {
+    return this.prismaClient.company.findMany({
+      where: { projectId, deletedAt: null },
+      orderBy: { name: 'asc' }
+    });
+  }
+
+  public async attachJobTitles(projectId: string, input: AttachJobTitlesInput): Promise<number> {
+    const desiredTitles = input.jobTitles.map((jobTitle) => this.normalizeJobTitle(jobTitle.title));
+    await this.prismaClient.jobTitle.deleteMany({
+      where: {
+        projectId,
+        ...(desiredTitles.length
+          ? { titleNormalized: { notIn: desiredTitles } }
+          : {})
+      }
+    });
+
+    const createdJobTitles = await this.prismaClient.$transaction(async (transaction) => {
+      const results = await Promise.all(
+        input.jobTitles.map((jobTitle) =>
+          transaction.jobTitle.upsert({
+            where: {
+              projectId_titleNormalized: {
+                projectId,
+                titleNormalized: this.normalizeJobTitle(jobTitle.title)
+              }
+            },
+            create: {
+              projectId,
+              titleOriginal: jobTitle.title.trim(),
+              titleNormalized: this.normalizeJobTitle(jobTitle.title),
+              relevanceScore: jobTitle.relevanceScore ?? 1,
+              aiDecisionLog: toJsonValue({ source: 'manual_input' }) ?? {},
+              source: 'manual_input'
+            },
+            update: {
+              titleOriginal: jobTitle.title.trim(),
+              relevanceScore: jobTitle.relevanceScore ?? 1,
+              aiDecisionLog: toJsonValue({ source: 'manual_input' }) ?? {},
+              source: 'manual_input'
+            }
+          })
+        )
+      );
+
+      return results.length;
+    });
+
+    return createdJobTitles;
+  }
+
+  public async listJobTitles(projectId: string) {
+    return this.prismaClient.jobTitle.findMany({
+      where: { projectId },
+      orderBy: [{ relevanceScore: 'desc' }, { titleNormalized: 'asc' }]
+    });
   }
 
   public async addSalesNavSearches(projectId: string, input: SalesNavSearchCreateInput): Promise<number> {

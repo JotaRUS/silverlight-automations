@@ -1,4 +1,8 @@
-import type { ProjectRecord } from '@/types/project';
+import type {
+  ProjectCompanyRecord,
+  ProjectJobTitleRecord,
+  ProjectRecord
+} from '@/types/project';
 
 import { apiRequest } from './apiClient';
 
@@ -48,5 +52,33 @@ export async function addSalesNavSearches(
   return apiRequest<{ created: number }>(`/api/v1/projects/${projectId}/sales-nav-searches`, {
     method: 'POST',
     body: { searches }
+  });
+}
+
+export async function listProjectCompanies(projectId: string): Promise<ProjectCompanyRecord[]> {
+  return apiRequest<ProjectCompanyRecord[]>(`/api/v1/projects/${projectId}/companies`);
+}
+
+export async function addProjectCompanies(
+  projectId: string,
+  companies: { name: string; domain?: string; countryIso?: string }[]
+): Promise<{ createdOrUpdated: number }> {
+  return apiRequest<{ createdOrUpdated: number }>(`/api/v1/projects/${projectId}/companies`, {
+    method: 'POST',
+    body: { companies }
+  });
+}
+
+export async function listProjectJobTitles(projectId: string): Promise<ProjectJobTitleRecord[]> {
+  return apiRequest<ProjectJobTitleRecord[]>(`/api/v1/projects/${projectId}/job-titles`);
+}
+
+export async function addProjectJobTitles(
+  projectId: string,
+  jobTitles: { title: string; relevanceScore?: number }[]
+): Promise<{ createdOrUpdated: number }> {
+  return apiRequest<{ createdOrUpdated: number }>(`/api/v1/projects/${projectId}/job-titles`, {
+    method: 'POST',
+    body: { jobTitles }
   });
 }

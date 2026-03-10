@@ -6,6 +6,7 @@ import { AppError } from '../../core/errors/appError';
 import { requestJson } from '../../core/http/httpJsonClient';
 import { logger } from '../../core/logging/logger';
 import type { ProviderType } from '../../core/providers/providerTypes';
+import { SupabaseDataClient } from '../supabase/supabaseClient';
 
 function buildBearerHeaders(token: string): Record<string, string> {
   return {
@@ -267,6 +268,18 @@ async function getGoogleAccessToken(
 export async function runProviderHealthCheck(
   input: ProviderHealthCheckInput
 ): Promise<HealthCheckResult> {
+  if (input.providerType === 'SUPABASE') {
+    const supabaseClient = new SupabaseDataClient();
+    const result = await supabaseClient.verifyTableAccess(input.credentials);
+    return {
+      healthy: true,
+      details: {
+        reason: 'Supabase reachable and configured table is accessible.',
+        ...result
+      }
+    };
+  }
+
   if (input.providerType === 'LEADMAGIC') {
     const apiKey = credentialString(input.credentials, 'apiKey');
     const endpoint = 'https://api.leadmagic.io/v1/people/email-finder';

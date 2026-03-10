@@ -30,6 +30,7 @@
   "dependencies": {
     "@prisma/client": "^6.4.1",
     "@socket.io/redis-adapter": "^8.3.0",
+    "@supabase/supabase-js": "^2.99.0",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.46.1",
     "cors": "^2.8.5",

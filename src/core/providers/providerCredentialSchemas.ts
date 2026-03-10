@@ -89,6 +89,14 @@ const googleSheetsCredentialSchema = z.object({
     .transform((value) => (typeof value === 'string' ? value : JSON.stringify(value)))
 });
 
+const supabaseCredentialSchema = z.object({
+  projectUrl: z.string().url(),
+  serviceRoleKey: z.string().min(1),
+  schema: z.string().min(1).default('public'),
+  tableName: z.string().min(1),
+  upsertKey: z.string().min(1).optional()
+});
+
 const providerCredentialParsers: Record<ProviderType, z.ZodType<Record<string, unknown>>> = {
   APOLLO: singleApiKeySchema,
   SALES_NAV_WEBHOOK: salesNavCredentialSchema,
@@ -115,7 +123,8 @@ const providerCredentialParsers: Record<ProviderType, z.ZodType<Record<string, u
   KAKAOTALK: singleApiKeySchema,
   VOICEMAIL_DROP: singleApiKeySchema,
   YAY: yayCredentialSchema,
-  GOOGLE_SHEETS: googleSheetsCredentialSchema
+  GOOGLE_SHEETS: googleSheetsCredentialSchema,
+  SUPABASE: supabaseCredentialSchema
 };
 
 export function parseProviderCredentials(

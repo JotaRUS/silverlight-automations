@@ -2,7 +2,37 @@ export const openApiSpec = {
   openapi: '3.1.0',
   info: {
     title: 'Expert Sourcing Automation Platform API',
-    version: '1.0.0'
+    version: '1.1.0',
+    description:
+      'Cookie-based admin UI APIs plus scoped platform API keys for external integrations.'
+  },
+  components: {
+    securitySchemes: {
+      sessionCookie: {
+        type: 'apiKey',
+        in: 'cookie',
+        name: 'access_token',
+        description: 'Browser session cookie created by POST /api/v1/auth/login.'
+      },
+      csrfHeader: {
+        type: 'apiKey',
+        in: 'header',
+        name: 'x-csrf-token',
+        description: 'Required for mutating requests made with a browser session cookie.'
+      },
+      bearerApiKey: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'platform-api-key',
+        description: 'Personal API key created from the admin UI.'
+      },
+      xApiKey: {
+        type: 'apiKey',
+        in: 'header',
+        name: 'x-api-key',
+        description: 'Alternative header for personal platform API keys.'
+      }
+    }
   },
   paths: {
     '/api/v1/system/health': {
@@ -51,16 +81,81 @@ export const openApiSpec = {
       }
     },
     '/api/v1/projects': {
+      get: {
+        summary: 'List projects',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }]
+      },
       post: {
-        summary: 'Create project'
+        summary: 'Create project',
+        description:
+          'Supports provider bindings, world-country geography filters, and stored company/job-title filters via companion endpoints.',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
       }
     },
     '/api/v1/projects/{projectId}': {
       get: {
-        summary: 'Get project by id'
+        summary: 'Get project by id',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }]
       },
       patch: {
-        summary: 'Update project by id'
+        summary: 'Update project by id',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
+      },
+      delete: {
+        summary: 'Archive project by id',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
+      }
+    },
+    '/api/v1/projects/{projectId}/companies': {
+      get: {
+        summary: 'List stored company filters for a project',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }]
+      },
+      post: {
+        summary: 'Replace stored company filters for a project',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
+      }
+    },
+    '/api/v1/projects/{projectId}/job-titles': {
+      get: {
+        summary: 'List stored job-title filters for a project',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }]
+      },
+      post: {
+        summary: 'Replace stored job-title filters for a project',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
+      }
+    },
+    '/api/v1/projects/{projectId}/apollo-search': {
+      post: {
+        summary: 'Queue Apollo sourcing with project and ad-hoc filters',
+        description:
+          'Uses explicit person/company filters from the request body, falling back to stored project countries, companies, and job titles.',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
+      }
+    },
+    '/api/v1/projects/{projectId}/kick': {
+      post: {
+        summary: 'Kick project sourcing and enrichment queues',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
+      }
+    },
+    '/api/v1/admin/leads': {
+      get: {
+        summary: 'List leads with enrichment attempt summaries',
+        description:
+          'Returns lead records, project info, expert contacts, and the latest enrichment attempts for provider transparency.',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }]
+      }
+    },
+    '/api/v1/admin/leads/{leadId}': {
+      patch: {
+        summary: 'Update lead',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
+      },
+      delete: {
+        summary: 'Soft-delete lead',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
       }
     },
     '/api/v1/callers': {
@@ -90,28 +185,57 @@ export const openApiSpec = {
     },
     '/api/v1/providers': {
       get: {
-        summary: 'List provider accounts'
+        summary: 'List provider accounts',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }]
       },
       post: {
-        summary: 'Create provider account'
+        summary: 'Create provider account',
+        description:
+          'Supports source, enrichment, outreach, Google Sheets, and Supabase destination providers. Supabase credentials: projectUrl, serviceRoleKey, schema, tableName, optional upsertKey.',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
       }
     },
     '/api/v1/providers/{providerAccountId}': {
       get: {
-        summary: 'Get provider account'
+        summary: 'Get provider account',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }]
       },
       patch: {
-        summary: 'Update provider account'
+        summary: 'Update provider account',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
       }
     },
     '/api/v1/providers/{providerAccountId}/test-connection': {
       post: {
-        summary: 'Run provider-specific health check'
+        summary: 'Run provider-specific health check',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
       }
     },
     '/api/v1/providers/{providerAccountId}/bind-project': {
       post: {
-        summary: 'Bind provider account to project role'
+        summary: 'Bind provider account to project role',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
+      }
+    },
+    '/api/v1/api-keys': {
+      get: {
+        summary: 'List personal API keys for the current user',
+        security: [{ sessionCookie: [] }]
+      },
+      post: {
+        summary: 'Create a personal API key',
+        security: [{ sessionCookie: [] }, { csrfHeader: [] }]
+      }
+    },
+    '/api/v1/api-keys/{apiKeyId}/revoke': {
+      post: {
+        summary: 'Revoke a personal API key',
+        security: [{ sessionCookie: [] }, { csrfHeader: [] }]
+      }
+    },
+    '/api/v1/docs/postman-collection': {
+      get: {
+        summary: 'Download the checked-in Postman collection'
       }
     },
     '/api/v1/documentation/generate': {

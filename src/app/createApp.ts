@@ -1,3 +1,4 @@
+import path from 'node:path';
 import cors from 'cors';
 import express, { type Express } from 'express';
 import rateLimit from 'express-rate-limit';
@@ -15,6 +16,7 @@ import { authRoutes } from '../api/routes/authRoutes';
 import { systemRoutes } from '../api/routes/systemRoutes';
 import { webhookRoutes } from '../api/routes/webhookRoutes';
 import { adminRoutes } from '../modules/admin/adminRoutes';
+import { apiKeyRoutes } from '../modules/api-keys/apiKeyRoutes';
 import { callersRoutes } from '../modules/callers/callersRoutes';
 import { callAllocationRoutes } from '../modules/call-allocation/callAllocationRoutes';
 import { documentationGeneratorRoutes } from '../modules/documentation-generator/documentationGeneratorRoutes';
@@ -65,6 +67,12 @@ export function createApp(): Express {
   app.get(`${API_PREFIX}/openapi.json`, (_request, response) => {
     response.status(200).json(openApiSpec);
   });
+  app.get(`${API_PREFIX}/docs/postman-collection`, (_request, response) => {
+    response.download(
+      path.resolve(process.cwd(), 'docs/Expert_Sourcing_Platform.postman_collection.json'),
+      'Expert_Sourcing_Platform.postman_collection.json'
+    );
+  });
 
   app.post(`${API_PREFIX}/auth/login`, loginRateLimiter);
   app.use(`${API_PREFIX}/auth`, authRoutes);
@@ -75,17 +83,22 @@ export function createApp(): Express {
       let name: string | null = null;
       let email: string | null = null;
       try {
-        const caller = await import('../db/client').then((m) =>
-          m.prisma.caller.findUnique({ where: { id: authRequest.auth?.userId } })
-        );
-        name = caller?.name ?? null;
-        email = caller?.email ?? null;
+        const userId = authRequest.auth?.userId ?? '';
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+        if (isUuid) {
+          const caller = await import('../db/client').then((m) =>
+            m.prisma.caller.findUnique({ where: { id: userId } })
+          );
+          name = caller?.name ?? null;
+          email = caller?.email ?? null;
+        }
       } catch {
         // DB unavailable (e.g. in test mode with dev login); return JWT claims only
       }
       response.status(200).json({
         userId: authRequest.auth?.userId,
         role: authRequest.auth?.role,
+        authType: authRequest.auth?.authType,
         name,
         email
       });
@@ -95,6 +108,7 @@ export function createApp(): Express {
   });
 
   app.use(`${API_PREFIX}/admin`, adminRoutes);
+  app.use(`${API_PREFIX}/api-keys`, apiKeyRoutes);
   app.use(`${API_PREFIX}/projects`, projectsRoutes);
   app.use(`${API_PREFIX}/callers`, callersRoutes);
   app.use(`${API_PREFIX}/call-tasks`, callAllocationRoutes);

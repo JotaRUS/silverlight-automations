@@ -26,7 +26,8 @@ export const providerTypeSchema = z.enum([
   'KAKAOTALK',
   'VOICEMAIL_DROP',
   'YAY',
-  'GOOGLE_SHEETS'
+  'GOOGLE_SHEETS',
+  'SUPABASE'
 ]);
 
 export type ProviderType = z.infer<typeof providerTypeSchema>;
@@ -71,7 +72,8 @@ export type ProjectProviderBindingField =
   | 'voicemailDropProviderAccountId'
   | 'yayProviderAccountId'
   | 'anyleadsProviderAccountId'
-  | 'googleSheetsProviderAccountId';
+  | 'googleSheetsProviderAccountId'
+  | 'supabaseProviderAccountId';
 
 export const PROVIDER_TYPE_TO_PROJECT_BINDING_FIELD: Record<ProviderType, ProjectProviderBindingField> = {
   APOLLO: 'apolloProviderAccountId',
@@ -99,6 +101,7 @@ export const PROVIDER_TYPE_TO_PROJECT_BINDING_FIELD: Record<ProviderType, Projec
   KAKAOTALK: 'kakaotalkProviderAccountId',
   VOICEMAIL_DROP: 'voicemailDropProviderAccountId',
   YAY: 'yayProviderAccountId',
-  GOOGLE_SHEETS: 'googleSheetsProviderAccountId'
+  GOOGLE_SHEETS: 'googleSheetsProviderAccountId',
+  SUPABASE: 'supabaseProviderAccountId'
 };
 

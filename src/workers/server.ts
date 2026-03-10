@@ -8,6 +8,7 @@ import { createDeadLetterWorker } from '../queues/workers/deadLetterWorker';
 import { createDocumentationWorker } from '../queues/workers/documentationWorker';
 import { createEnrichmentWorker } from '../queues/workers/enrichmentWorker';
 import { createGoogleSheetsSyncWorker } from '../queues/workers/googleSheetsSyncWorker';
+import { createSupabaseSyncWorker } from '../queues/workers/supabaseSyncWorker';
 import { createApolloLeadSourcingWorker } from '../queues/workers/apolloLeadSourcingWorker';
 import { createJobTitleDiscoveryWorker } from '../queues/workers/jobTitleDiscoveryWorker';
 import { createLeadIngestionWorker } from '../queues/workers/leadIngestionWorker';
@@ -30,6 +31,7 @@ const jobTitleDiscoveryWorker = createJobTitleDiscoveryWorker();
 const rankingWorker = createRankingWorker();
 const performanceWorker = createPerformanceWorker();
 const googleSheetsSyncWorker = createGoogleSheetsSyncWorker();
+const supabaseSyncWorker = createSupabaseSyncWorker();
 const screeningWorker = createScreeningWorker();
 const documentationWorker = createDocumentationWorker();
 const deadLetterWorker = createDeadLetterWorker();
@@ -56,6 +58,7 @@ async function shutdown(): Promise<void> {
     rankingWorker.close(),
     performanceWorker.close(),
     googleSheetsSyncWorker.close(),
+    supabaseSyncWorker.close(),
     screeningWorker.close(),
     documentationWorker.close(),
     deadLetterWorker.close()

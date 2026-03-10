@@ -87,6 +87,13 @@ export const googleSheetsSyncJobSchema = z.object({
 
 export type GoogleSheetsSyncJob = z.infer<typeof googleSheetsSyncJobSchema>;
 
+export const supabaseSyncJobSchema = z.object({
+  projectId: z.string().uuid(),
+  leadId: z.string().uuid()
+});
+
+export type SupabaseSyncJob = z.infer<typeof supabaseSyncJobSchema>;
+
 export const outreachMessageJobSchema = z.object({
   projectId: z.string().uuid(),
   expertId: z.string().uuid(),

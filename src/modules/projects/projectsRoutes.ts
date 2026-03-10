@@ -9,6 +9,7 @@ import { getQueues } from '../../queues';
 import { buildJobId } from '../../queues/jobId';
 import {
   attachCompaniesSchema,
+  attachJobTitlesSchema,
   projectCreateSchema,
   projectUpdateSchema,
   salesNavSearchCreateSchema,
@@ -113,6 +114,39 @@ projectsRoutes.post('/:projectId/companies', async (request, response, next) => 
   }
 });
 
+projectsRoutes.get('/:projectId/companies', async (request, response, next) => {
+  try {
+    const params = parseOrThrow(pathParamsSchema, request.params);
+    const companies = await projectsService.listCompanies(params.projectId);
+    response.status(200).json(companies);
+  } catch (error) {
+    next(error);
+  }
+});
+
+projectsRoutes.get('/:projectId/job-titles', async (request, response, next) => {
+  try {
+    const params = parseOrThrow(pathParamsSchema, request.params);
+    const jobTitles = await projectsService.listJobTitles(params.projectId);
+    response.status(200).json(jobTitles);
+  } catch (error) {
+    next(error);
+  }
+});
+
+projectsRoutes.post('/:projectId/job-titles', async (request, response, next) => {
+  try {
+    const params = parseOrThrow(pathParamsSchema, request.params);
+    const payload = parseOrThrow(attachJobTitlesSchema, request.body);
+    const count = await projectsService.attachJobTitles(params.projectId, payload);
+    response.status(201).json({
+      createdOrUpdated: count
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 projectsRoutes.post('/:projectId/sales-nav-searches', async (request, response, next) => {
   try {
     const params = parseOrThrow(pathParamsSchema, request.params);
@@ -171,6 +205,10 @@ projectsRoutes.post('/:projectId/kick', async (request, response, next) => {
     let enrichmentQueued = 0;
 
     if (project.apolloProviderAccountId) {
+      const [companies, jobTitles] = await Promise.all([
+        projectsService.listCompanies(params.projectId),
+        projectsService.listJobTitles(params.projectId)
+      ]);
       const activeLeadCount = await prisma.lead.count({
         where: {
           projectId: params.projectId,
@@ -195,6 +233,8 @@ projectsRoutes.post('/:projectId/kick', async (request, response, next) => {
             data: {
               projectId: params.projectId,
               personLocations: locations,
+              personTitles: jobTitles.map((jobTitle) => jobTitle.titleNormalized),
+              organizationNames: companies.map((company) => company.name),
               maxPages,
               perPage
             }
@@ -284,6 +324,10 @@ projectsRoutes.post('/:projectId/apollo-search', async (request, response, next)
     const locations = body.personLocations?.length
       ? body.personLocations
       : (project.geographyIsoCodes?.length ? project.geographyIsoCodes.map(isoCodeToLocationName) : undefined);
+    const [companies, jobTitles] = await Promise.all([
+      projectsService.listCompanies(params.projectId),
+      projectsService.listJobTitles(params.projectId)
+    ]);
 
     const jobId = buildJobId(
       'apollo-search',
@@ -298,14 +342,18 @@ projectsRoutes.post('/:projectId/apollo-search', async (request, response, next)
         data: {
           projectId: params.projectId,
           personLocations: locations,
-          personTitles: body.personTitles,
+          personTitles: body.personTitles?.length
+            ? body.personTitles
+            : jobTitles.map((jobTitle) => jobTitle.titleNormalized),
           personSeniorities: body.personSeniorities,
           personDepartments: body.personDepartments,
           personFunctions: body.personFunctions,
           personNotTitles: body.personNotTitles,
           personSkills: body.personSkills,
           organizationDomains: body.organizationDomains,
-          organizationNames: body.organizationNames,
+          organizationNames: body.organizationNames?.length
+            ? body.organizationNames
+            : companies.map((company) => company.name),
           organizationLocations: body.organizationLocations,
           organizationNumEmployeesRanges: body.organizationNumEmployeesRanges,
           keywords: body.keywords,

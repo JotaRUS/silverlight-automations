@@ -9,16 +9,26 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { CountryMultiSelect } from '@/components/ui/country-multi-select';
 import { Input } from '@/components/ui/input';
+import { TagInput } from '@/components/ui/tag-input';
 import {
   FIELD_TO_PROVIDER_TYPE,
-  GEOGRAPHY_OPTIONS,
   PROVIDER_CATEGORIES,
   PROVIDER_DISPLAY_NAMES,
   PROVIDER_TYPE_TO_FIELD
 } from '@/lib/providerConstants';
 import { listProviderAccounts } from '@/services/providerService';
-import { deleteProject, getProject, kickProject, updateProject } from '@/services/projectService';
+import {
+  addProjectCompanies,
+  addProjectJobTitles,
+  deleteProject,
+  getProject,
+  kickProject,
+  listProjectCompanies,
+  listProjectJobTitles,
+  updateProject
+} from '@/services/projectService';
 import type { ProviderAccount, ProviderType } from '@/types/provider';
 import type { ProjectRecord, ProjectStatus } from '@/types/project';
 
@@ -45,6 +55,16 @@ export default function ProjectEditPage(): JSX.Element {
     queryKey: ['providerAccounts', 'active'],
     queryFn: () => listProviderAccounts({ isActive: true })
   });
+  const companiesQuery = useQuery({
+    queryKey: ['project-companies', projectId],
+    queryFn: () => listProjectCompanies(projectId),
+    enabled: !!projectId
+  });
+  const jobTitlesQuery = useQuery({
+    queryKey: ['project-job-titles', projectId],
+    queryFn: () => listProjectJobTitles(projectId),
+    enabled: !!projectId
+  });
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -52,9 +72,12 @@ export default function ProjectEditPage(): JSX.Element {
   const [priority, setPriority] = useState('0');
   const [status, setStatus] = useState<ProjectStatus>('ACTIVE');
   const [selectedGeos, setSelectedGeos] = useState<string[]>([]);
+  const [companyNames, setCompanyNames] = useState<string[]>([]);
+  const [jobTitles, setJobTitles] = useState<string[]>([]);
   const [overrideCooldown, setOverrideCooldown] = useState(false);
   const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({});
   const [initialized, setInitialized] = useState(false);
+  const [filtersInitialized, setFiltersInitialized] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
@@ -80,6 +103,14 @@ export default function ProjectEditPage(): JSX.Element {
     }
   }, [projectQuery.data, initialized]);
 
+  useEffect(() => {
+    if (!filtersInitialized && companiesQuery.data && jobTitlesQuery.data) {
+      setCompanyNames(companiesQuery.data.map((company) => company.name));
+      setJobTitles(jobTitlesQuery.data.map((jobTitle) => jobTitle.titleOriginal));
+      setFiltersInitialized(true);
+    }
+  }, [companiesQuery.data, jobTitlesQuery.data, filtersInitialized]);
+
   const accountsByType = useMemo(() => {
     const map = new Map<ProviderType, ProviderAccount[]>();
     for (const acct of providersQuery.data ?? []) {
@@ -104,7 +135,7 @@ export default function ProjectEditPage(): JSX.Element {
         }
       }
 
-      return updateProject(projectId, {
+      const project = await updateProject(projectId, {
         name,
         description: description || undefined,
         targetThreshold: Number(targetThreshold) || 10,
@@ -114,10 +145,25 @@ export default function ProjectEditPage(): JSX.Element {
         overrideCooldown,
         ...providerBindings
       } as Partial<ProjectRecord>);
+
+      await Promise.all([
+        addProjectCompanies(
+          projectId,
+          companyNames.map((companyName) => ({ name: companyName }))
+        ),
+        addProjectJobTitles(
+          projectId,
+          jobTitles.map((title) => ({ title }))
+        )
+      ]);
+
+      return project;
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['project', projectId] });
       void queryClient.invalidateQueries({ queryKey: ['projects'] });
+      void queryClient.invalidateQueries({ queryKey: ['project-companies', projectId] });
+      void queryClient.invalidateQueries({ queryKey: ['project-job-titles', projectId] });
       toast.success('Saved!');
       kickProject(projectId).catch(() => {});
       router.push(`/admin/leads?projectId=${projectId}`);
@@ -153,12 +199,6 @@ export default function ProjectEditPage(): JSX.Element {
       return next;
     });
   }, [providersQuery.data]);
-
-  const toggleGeo = useCallback((code: string) => {
-    setSelectedGeos((prev) =>
-      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
-    );
-  }, []);
 
   const selectedCount = Object.values(selectedProviders).filter(Boolean).length;
 
@@ -257,28 +297,29 @@ export default function ProjectEditPage(): JSX.Element {
               </select>
             </div>
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Target Geography *</label>
-            <div className="flex flex-wrap gap-2 mt-1">
-              {GEOGRAPHY_OPTIONS.map((geo) => (
-                <button
-                  key={geo.code}
-                  type="button"
-                  onClick={() => toggleGeo(geo.code)}
-                  className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                    selectedGeos.includes(geo.code)
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
-                  }`}
-                >
-                  {geo.code} — {geo.label}
-                </button>
-              ))}
-            </div>
-            {selectedGeos.length === 0 && (
-              <p className="mt-1 text-xs text-red-500">Select at least one geography</p>
-            )}
-          </div>
+          <CountryMultiSelect
+            label="Target Geography *"
+            helperText="Search and select any country in the world for this project."
+            selectedCodes={selectedGeos}
+            onChange={setSelectedGeos}
+          />
+          {selectedGeos.length === 0 && (
+            <p className="-mt-2 text-xs text-red-500">Select at least one geography</p>
+          )}
+          <TagInput
+            label="Company Filters"
+            helperText="Stored company names feed future Apollo sourcing for this project."
+            values={companyNames}
+            onChange={setCompanyNames}
+            placeholder="Type a company name and press Enter"
+          />
+          <TagInput
+            label="Job Title Filters"
+            helperText="Stored titles are reused by auto-sourcing and manual Apollo search."
+            values={jobTitles}
+            onChange={setJobTitles}
+            placeholder="Type a job title and press Enter"
+          />
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"

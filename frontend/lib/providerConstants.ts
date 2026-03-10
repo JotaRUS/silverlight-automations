@@ -26,7 +26,8 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderType, string> = {
   KAKAOTALK: 'KakaoTalk',
   VOICEMAIL_DROP: 'Voicemail Drop',
   YAY: 'Yay.com',
-  GOOGLE_SHEETS: 'Google Sheets'
+  GOOGLE_SHEETS: 'Google Sheets',
+  SUPABASE: 'Supabase'
 };
 
 export const PROVIDER_TYPE_TO_FIELD: Record<ProviderType, string> = {
@@ -55,7 +56,8 @@ export const PROVIDER_TYPE_TO_FIELD: Record<ProviderType, string> = {
   KAKAOTALK: 'kakaotalkProviderAccountId',
   VOICEMAIL_DROP: 'voicemailDropProviderAccountId',
   YAY: 'yayProviderAccountId',
-  GOOGLE_SHEETS: 'googleSheetsProviderAccountId'
+  GOOGLE_SHEETS: 'googleSheetsProviderAccountId',
+  SUPABASE: 'supabaseProviderAccountId'
 };
 
 export const FIELD_TO_PROVIDER_TYPE: Record<string, ProviderType> = Object.fromEntries(
@@ -93,6 +95,12 @@ export const PROVIDER_CATEGORIES: ProviderCategory[] = [
     label: 'Calling & Operations',
     icon: 'call',
     types: ['YAY', 'GOOGLE_SHEETS']
+  },
+  {
+    key: 'data-sync',
+    label: 'Data Sync',
+    icon: 'sync',
+    types: ['SUPABASE']
   }
 ];
 

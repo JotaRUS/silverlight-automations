@@ -113,6 +113,20 @@ export default function HelpPage(): JSX.Element {
             </a>
           ))}
         </nav>
+        <div className="flex flex-wrap gap-2 pt-2">
+          <Link
+            href="/admin/help/api"
+            className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary"
+          >
+            API Docs
+          </Link>
+          <Link
+            href="/admin/api-keys"
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600"
+          >
+            API Keys
+          </Link>
+        </div>
       </Card>
 
       {/* ------------------------------------------------------------------ */}

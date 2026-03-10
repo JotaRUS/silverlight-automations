@@ -214,11 +214,10 @@ npm run build
 
 ## 3. Authentication
 
-The platform uses JWT Bearer tokens. Every authenticated endpoint requires the `Authorization` header:
+The platform now supports two auth modes:
 
-```
-Authorization: Bearer <token>
-```
+- Web UI / browser flows: cookie-based session from `POST /api/v1/auth/login`
+- External integrations: personal API keys created in the admin UI and sent as `Authorization: Bearer <key>` or `x-api-key: <key>`
 
 ### Roles
 
@@ -228,34 +227,47 @@ Authorization: Bearer <token>
 | `ops`    | Operations — manages projects and outreach | Projects, callers, outreach, screening, call tasks (operator views) |
 | `caller` | Phone agent                                | `/call-tasks/current`, `/call-tasks/:taskId/outcome`    |
 
-### Mint a token
+### Browser login
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/auth/token \
+curl -i -X POST http://localhost:3000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"userId": "user-1", "role": "admin"}'
+  -d '{"email":"admin@example.com","password":"your-password"}'
 ```
 
-Response:
+The response sets the `access_token` cookie and returns a `csrfToken`. Use that CSRF token for mutating cookie-authenticated requests.
 
-```json
-{
-  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
-  "tokenType": "Bearer"
-}
-```
+### Development login shortcut
 
-Export the token for convenience:
+In development/test environments only, you can also mint a session with:
 
 ```bash
-export TOKEN="eyJhbGciOiJIUzI1NiIs..."
+curl -X POST http://localhost:3000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"admin-user","role":"admin"}'
 ```
+
+### Personal API keys
+
+Create keys from `Admin -> API Keys`. External tools should then send either:
+
+```bash
+Authorization: Bearer slk_xxxxx.yyyyy
+```
+
+or:
+
+```bash
+x-api-key: slk_xxxxx.yyyyy
+```
+
+For the curl examples below, you can treat `$TOKEN` as a personal platform API key unless a section explicitly says cookie session or provider-specific token.
 
 ### Verify your identity
 
 ```bash
 curl http://localhost:3000/api/v1/auth/me \
-  -H "Authorization: Bearer $TOKEN"
+  -H "Authorization: Bearer $API_KEY"
 ```
 
 Response:
@@ -1312,14 +1324,14 @@ curl http://localhost:3000/api/v1/callers/$CALLER_ID/performance/latest \
 
 ## 15. Frontend Web UI
 
-The platform includes a Next.js 14 admin portal at `http://localhost:3001` (start with `npm run dev:frontend`). The frontend proxies API requests to the backend via a rewrite rule in `next.config.mjs`.
+The platform includes a Next.js admin portal at `http://localhost:3001` (start with `npm run dev:frontend`). The frontend proxies API requests to the backend via a rewrite rule in `next.config.mjs`.
 
 ### Project creation wizard
 
 Three-step guided flow for creating and configuring projects:
 
-1. **Project details** — Name, description, target threshold, geography, priority.
-2. **Lead sources** — Select and bind provider accounts (Apollo, Sales Nav, enrichment providers, messaging channels, Google Sheets). Provider health is validated before binding.
+1. **Project details** — Name, description, target threshold, full-world country selection, company filters, job-title filters, and priority.
+2. **Lead sources** — Select and bind provider accounts (Apollo, Sales Nav, enrichment providers, messaging channels, Google Sheets, Supabase). Provider health is validated before binding.
 3. **Review & create** — Summary of all settings before submission.
 
 ### Leads pipeline
@@ -1350,8 +1362,15 @@ Real-time operational dashboard with:
 
 ### Provider management
 
-Lists all configured provider accounts with connection health checks. Supports adding new provider accounts, testing connectivity, and viewing usage metrics.
+Lists all configured provider accounts with connection health checks. Supports adding new provider accounts, testing connectivity, and viewing usage metrics. Supabase can be bound as a destination provider so enriched leads are exported automatically into a configured table.
+
+### API keys and API docs
+
+The admin UI now includes:
+
+- `Admin -> API Keys` for create/list/revoke of personal platform API keys
+- `Admin -> Help -> API Docs` for OpenAPI download, Postman collection download, and endpoint-group summaries
 
 ### Help center
 
-Built-in guide pages with step-by-step provider setup instructions for each integration (Apollo, Sales Nav, enrichment providers, messaging channels, Yay, Google Sheets).
+Built-in guide pages with step-by-step provider setup instructions for each integration (Apollo, Sales Nav, enrichment providers, messaging channels, Yay, Google Sheets, Supabase).
