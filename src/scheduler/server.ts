@@ -387,11 +387,33 @@ async function queuePendingEnrichment(projectId: string, timeSlice: string): Pro
   return newLeads.length;
 }
 
+const OUTREACH_CHANNEL_PROVIDER_TYPE: Record<string, string> = {
+  EMAIL: 'EMAIL_PROVIDER',
+  PHONE: 'YAY'
+};
+
 async function queuePendingOutreach(
   projectId: string,
   projectName: string,
   timeSlice: string
 ): Promise<number> {
+  const availableProviderTypes = new Set(
+    (await prisma.providerAccount.findMany({
+      where: { isActive: true, providerType: { in: ['EMAIL_PROVIDER', 'YAY'] } as never },
+      select: { providerType: true },
+      distinct: ['providerType']
+    })).map((a) => a.providerType)
+  );
+
+  if (availableProviderTypes.size === 0) {
+    return 0;
+  }
+
+  const contactTypeFilter: string[] = [];
+  if (availableProviderTypes.has('EMAIL_PROVIDER')) contactTypeFilter.push('EMAIL');
+  if (availableProviderTypes.has('YAY')) contactTypeFilter.push('PHONE');
+  if (contactTypeFilter.length === 0) return 0;
+
   const enrichedLeads = await prisma.lead.findMany({
     where: {
       projectId,
@@ -423,7 +445,7 @@ async function queuePendingOutreach(
       where: {
         expertId: lead.expertId,
         verificationStatus: 'VERIFIED',
-        type: { in: ['EMAIL', 'PHONE'] },
+        type: { in: contactTypeFilter as never },
         deletedAt: null
       },
       orderBy: { type: 'asc' }
@@ -433,6 +455,10 @@ async function queuePendingOutreach(
     }
 
     const channel = contact.type === 'EMAIL' ? 'EMAIL' : 'PHONE';
+    const requiredProviderType = OUTREACH_CHANNEL_PROVIDER_TYPE[channel] ?? '';
+    if (!availableProviderTypes.has(requiredProviderType as never)) {
+      continue;
+    }
 
     await getQueues().outreachQueue.add(
       'outreach.send',

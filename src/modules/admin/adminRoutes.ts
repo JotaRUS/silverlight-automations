@@ -150,7 +150,7 @@ adminRoutes.get('/leads', async (request, response, next) => {
           },
           expert: {
             include: {
-              contacts: true
+              contacts: { where: { deletedAt: null } }
             }
           },
           enrichmentAttempts: {

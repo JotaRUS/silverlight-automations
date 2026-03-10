@@ -22,6 +22,13 @@ const PIPELINE_STAGES: { status: LeadStatus; label: string; icon: string; color:
   { status: 'DISQUALIFIED', label: 'Disqualified', icon: 'block', color: 'text-red-600', bg: 'bg-red-50' }
 ];
 
+interface EnrichmentAttemptRecord {
+  provider: string;
+  status: string;
+  confidenceScore?: number;
+  attemptedAt: string;
+}
+
 interface LeadRecord {
   id: string;
   fullName?: string;
@@ -40,6 +47,7 @@ interface LeadRecord {
     fullName?: string;
     contacts?: { type: string; value: string; verificationStatus?: string }[];
   };
+  enrichmentAttempts?: EnrichmentAttemptRecord[];
 }
 
 function statusBadge(status: LeadStatus): { label: string; class: string } {
@@ -57,6 +65,21 @@ function statusBadge(status: LeadStatus): { label: string; class: string } {
   };
   return { label: stage.label, class: `${stage.color} ${stage.bg} ${borderMap[stage.bg] ?? 'border-slate-200'}` };
 }
+
+const ENRICHMENT_PROVIDER_LABELS: Record<string, string> = {
+  APOLLO: 'Apollo',
+  LEADMAGIC: 'LeadMagic',
+  PROSPEO: 'Prospeo',
+  EXA: 'Exa',
+  ROCKETREACH: 'RocketReach',
+  WIZA: 'Wiza',
+  FORAGER: 'Forager',
+  ZELIQ: 'Zeliq',
+  CONTACTOUT: 'ContactOut',
+  DATAGM: 'DataGM',
+  PEOPLEDATALABS: 'PeopleDataLabs',
+  ANYLEADS: 'AnyLeads'
+};
 
 function formatRelative(dateString: string): string {
   const diff = Date.now() - new Date(dateString).getTime();
@@ -394,9 +417,38 @@ export default function LeadsPage(): JSX.Element {
                         {lead.project?.name ?? '—'}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${badge.class}`}>
-                          {badge.label}
-                        </span>
+                        {lead.status === 'ENRICHED' && lead.enrichmentAttempts && lead.enrichmentAttempts.length > 0 ? (
+                          <div className="group relative inline-flex">
+                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold cursor-default ${badge.class}`}>
+                              {badge.label}
+                            </span>
+                            <div className="pointer-events-none absolute left-0 top-full z-20 mt-1.5 hidden w-56 rounded-lg border border-slate-200 bg-white p-2.5 shadow-lg group-hover:block">
+                              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Enrichment providers</p>
+                              <div className="space-y-1">
+                                {lead.enrichmentAttempts.map((attempt, i) => (
+                                  <div key={i} className="flex items-center justify-between text-[11px]">
+                                    <span className="font-medium text-slate-700">
+                                      {ENRICHMENT_PROVIDER_LABELS[attempt.provider] ?? attempt.provider}
+                                    </span>
+                                    <span className={
+                                      attempt.status === 'SUCCESS'
+                                        ? 'text-emerald-600'
+                                        : attempt.status === 'RATE_LIMITED'
+                                          ? 'text-amber-600'
+                                          : 'text-red-500'
+                                    }>
+                                      {attempt.status === 'SUCCESS' ? 'found data' : attempt.status === 'RATE_LIMITED' ? 'rate limited' : 'no data'}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${badge.class}`}>
+                            {badge.label}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {locationParts.length > 0 ? (

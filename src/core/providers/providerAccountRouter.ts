@@ -350,6 +350,11 @@ export class ProviderAccountRouter {
       return;
     }
 
+    const alreadyQuarantined = await this.quarantineStore.isQuarantined(providerAccountId);
+    if (alreadyQuarantined) {
+      return;
+    }
+
     const rateLimitConfig = (providerAccount.rateLimitConfig ?? {}) as Record<string, unknown>;
     const configuredSeconds =
       typeof rateLimitConfig.quarantineSeconds === 'number' && Number.isFinite(rateLimitConfig.quarantineSeconds)

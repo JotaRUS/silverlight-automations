@@ -405,10 +405,12 @@ export class EnrichmentService {
 
         const resultEmails = result.emails
           .map((e) => normalizeEmail(e))
-          .filter((e): e is string => Boolean(e));
+          .filter((e): e is string => Boolean(e))
+          .filter((e) => !isFakeEmail(e));
         const resultPhones = result.phones
           .map((p) => normalizePhone(p))
-          .filter((p): p is string => Boolean(p));
+          .filter((p): p is string => Boolean(p))
+          .filter((p) => !isFakePhone(p));
 
         for (const e of resultEmails) {
           if (!collectedEmails.includes(e)) collectedEmails.push(e);
@@ -436,11 +438,13 @@ export class EnrichmentService {
     const bestResult = this.pickBestResult(allResults);
 
     if (!bestResult) {
-      await this.prismaClient.lead.update({
-        where: { id: job.leadId },
-        data: { status: 'ENRICHED', enrichmentConfidence: 0 }
-      });
-      await completionService.recalculate(job.projectId);
+      if (hasEmail || hasPhone) {
+        await this.prismaClient.lead.update({
+          where: { id: job.leadId },
+          data: { status: 'ENRICHED', enrichmentConfidence: 0 }
+        });
+        await completionService.recalculate(job.projectId);
+      }
       return;
     }
 
@@ -451,8 +455,9 @@ export class EnrichmentService {
       collectedPhones.map((p) => normalizePhone(p)).filter((p): p is string => Boolean(p))
     ));
 
+    const hasAnyContact = hasEmail || hasPhone || normalizedEmails.length > 0 || normalizedPhones.length > 0;
     const leadUpdateData: Record<string, unknown> = {
-      status: 'ENRICHED',
+      status: hasAnyContact ? 'ENRICHED' : 'NEW',
       enrichmentConfidence: bestResult.confidenceScore
     };
     if (accumulatedPerson.fullName && !lead.fullName) leadUpdateData.fullName = accumulatedPerson.fullName;
