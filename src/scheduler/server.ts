@@ -1,5 +1,5 @@
 import { subDays } from './timeUtils';
-import { AUTO_SOURCING } from '../config/constants';
+import { AUTO_SOURCING, isoCodeToLocationName } from '../config/constants';
 import { logger } from '../core/logging/logger';
 import { installFatalProcessHandlers } from '../core/process/fatalHandlers';
 import { clock } from '../core/time/clock';
@@ -532,7 +532,7 @@ async function queueApolloSourcingIfNeeded(
   }
 
   const locations = project.geographyIsoCodes.length > 0
-    ? project.geographyIsoCodes
+    ? project.geographyIsoCodes.map(isoCodeToLocationName)
     : undefined;
 
   const jobTitles = await prisma.jobTitle.findMany({

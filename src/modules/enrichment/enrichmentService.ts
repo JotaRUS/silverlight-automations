@@ -132,9 +132,18 @@ class DynamicResolvedEnrichmentProviderClient implements ResolvedAwareProviderCl
       });
     }
 
+    let resolvedEndpoint = this.definition.endpoint;
+    const accountId =
+      typeof resolvedCredentials.credentials.accountId === 'string'
+        ? resolvedCredentials.credentials.accountId
+        : '';
+    if (accountId && resolvedEndpoint.includes('{accountId}')) {
+      resolvedEndpoint = resolvedEndpoint.replace('{accountId}', encodeURIComponent(accountId));
+    }
+
     const client = new GenericEnrichmentClient({
       providerName: this.providerName,
-      endpoint: this.definition.endpoint,
+      endpoint: resolvedEndpoint,
       apiKey,
       apiKeyHeader: this.definition.apiKeyHeader,
       method: this.definition.method,
@@ -258,11 +267,27 @@ export class EnrichmentService {
       );
       return result;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'unknown provider error';
+      const baseName = error instanceof Error ? error.message : 'unknown provider error';
+      const details =
+        error instanceof AppError && typeof error.details === 'object' && error.details !== null
+          ? (error.details as { statusCode?: number; responseBody?: unknown })
+          : {};
+      const statusSuffix = details.statusCode ? ` (HTTP ${String(details.statusCode)})` : '';
+      let bodySuffix = '';
+      if (details.responseBody) {
+        try {
+          const raw = typeof details.responseBody === 'string'
+            ? details.responseBody
+            : JSON.stringify(details.responseBody);
+          bodySuffix = ` — ${raw.slice(0, 200)}`;
+        } catch { /* ignore serialisation errors */ }
+      }
+      const errorMessage = `${baseName}${statusSuffix}${bodySuffix}`;
+      const lower = errorMessage.toLowerCase();
       const normalizedStatus =
-        errorMessage.toLowerCase().includes('rate')
+        lower.includes('rate') || lower.includes('429')
           ? 'RATE_LIMITED'
-          : errorMessage.toLowerCase().includes('trial')
+          : lower.includes('trial') || lower.includes('402') || lower.includes('out of credits')
             ? 'TRIAL_EXHAUSTED'
             : 'FAILED';
       await this.logAttempt(leadId, providerClient.providerName, normalizedStatus, null, {}, errorMessage);

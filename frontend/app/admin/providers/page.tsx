@@ -69,7 +69,10 @@ const CREDENTIAL_FIELDS: Record<ProviderType, CredentialFieldDef[]> = {
   EXA: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   ROCKETREACH: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   WIZA: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
-  FORAGER: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  FORAGER: [
+    { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' },
+    { key: 'accountId', label: 'Account ID', type: 'text', placeholder: 'Forager account ID (from dashboard URL)' }
+  ],
   ZELIQ: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   CONTACTOUT: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   DATAGM: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],

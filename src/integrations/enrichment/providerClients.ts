@@ -376,7 +376,7 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
   {
     providerType: 'FORAGER',
     providerName: 'FORAGER',
-    endpoint: 'https://api-v2.forager.ai/api/datastorage/person_contacts_lookup/work_emails/',
+    endpoint: 'https://api-v2.forager.ai/api/{accountId}/datastorage/person_contacts_lookup/work_emails/',
     apiKeyHeader: 'X-API-KEY',
     buildRequestBody: (request) => {
       const slug = request.linkedinUrl ? extractLinkedinSlug(request.linkedinUrl) : undefined;

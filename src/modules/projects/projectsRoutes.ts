@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { authenticate, authorize } from '../../core/auth/authMiddleware';
+import { isoCodeToLocationName } from '../../config/constants';
 import { AppError } from '../../core/errors/appError';
 import { prisma } from '../../db/client';
 import { getQueues } from '../../queues';
@@ -181,7 +182,7 @@ projectsRoutes.post('/:projectId/kick', async (request, response, next) => {
 
       if (remainingSlots > 0) {
         const locations = project.geographyIsoCodes?.length
-          ? project.geographyIsoCodes
+          ? project.geographyIsoCodes.map(isoCodeToLocationName)
           : undefined;
 
         const perPage = Math.min(remainingSlots, 25);
@@ -282,7 +283,7 @@ projectsRoutes.post('/:projectId/apollo-search', async (request, response, next)
 
     const locations = body.personLocations?.length
       ? body.personLocations
-      : (project.geographyIsoCodes?.length ? project.geographyIsoCodes : undefined);
+      : (project.geographyIsoCodes?.length ? project.geographyIsoCodes.map(isoCodeToLocationName) : undefined);
 
     const jobId = buildJobId(
       'apollo-search',

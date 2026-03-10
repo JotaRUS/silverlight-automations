@@ -77,6 +77,11 @@ const yayCredentialSchema = z.object({
   webhookSecret: z.string().min(1)
 });
 
+const foragerCredentialSchema = z.object({
+  apiKey: z.string().min(1),
+  accountId: z.string().min(1)
+});
+
 const googleSheetsCredentialSchema = z.object({
   spreadsheetId: z.string().min(1),
   serviceAccountJson: z
@@ -92,7 +97,7 @@ const providerCredentialParsers: Record<ProviderType, z.ZodType<Record<string, u
   EXA: singleApiKeySchema,
   ROCKETREACH: singleApiKeySchema,
   WIZA: singleApiKeySchema,
-  FORAGER: singleApiKeySchema,
+  FORAGER: foragerCredentialSchema,
   ZELIQ: singleApiKeySchema,
   CONTACTOUT: singleApiKeySchema,
   DATAGM: singleApiKeySchema,
