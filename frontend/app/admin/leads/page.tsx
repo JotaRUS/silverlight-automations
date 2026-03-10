@@ -6,7 +6,7 @@ import { useCallback, useMemo, useState } from 'react';
 
 import { Card } from '@/components/ui/card';
 import { useSocket } from '@/hooks/useSocket';
-import { deleteLead, fetchLeadExplorer, updateLead } from '@/services/adminService';
+import { deleteLead, fetchLeadExplorer, updateLead, type LeadExplorerResponse } from '@/services/adminService';
 import { listProjects } from '@/services/projectService';
 
 type LeadStatus = 'NEW' | 'ENRICHING' | 'ENRICHED' | 'OUTREACH_PENDING' | 'CONTACTED' | 'REPLIED' | 'DISQUALIFIED' | 'CONVERTED';
@@ -135,6 +135,8 @@ export default function LeadsPage(): JSX.Element {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [socketConnected, setSocketConnected] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 50;
 
   useSocket('/admin', 'lead.ingested', () => {
     setRefreshNonce((v) => v + 1);
@@ -158,12 +160,14 @@ export default function LeadsPage(): JSX.Element {
     queryFn: () => listProjects()
   });
 
-  const leadsQuery = useQuery({
-    queryKey: ['leads-pipeline', selectedProjectId, filterStatus, refreshNonce],
+  const leadsQuery = useQuery<LeadExplorerResponse>({
+    queryKey: ['leads-pipeline', selectedProjectId, filterStatus, currentPage, refreshNonce],
     queryFn: () =>
       fetchLeadExplorer({
         projectId: selectedProjectId || undefined,
-        status: filterStatus || undefined
+        status: filterStatus || undefined,
+        page: currentPage,
+        pageSize
       }),
     refetchInterval: 10_000
   });
@@ -194,19 +198,14 @@ export default function LeadsPage(): JSX.Element {
   );
 
   const leads = (leadsQuery.data?.leads ?? []) as unknown as LeadRecord[];
+  const totalLeads = leadsQuery.data?.total ?? 0;
+  const totalPages = leadsQuery.data?.totalPages ?? 1;
 
   const stageCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const lead of leads) {
-      counts[lead.status] = (counts[lead.status] ?? 0) + 1;
-    }
-    return counts;
-  }, [leads]);
+    return leadsQuery.data?.statusCounts ?? {};
+  }, [leadsQuery.data?.statusCounts]);
 
-  const filteredLeads = useMemo(() => {
-    if (!filterStatus) return leads;
-    return leads.filter((l) => l.status === filterStatus);
-  }, [leads, filterStatus]);
+  const filteredLeads = leads;
 
   return (
     <div className="space-y-6">
@@ -267,7 +266,7 @@ export default function LeadsPage(): JSX.Element {
         <select
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
           value={selectedProjectId}
-          onChange={(e) => setSelectedProjectId(e.target.value)}
+          onChange={(e) => { setSelectedProjectId(e.target.value); setCurrentPage(1); }}
         >
           <option value="">All projects</option>
           {projectsQuery.data?.map((p) => (
@@ -277,7 +276,7 @@ export default function LeadsPage(): JSX.Element {
         <select
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
           value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value as LeadStatus | '')}
+          onChange={(e) => { setFilterStatus(e.target.value as LeadStatus | ''); setCurrentPage(1); }}
         >
           <option value="">All statuses</option>
           {PIPELINE_STAGES.map((s) => (
@@ -285,7 +284,7 @@ export default function LeadsPage(): JSX.Element {
           ))}
         </select>
         <span className="ml-auto text-xs text-slate-400">
-          {leadsQuery.data?.total ?? 0} lead{(leadsQuery.data?.total ?? 0) !== 1 ? 's' : ''}
+          {totalLeads} lead{totalLeads !== 1 ? 's' : ''}
         </span>
       </Card>
 
@@ -297,7 +296,7 @@ export default function LeadsPage(): JSX.Element {
           return (
             <button
               key={stage.status}
-              onClick={() => setFilterStatus(isActive ? '' : stage.status)}
+              onClick={() => { setFilterStatus(isActive ? '' : stage.status); setCurrentPage(1); }}
               className={`rounded-xl border p-3 text-center transition-all ${
                 isActive
                   ? 'border-primary bg-primary/5 ring-1 ring-primary'
@@ -478,6 +477,74 @@ export default function LeadsPage(): JSX.Element {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
+              <p className="text-xs text-slate-500">
+                Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalLeads)} of {totalLeads}
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                  title="First page"
+                >
+                  <span className="material-symbols-outlined text-lg">first_page</span>
+                </button>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                  title="Previous page"
+                >
+                  <span className="material-symbols-outlined text-lg">chevron_left</span>
+                </button>
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum: number;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`size-8 rounded-lg text-xs font-medium transition-colors ${
+                        pageNum === currentPage
+                          ? 'bg-primary text-white'
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                  title="Next page"
+                >
+                  <span className="material-symbols-outlined text-lg">chevron_right</span>
+                </button>
+                <button
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                  title="Last page"
+                >
+                  <span className="material-symbols-outlined text-lg">last_page</span>
+                </button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
     </div>

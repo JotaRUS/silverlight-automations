@@ -8,7 +8,7 @@ import { getQueues } from '../../queues';
 import { buildJobId } from '../../queues/jobId';
 import { enqueueWithContext } from '../../queues/producers/enqueueWithContext';
 import type { LeadIngestionJob } from '../../queues/definitions/jobPayloadSchemas';
-import { normalizeEmail, normalizePhone } from '../enrichment/enrichmentValidators';
+import { normalizeEmail, normalizePhone, isFakeEmail, isFakePhone } from '../enrichment/enrichmentValidators';
 import { ProjectCompletionService } from '../projects/projectCompletionService';
 
 function normalizeValue(value?: string): string | undefined {
@@ -94,8 +94,14 @@ export class LeadIngestionService {
         }
       });
 
-      const emailHash = this.hashOptional(normalizeValue(job.lead.emails[0]));
-      const phoneHash = this.hashOptional(normalizeValue(job.lead.phones[0]));
+      const firstEmail = job.lead.emails[0];
+      const emailHash = firstEmail && !isFakeEmail(firstEmail)
+        ? this.hashOptional(normalizeValue(firstEmail))
+        : undefined;
+      const firstPhone = job.lead.phones[0];
+      const phoneHash = firstPhone && !isFakePhone(firstPhone)
+        ? this.hashOptional(normalizeValue(firstPhone))
+        : undefined;
       const linkedinHash = this.hashOptional(normalizeValue(job.lead.linkedinUrl));
       const expertCriteria: Prisma.ExpertWhereInput[] = [];
       if (emailHash) {
@@ -240,8 +246,8 @@ export class LeadIngestionService {
         jobTitle: createdLead.jobTitle ?? undefined,
         linkedinUrl: createdLead.linkedinUrl ?? undefined,
         countryIso: createdLead.countryIso ?? undefined,
-        emails: job.lead.emails,
-        phones: job.lead.phones
+        emails: job.lead.emails.filter((e) => !isFakeEmail(e)),
+        phones: job.lead.phones.filter((p) => !isFakePhone(p))
       }, {
         jobId: buildJobId('enrichment', createdLead.id)
       });

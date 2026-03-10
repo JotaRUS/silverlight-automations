@@ -17,6 +17,7 @@ export interface EnrichmentProviderDefinition {
   apiKeyUrlParam?: string;
   apiKeyInBody?: boolean;
   apiKeyBodyParam?: string;
+  emptyResultStatusCodes?: number[];
   buildRequestUrl?: (baseEndpoint: string, request: EnrichmentRequest) => string;
   buildRequestBody?: (request: EnrichmentRequest) => unknown;
   extractResponse?: (response: unknown) => ExtractedProviderData;
@@ -543,6 +544,7 @@ export const enrichmentProviderDefinitions: EnrichmentProviderDefinition[] = [
     endpoint: 'https://api.peopledatalabs.com/v5/person/enrich',
     apiKeyHeader: 'X-Api-Key',
     method: 'GET',
+    emptyResultStatusCodes: [404],
     buildRequestUrl: (baseEndpoint, request) => {
       const params = new URLSearchParams();
       if (request.fullName) params.set('name', request.fullName);

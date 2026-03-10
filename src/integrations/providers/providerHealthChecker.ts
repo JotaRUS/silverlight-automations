@@ -725,15 +725,31 @@ export async function runProviderHealthCheck(
 
   if (input.providerType === 'PEOPLEDATALABS') {
     const apiKey = credentialString(input.credentials, 'apiKey');
-    const response = await fetch('https://sandbox.api.peopledatalabs.com/v5/person/enrich?profile=linkedin.com/in/seanthorne', {
+    const response = await fetch('https://api.peopledatalabs.com/v5/person/enrich?profile=linkedin.com/in/seanthorne', {
       method: 'GET',
       headers: { 'X-Api-Key': apiKey }
     });
     const text = await response.text().catch(() => '');
     logger.info({ provider: 'peopledatalabs', statusCode: response.status, responseSnippet: text.slice(0, 300) }, 'pdl-health-check-response');
-    if (response.status === 200) return { healthy: true, details: { statusCode: 200, reason: 'PeopleDataLabs reachable and API key accepted (sandbox).' } };
+    if (response.status === 200) return { healthy: true, details: { statusCode: 200, reason: 'PeopleDataLabs reachable and API key accepted.' } };
+    if (response.status === 404) return { healthy: true, details: { statusCode: 404, reason: 'PeopleDataLabs reachable and API key accepted (no match for test query, which is expected).' } };
     if (response.status === 401 || response.status === 403) return { healthy: false, details: { statusCode: response.status, reason: 'PeopleDataLabs rejected the API key.' } };
     return { healthy: false, details: { statusCode: response.status, reason: `PeopleDataLabs health probe failed (HTTP ${response.status}).` } };
+  }
+
+  if (input.providerType === 'ANYLEADS') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const endpoint = 'https://myapiconnect.com/api-product/incoming-webhook/find-emails-first-last';
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ api_key: apiKey, first_name: 'Test', last_name: 'User', domain: 'example.com' })
+    });
+    const text = await response.text().catch(() => '');
+    logger.info({ provider: 'anyleads', statusCode: response.status, responseSnippet: text.slice(0, 300) }, 'anyleads-health-check-response');
+    if (response.status >= 200 && response.status < 300) return { healthy: true, details: { statusCode: response.status, reason: 'Anyleads reachable and API key accepted.' } };
+    if (response.status === 401 || response.status === 403) return { healthy: false, details: { statusCode: response.status, reason: 'Anyleads rejected the API key.' } };
+    return { healthy: false, details: { statusCode: response.status, reason: `Anyleads health probe failed (HTTP ${response.status}).` } };
   }
 
   if (input.providerType === 'VIBER') {

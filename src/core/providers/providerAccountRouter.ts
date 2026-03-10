@@ -166,7 +166,8 @@ export class ProviderAccountRouter {
       providerType === 'ZELIQ' ||
       providerType === 'CONTACTOUT' ||
       providerType === 'DATAGM' ||
-      providerType === 'PEOPLEDATALABS') {
+      providerType === 'PEOPLEDATALABS' ||
+      providerType === 'ANYLEADS') {
       const routingConfig = parseRoutingConfig(projectBindings.enrichmentRoutingConfig);
       const configuredEntries = (routingConfig.providers ?? []).filter(
         (entry) => entry.providerType === providerType

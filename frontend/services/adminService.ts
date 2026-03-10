@@ -23,12 +23,23 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
   return apiRequest<DashboardStats>('/api/v1/admin/dashboard-stats');
 }
 
+export interface LeadExplorerResponse {
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  statusCounts: Record<string, number>;
+  leads: Record<string, unknown>[];
+}
+
 export async function fetchLeadExplorer(params?: {
   projectId?: string;
   status?: string;
   enrichmentStatus?: string;
   cooldownBlocked?: 'true' | 'false';
-}): Promise<{ total: number; leads: Record<string, unknown>[] }> {
+  page?: number;
+  pageSize?: number;
+}): Promise<LeadExplorerResponse> {
   const query = new URLSearchParams();
   if (params?.projectId) {
     query.set('projectId', params.projectId);
@@ -42,8 +53,14 @@ export async function fetchLeadExplorer(params?: {
   if (params?.cooldownBlocked) {
     query.set('cooldownBlocked', params.cooldownBlocked);
   }
+  if (params?.page) {
+    query.set('page', String(params.page));
+  }
+  if (params?.pageSize) {
+    query.set('pageSize', String(params.pageSize));
+  }
   const suffix = query.toString() ? `?${query.toString()}` : '';
-  return apiRequest<{ total: number; leads: Record<string, unknown>[] }>(`/api/v1/admin/leads${suffix}`);
+  return apiRequest<LeadExplorerResponse>(`/api/v1/admin/leads${suffix}`);
 }
 
 export async function fetchOutreachThreads(projectId?: string): Promise<Record<string, unknown>[]> {

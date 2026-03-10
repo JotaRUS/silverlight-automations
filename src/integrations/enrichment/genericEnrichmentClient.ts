@@ -13,6 +13,7 @@ interface GenericEnrichmentClientInput {
   apiKeyUrlParam?: string;
   apiKeyInBody?: boolean;
   apiKeyBodyParam?: string;
+  emptyResultStatusCodes?: number[];
   buildRequestUrl?: (baseEndpoint: string, request: EnrichmentRequest) => string;
   buildRequestBody?: (request: EnrichmentRequest) => unknown;
   extractResponse?: (response: unknown) => ExtractedProviderData;
@@ -100,6 +101,7 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
   private readonly apiKeyUrlParam: string;
   private readonly apiKeyInBody: boolean;
   private readonly apiKeyBodyParam: string;
+  private readonly emptyResultStatusCodes: number[];
   private readonly customBuildRequestUrl?: (baseEndpoint: string, request: EnrichmentRequest) => string;
   private readonly buildRequestBody?: (request: EnrichmentRequest) => unknown;
   private readonly customExtractResponse?: (response: unknown) => ExtractedProviderData;
@@ -114,6 +116,7 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
     this.apiKeyUrlParam = input.apiKeyUrlParam ?? 'apiId';
     this.apiKeyInBody = input.apiKeyInBody ?? false;
     this.apiKeyBodyParam = input.apiKeyBodyParam ?? 'api_key';
+    this.emptyResultStatusCodes = input.emptyResultStatusCodes ?? [];
     this.customBuildRequestUrl = input.buildRequestUrl;
     this.buildRequestBody = input.buildRequestBody;
     this.customExtractResponse = input.extractResponse;
@@ -151,15 +154,35 @@ export class GenericEnrichmentClient implements EnrichmentProviderClient {
       body = { ...(body as Record<string, unknown>), [this.apiKeyBodyParam]: this.apiKey };
     }
 
-    const response = await requestJson<unknown>({
-      method: this.method,
-      url,
-      headers,
-      body,
-      provider: this.providerName,
-      operation: 'enrich',
-      correlationId
-    });
+    let response: unknown;
+    try {
+      response = await requestJson<unknown>({
+        method: this.method,
+        url,
+        headers,
+        body,
+        provider: this.providerName,
+        operation: 'enrich',
+        correlationId
+      });
+    } catch (error) {
+      if (
+        this.emptyResultStatusCodes.length > 0 &&
+        error instanceof AppError &&
+        typeof error.details === 'object' &&
+        error.details !== null &&
+        this.emptyResultStatusCodes.includes((error.details as { statusCode?: number }).statusCode ?? 0)
+      ) {
+        return {
+          provider: this.providerName,
+          emails: [],
+          phones: [],
+          confidenceScore: 0,
+          rawPayload: (error.details as { responseBody?: unknown }).responseBody ?? null
+        };
+      }
+      throw error;
+    }
 
     if (this.customExtractResponse) {
       const extracted = this.customExtractResponse(response);

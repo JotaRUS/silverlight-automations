@@ -21,7 +21,7 @@ import { getQueues } from '../../queues';
 import { buildJobId } from '../../queues/jobId';
 import { GOOGLE_SHEETS_TABS } from '../google-sheets-sync/googleSheetsTabMapping';
 import { ProjectCompletionService } from '../projects/projectCompletionService';
-import { normalizeEmail, normalizePhone } from './enrichmentValidators';
+import { normalizeEmail, normalizePhone, isFakeEmail, isFakePhone } from './enrichmentValidators';
 
 const SLUG_STOP_WORDS = new Set([
   'the', 'and', 'inc', 'llc', 'ltd', 'corp', 'group', 'global', 'digital',
@@ -142,6 +142,7 @@ class DynamicResolvedEnrichmentProviderClient implements ResolvedAwareProviderCl
       apiKeyUrlParam: this.definition.apiKeyUrlParam,
       apiKeyInBody: this.definition.apiKeyInBody,
       apiKeyBodyParam: this.definition.apiKeyBodyParam,
+      emptyResultStatusCodes: this.definition.emptyResultStatusCodes,
       buildRequestUrl: this.definition.buildRequestUrl,
       buildRequestBody: this.definition.buildRequestBody,
       extractResponse: this.definition.extractResponse
@@ -343,14 +344,19 @@ export class EnrichmentService {
     if (lead.expertId) {
       const existingContacts = await this.prismaClient.expertContact.findMany({
         where: { expertId: lead.expertId },
-        select: { type: true }
+        select: { type: true, value: true }
       });
-      hasEmail = existingContacts.some((c) => c.type === 'EMAIL');
-      hasPhone = existingContacts.some((c) => c.type === 'PHONE');
+      hasEmail = existingContacts.some((c) => c.type === 'EMAIL' && !isFakeEmail(c.value));
+      hasPhone = existingContacts.some((c) => c.type === 'PHONE' && !isFakePhone(c.value));
       hasLinkedin = existingContacts.some((c) => c.type === 'LINKEDIN');
     }
 
-    if (hasEmail && hasPhone) {
+    const allPersonFieldsAlreadyFilled =
+      Boolean(lead.firstName) && Boolean(lead.lastName) &&
+      Boolean(lead.fullName) && Boolean(lead.linkedinUrl) &&
+      Boolean(lead.jobTitle);
+
+    if (hasEmail && hasPhone && allPersonFieldsAlreadyFilled) {
       await this.prismaClient.lead.update({
         where: { id: job.leadId },
         data: { status: 'ENRICHED', enrichmentConfidence: 1.0 }
@@ -387,8 +393,8 @@ export class EnrichmentService {
         accumulatedPerson.fullName = slugName.fullName;
       }
     }
-    const collectedEmails: string[] = [...(job.emails ?? [])];
-    const collectedPhones: string[] = [...(job.phones ?? [])];
+    const collectedEmails: string[] = (job.emails ?? []).filter((e) => !isFakeEmail(e));
+    const collectedPhones: string[] = (job.phones ?? []).filter((p) => !isFakePhone(p));
 
     for (const providerClient of eligibleProviders) {
       const enrichedRequest = this.feedForward(baseRequest, accumulatedPerson, collectedEmails, collectedPhones);
@@ -414,7 +420,16 @@ export class EnrichmentService {
         if (!hasEmail && resultEmails.length > 0) hasEmail = true;
         if (!hasPhone && resultPhones.length > 0) hasPhone = true;
 
-        if (hasEmail && hasPhone) break;
+        const allContactsFilled = hasEmail && hasPhone;
+        const allPersonFilled =
+          Boolean(accumulatedPerson.firstName) &&
+          Boolean(accumulatedPerson.lastName) &&
+          Boolean(accumulatedPerson.fullName) &&
+          Boolean(accumulatedPerson.linkedinUrl) &&
+          Boolean(accumulatedPerson.jobTitle) &&
+          Boolean(accumulatedPerson.companyName);
+
+        if (allContactsFilled && allPersonFilled) break;
       }
     }
 

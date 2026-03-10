@@ -14,7 +14,9 @@ const leadQuerySchema = z.object({
   projectId: z.string().uuid().optional(),
   status: z.nativeEnum(LeadStatus).optional(),
   enrichmentStatus: z.nativeEnum(LeadStatus).optional(),
-  cooldownBlocked: z.enum(['true', 'false']).optional()
+  cooldownBlocked: z.enum(['true', 'false']).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(50)
 });
 
 const leadUpdateSchema = z.object({
@@ -124,35 +126,52 @@ adminRoutes.get('/dashboard-stats', async (_request, response, next) => {
 adminRoutes.get('/leads', async (request, response, next) => {
   try {
     const query = leadQuerySchema.parse(request.query);
-    const leads = await prisma.lead.findMany({
-      where: {
-        projectId: query.projectId,
-        status: query.status
-      },
-      include: {
-        project: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
-        expert: {
-          include: {
-            contacts: true
-          }
-        },
-        enrichmentAttempts: {
-          orderBy: {
-            attemptedAt: 'desc'
+    const where: Record<string, unknown> = {
+      projectId: query.projectId,
+      status: query.status,
+      deletedAt: null
+    };
+
+    const [total, statusCountRows, leads] = await Promise.all([
+      prisma.lead.count({ where: where as never }),
+      prisma.lead.groupBy({
+        by: ['status'],
+        where: { projectId: query.projectId, deletedAt: null } as never,
+        _count: true
+      }),
+      prisma.lead.findMany({
+        where: where as never,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true
+            }
           },
-          take: 5
-        }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      },
-      take: 200
-    });
+          expert: {
+            include: {
+              contacts: true
+            }
+          },
+          enrichmentAttempts: {
+            orderBy: {
+              attemptedAt: 'desc'
+            },
+            take: 5
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize
+      })
+    ]);
+
+    const statusCounts: Record<string, number> = {};
+    for (const row of statusCountRows) {
+      statusCounts[row.status] = row._count;
+    }
 
     const leadIds = leads.map((lead) => lead.id);
     const cooldownByExpert = new Map<string, number>();
@@ -186,7 +205,11 @@ adminRoutes.get('/leads', async (request, response, next) => {
     });
 
     response.status(200).json({
-      total: filteredLeads.length,
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+      totalPages: Math.ceil(total / query.pageSize),
+      statusCounts,
       leadIds,
       leads: filteredLeads
     });
