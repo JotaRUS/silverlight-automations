@@ -386,7 +386,7 @@
                 "projects"
               ]
             },
-            "description": "Creates a new sourcing project. The returned `id` is auto-saved to `{{projectId}}`.\n\n**Required fields:** name, targetThreshold, geographyIsoCodes\n**Optional:** description, priority (default 0), overrideCooldown (default false), regionConfig (default {}), googleSheetsProviderAccountId (UUID), supabaseProviderAccountId (UUID), outreachMessageTemplate (string with placeholders: {{FirstName}}, {{JobTitle}}, {{CurrentCompany}})\n\n**Export destinations:** Bind Google Sheets or Supabase provider accounts to automatically export enriched leads. Provider accounts must be created first in Admin → Providers."
+            "description": "Creates a new sourcing project. The returned `id` is auto-saved to `{{projectId}}`.\n\n**Required fields:** name, targetThreshold, geographyIsoCodes\n**Optional:** description, priority (default 0), overrideCooldown (default false), regionConfig (default {}), googleSheetsProviderAccountId (UUID), supabaseProviderAccountId (UUID), outreachMessageTemplate (string with placeholders: {{FirstName}}, {{LastName}}, {{Country}}, {{JobTitle}}, {{CurrentCompany}})\n\n**Export destinations:** Bind Google Sheets or Supabase provider accounts to automatically export enriched leads. Provider accounts must be created first in Admin → Providers."
           },
           "response": []
         },

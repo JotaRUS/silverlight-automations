@@ -51,7 +51,7 @@ function composeOutreachBody(isExistingNetworkExpert: boolean): string {
 export interface TemplateContext {
   firstName?: string | null;
   lastName?: string | null;
-  location?: string | null;
+  country?: string | null;
   jobTitle?: string | null;
   currentCompany?: string | null;
 }
@@ -59,7 +59,7 @@ export interface TemplateContext {
 const TEMPLATE_VAR_MAP: Record<string, keyof TemplateContext> = {
   '{{FirstName}}': 'firstName',
   '{{LastName}}': 'lastName',
-  '{{Location}}': 'location',
+  '{{Country}}': 'country',
   '{{JobTitle}}': 'jobTitle',
   '{{CurrentCompany}}': 'currentCompany'
 };

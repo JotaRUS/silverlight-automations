@@ -221,7 +221,7 @@ export default function ProjectEditPage(): JSX.Element {
     const result: ProviderAccount[] = [];
     for (const t of OUTREACH_CHANNEL_TYPES) {
       for (const acct of accountsByType.get(t) ?? []) {
-        if (acct.lastHealthStatus === 'ok') result.push(acct);
+        if (acct.lastHealthStatus && acct.lastHealthStatus !== 'unhealthy' && acct.lastHealthStatus !== 'out_of_credits') result.push(acct);
       }
     }
     return result;
@@ -475,9 +475,9 @@ export default function ProjectEditPage(): JSX.Element {
                               </p>
                               {acct.lastHealthStatus && (
                                 <p className={`text-[11px] ${
-                                  acct.lastHealthStatus === 'ok' ? 'text-emerald-600' : 'text-amber-600'
+                                  acct.lastHealthStatus === 'healthy' || acct.lastHealthStatus === 'ok' ? 'text-emerald-600' : 'text-amber-600'
                                 }`}>
-                                  {acct.lastHealthStatus === 'ok' ? 'Connected' : acct.lastHealthStatus}
+                                  {acct.lastHealthStatus === 'healthy' || acct.lastHealthStatus === 'ok' ? 'Connected' : acct.lastHealthStatus}
                                 </p>
                               )}
                             </div>
@@ -554,9 +554,9 @@ export default function ProjectEditPage(): JSX.Element {
                     </p>
                     {acct.lastHealthStatus && (
                       <p className={`text-[11px] ${
-                        acct.lastHealthStatus === 'ok' ? 'text-emerald-600' : 'text-amber-600'
+                        acct.lastHealthStatus === 'healthy' || acct.lastHealthStatus === 'ok' ? 'text-emerald-600' : 'text-amber-600'
                       }`}>
-                        {acct.lastHealthStatus === 'ok' ? 'Connected' : acct.lastHealthStatus}
+                        {acct.lastHealthStatus === 'healthy' || acct.lastHealthStatus === 'ok' ? 'Connected' : acct.lastHealthStatus}
                       </p>
                     )}
                   </div>

@@ -54,7 +54,7 @@ interface LeadRecord {
   enrichmentAttempts?: EnrichmentAttemptRecord[];
 }
 
-type ColumnKey = 'firstName' | 'lastName' | 'jobTitle' | 'currentCompany' | 'status' | 'location' | 'email' | 'phone' | 'linkedin' | 'confidence' | 'exported' | 'added' | 'actions';
+type ColumnKey = 'firstName' | 'lastName' | 'jobTitle' | 'currentCompany' | 'status' | 'country' | 'email' | 'phone' | 'linkedin' | 'confidence' | 'exported' | 'added' | 'actions';
 
 const ALL_COLUMNS: { key: ColumnKey; label: string }[] = [
   { key: 'firstName', label: 'First Name' },
@@ -62,7 +62,7 @@ const ALL_COLUMNS: { key: ColumnKey; label: string }[] = [
   { key: 'jobTitle', label: 'Job Title' },
   { key: 'currentCompany', label: 'Current Company' },
   { key: 'status', label: 'Status' },
-  { key: 'location', label: 'Location' },
+  { key: 'country', label: 'Country' },
   { key: 'email', label: 'Email' },
   { key: 'phone', label: 'Phone' },
   { key: 'linkedin', label: 'LinkedIn' },
@@ -596,7 +596,7 @@ export default function LeadsPage(): JSX.Element {
                   {show('jobTitle') && <th className="px-4 py-3">Job Title</th>}
                   {show('currentCompany') && <th className="px-4 py-3">Current Company</th>}
                   {show('status') && <th className="px-4 py-3">Status</th>}
-                  {show('location') && <th className="px-4 py-3">Location</th>}
+                  {show('country') && <th className="px-4 py-3">Country</th>}
                   {show('email') && <th className="px-4 py-3">Email</th>}
                   {show('phone') && <th className="px-4 py-3">Phone</th>}
                   {show('linkedin') && <th className="px-4 py-3">LinkedIn</th>}
@@ -614,11 +614,7 @@ export default function LeadsPage(): JSX.Element {
                   const phones = contacts.filter((c) => c.type === 'PHONE');
                   const linkedinContact = contacts.find((c) => c.type === 'LINKEDIN');
                   const linkedinUrl = lead.linkedinUrl ?? linkedinContact?.value;
-                  const locationParts = [
-                    lead.metadata?.city,
-                    lead.metadata?.state,
-                    lead.countryIso
-                  ].filter(Boolean);
+                  const country = lead.metadata?.country ?? lead.countryIso ?? '';
                   const firstName = lead.firstName ?? lead.fullName?.split(' ')[0] ?? '';
                   const lastName = lead.lastName ?? (lead.fullName?.split(' ').slice(1).join(' ')) ?? '';
                   const currentCompany = lead.expert?.currentCompany ?? lead.metadata?.companyName ?? '';
@@ -680,11 +676,11 @@ export default function LeadsPage(): JSX.Element {
                           )}
                         </td>
                       )}
-                      {show('location') && (
+                      {show('country') && (
                         <td className="px-4 py-3">
-                          {locationParts.length > 0 ? (
-                            <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600" title={locationParts.join(', ')}>
-                              {locationParts.join(', ')}
+                          {country ? (
+                            <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
+                              {country}
                             </span>
                           ) : (
                             <span className="text-xs text-slate-300">—</span>

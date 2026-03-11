@@ -441,14 +441,16 @@ export default function HelpPage(): JSX.Element {
 
         <SubHeading>Smart Message Composition</SubHeading>
         <p className="text-sm text-slate-600 leading-relaxed">
-          When sending outreach, the message body is automatically composed based on the expert&apos;s status:
+          During project creation, you write a mandatory outreach message template. The template supports
+          dynamic variable placeholders that are resolved for each lead:
         </p>
         <ul className="list-disc list-inside text-sm text-slate-600 space-y-1 ml-1">
-          <li>Experts already in the network receive project-specific invitations</li>
-          <li>New experts receive general signup invitations</li>
+          <li><code className="text-xs bg-slate-100 px-1 rounded">{`{{FirstName}}`}</code>, <code className="text-xs bg-slate-100 px-1 rounded">{`{{LastName}}`}</code> — lead&apos;s name</li>
+          <li><code className="text-xs bg-slate-100 px-1 rounded">{`{{Country}}`}</code> — lead&apos;s country</li>
+          <li><code className="text-xs bg-slate-100 px-1 rounded">{`{{JobTitle}}`}</code>, <code className="text-xs bg-slate-100 px-1 rounded">{`{{CurrentCompany}}`}</code> — professional info</li>
         </ul>
         <p className="text-sm text-slate-500 mt-1">
-          You can override this by providing a custom message body.
+          Outreach is sent automatically after enrichment. If any variable used in the template is missing data for a lead, outreach is skipped for that lead.
         </p>
 
         <SubHeading>Email Region Rules</SubHeading>
@@ -923,7 +925,7 @@ export default function HelpPage(): JSX.Element {
         <SubHeading>Set up a new project from scratch</SubHeading>
         <ol className="list-decimal list-inside space-y-2 text-sm text-slate-600">
           <li><strong>Configure your provider accounts first.</strong> Go to the Providers page, add API keys for the services you need (enrichment, messaging, calling, data sync).</li>
-          <li><strong>Create a new project via the wizard.</strong> Go to Projects, click &quot;New Project&quot;. Step 1: Enter project name, target expert count, geography. Step 2: Select which configured providers to use (checkboxes grouped by Lead Sourcing, Enrichment, Outreach, and Operations). Step 3: Project is created — click &quot;View Leads Live&quot; to watch the pipeline.</li>
+          <li><strong>Create a new project via the wizard.</strong> Go to Projects, click &quot;New Project&quot;. Step 1: Project details (name, target, geography). Step 2: Lead sources (Apollo, Sales Nav, enrichment providers). Step 3: Export destinations (Google Sheets, Supabase). Step 4: Outreach (select healthy channels and write a message template with variables like {`{{FirstName}}`}, {`{{Country}}`}). Step 5: Review and start prospecting.</li>
           <li><strong>The auto-sourcing engine takes over.</strong> The system automatically queues enrichment and outreach for your leads every 5 minutes until the target is reached.</li>
           <li><strong>Monitor progress.</strong> Use the Dashboard for overview, Leads page for pipeline status, and Outreach page for messaging activity.</li>
         </ol>
@@ -1016,7 +1018,7 @@ export default function HelpPage(): JSX.Element {
             },
             {
               q: 'Do I need to write outreach messages manually?',
-              a: 'No. If you leave the message body blank when sending outreach, the system automatically composes an appropriate message. Existing network experts receive a project-specific invitation, while new experts receive a general signup invitation. You can always override this with a custom message.'
+              a: 'No. You write a message template once during project creation (Step 4 — Outreach). The template supports variables like {{FirstName}}, {{Country}}, {{JobTitle}}, and {{CurrentCompany}}. After each lead is enriched, the system automatically resolves the template and sends outreach through your configured channels.'
             },
             {
               q: 'How do I change my password?',

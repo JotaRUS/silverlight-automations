@@ -114,7 +114,7 @@ export const OUTREACH_CHANNEL_TYPES: ProviderType[] = [
 export const TEMPLATE_VARIABLES = [
   { key: '{{FirstName}}', label: 'First Name', icon: 'person' },
   { key: '{{LastName}}', label: 'Last Name', icon: 'badge' },
-  { key: '{{Location}}', label: 'Location', icon: 'location_on' },
+  { key: '{{Country}}', label: 'Country', icon: 'public' },
   { key: '{{JobTitle}}', label: 'Job Title', icon: 'work' },
   { key: '{{CurrentCompany}}', label: 'Current Company', icon: 'business' }
 ] as const;

@@ -1015,7 +1015,7 @@ Each attempt is logged as an `EnrichmentAttempt` with provider, status, confiden
 
 When a lead reaches `ENRICHED` status, the system checks if the project has an outreach template and bound channels. If so:
 
-1. Template variables (`{{FirstName}}`, `{{LastName}}`, `{{Location}}`, `{{JobTitle}}`, `{{CurrentCompany}}`) are resolved with actual lead/expert data.
+1. Template variables (`{{FirstName}}`, `{{LastName}}`, `{{Country}}`, `{{JobTitle}}`, `{{CurrentCompany}}`) are resolved with actual lead/expert data.
 2. If all variables used in the template have data, the outreach message is queued automatically.
 3. If any variable is missing, outreach is skipped for that lead.
 
@@ -1343,7 +1343,7 @@ Five-step guided flow for creating and configuring projects:
 1. **Project Details** — Basics: name, description, target threshold, geography, target companies, and job titles.
 2. **Lead Sources** — Select configured provider accounts for sourcing and enrichment (Apollo, Sales Nav, enrichment providers). Provider health is validated before binding.
 3. **Export Destinations** — Select Google Sheets and/or Supabase accounts for export. Only accounts already configured on the Providers page are shown.
-4. **Outreach** — Select healthy outreach channels and write a mandatory message template. The template supports variable insertion: `{{FirstName}}`, `{{LastName}}`, `{{Location}}`, `{{JobTitle}}`, `{{CurrentCompany}}`. Outreach is sent automatically after enrichment.
+4. **Outreach** — Select healthy outreach channels and write a mandatory message template. The template supports variable insertion: `{{FirstName}}`, `{{LastName}}`, `{{Country}}`, `{{JobTitle}}`, `{{CurrentCompany}}`. Outreach is sent automatically after enrichment.
 5. **Start Prospecting** — Completion screen with summary and links to view leads in real time.
 
 ### Leads pipeline
@@ -1352,7 +1352,7 @@ Project selection is mandatory — there is no "All projects" option. The first 
 
 Displays leads for the selected project with real-time status updates via live polling and socket events. Leads are grouped by pipeline stage (`NEW` → `ENRICHING` → `ENRICHED` → `OUTREACH_PENDING` → `CONTACTED` → `REPLIED` → `CONVERTED`). Supports filtering, search, and bulk actions.
 
-The table columns include **First Name**, **Last Name**, **Job Title**, and **Current Company** (the former single "Lead" column has been split). The **Project** column has been removed. A **column visibility toggle** at the top of the table lets you show or hide columns. **Pagination** is shown both above and below the table, with a page size selector (25, 50, 100, 200).
+The table columns include **First Name**, **Last Name**, **Job Title**, **Current Company**, and **Country**. A **column visibility toggle** at the top of the table lets you show or hide columns. **Pagination** is shown both above and below the table, with a page size selector (25, 50, 100, 200).
 
 The table includes an **Exported** column showing whether a lead has been exported to Google Sheets and/or Supabase. Hovering over "Yes" reveals a tooltip listing each destination with its export timestamp.
 

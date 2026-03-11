@@ -633,13 +633,14 @@ export class EnrichmentService {
     const normalizedPhones = Array.from(new Set(
       collectedPhones.map((p) => normalizePhone(p)).filter((p): p is string => Boolean(p))
     ));
-    const allowedCountries = (project?.geographyIsoCodes ?? []).map((code) => isoCodeToLocationName(code).toLowerCase());
+    const rawIsoCodes = (project?.geographyIsoCodes ?? []).map((c) => c.toLowerCase());
+    const allowedCountries = rawIsoCodes.map((code) => isoCodeToLocationName(code.toUpperCase()).toLowerCase());
     const leadCountry = accumulatedPerson.country?.trim().toLowerCase();
     const isOutOfGeo =
       leadMetadata.source === 'apollo_people_search' &&
-      allowedCountries.length > 0 &&
+      rawIsoCodes.length > 0 &&
       Boolean(leadCountry) &&
-      !allowedCountries.includes(leadCountry!);
+      !allowedCountries.includes(leadCountry!) && !rawIsoCodes.includes(leadCountry!);
 
     const hasAnyContact = hasEmail || hasPhone || normalizedEmails.length > 0 || normalizedPhones.length > 0;
     const leadUpdateData: Record<string, unknown> = {
@@ -921,16 +922,13 @@ export class EnrichmentService {
     if (!lead) return;
 
     const meta = (lead.metadata as Record<string, unknown> | null) ?? {};
-    const locationParts = [
-      meta.city as string | undefined,
-      meta.state as string | undefined,
-      lead.countryIso ?? (expert?.countryIso ?? undefined)
-    ].filter(Boolean);
+    const countryIso = lead.countryIso ?? expert?.countryIso;
+    const countryName = countryIso ? isoCodeToLocationName(countryIso) : (meta.country as string | undefined) ?? null;
 
     const context: TemplateContext = {
       firstName: lead.firstName,
       lastName: lead.lastName,
-      location: locationParts.join(', ') || null,
+      country: countryName || null,
       jobTitle: lead.jobTitle,
       currentCompany: expert?.currentCompany ?? (meta.companyName as string | undefined) ?? null
     };

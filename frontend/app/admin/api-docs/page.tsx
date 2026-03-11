@@ -213,7 +213,7 @@ const groups: EndpointGroup[] = [
           { name: 'apolloProviderAccountId', type: 'UUID', description: 'Bind Apollo provider' },
           { name: 'googleSheetsProviderAccountId', type: 'UUID', description: 'Bind Google Sheets export destination' },
           { name: 'supabaseProviderAccountId', type: 'UUID', description: 'Bind Supabase export destination' },
-          { name: 'outreachMessageTemplate', type: 'String', description: 'Outreach message template with variable placeholders like {{FirstName}}, {{LastName}}, etc.' }
+          { name: 'outreachMessageTemplate', type: 'String', description: 'Outreach message template with variable placeholders: {{FirstName}}, {{LastName}}, {{Country}}, {{JobTitle}}, {{CurrentCompany}}' }
         ],
         bodyExample: '{\n  "name": "LATAM Engineering",\n  "targetThreshold": 50,\n  "geographyIsoCodes": ["AR", "BR", "UY"],\n  "priority": 1,\n  "googleSheetsProviderAccountId": "uuid-of-gsheets-account",\n  "supabaseProviderAccountId": "uuid-of-supabase-account",\n  "outreachMessageTemplate": "Hi {{FirstName}}, we have an opportunity at {{Company}}..."\n}',
         responses: [
