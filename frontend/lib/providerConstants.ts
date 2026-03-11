@@ -104,6 +104,8 @@ export const PROVIDER_CATEGORIES: ProviderCategory[] = [
   }
 ];
 
+export const EXPORT_DESTINATION_TYPES: ProviderType[] = ['GOOGLE_SHEETS', 'SUPABASE'];
+
 export const GEOGRAPHY_OPTIONS = [
   { code: 'US', label: 'United States' },
   { code: 'GB', label: 'United Kingdom' },

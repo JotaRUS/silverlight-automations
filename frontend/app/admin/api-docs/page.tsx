@@ -211,9 +211,10 @@ const groups: EndpointGroup[] = [
           { name: 'priority', type: 'number', description: '0 (low) to 3 (critical)' },
           { name: 'overrideCooldown', type: 'boolean', description: 'Skip outreach cooldowns' },
           { name: 'apolloProviderAccountId', type: 'UUID', description: 'Bind Apollo provider' },
-          { name: 'supabaseProviderAccountId', type: 'UUID', description: 'Bind Supabase destination' }
+          { name: 'googleSheetsProviderAccountId', type: 'UUID', description: 'Bind Google Sheets export destination' },
+          { name: 'supabaseProviderAccountId', type: 'UUID', description: 'Bind Supabase export destination' }
         ],
-        bodyExample: '{\n  "name": "LATAM Engineering",\n  "targetThreshold": 50,\n  "geographyIsoCodes": ["AR", "BR", "UY"],\n  "priority": 1\n}',
+        bodyExample: '{\n  "name": "LATAM Engineering",\n  "targetThreshold": 50,\n  "geographyIsoCodes": ["AR", "BR", "UY"],\n  "priority": 1,\n  "googleSheetsProviderAccountId": "uuid-of-gsheets-account",\n  "supabaseProviderAccountId": "uuid-of-supabase-account"\n}',
         responses: [
           { status: 201, label: 'Created', body: '{\n  "id": "uuid",\n  "name": "LATAM Engineering",\n  "status": "ACTIVE",\n  ...\n}' },
           { status: 400, label: 'Validation error', body: '{ "error": "name is required" }' }
@@ -240,9 +241,11 @@ const groups: EndpointGroup[] = [
           { name: 'name', type: 'string', description: 'New project name' },
           { name: 'status', type: 'enum', description: 'ACTIVE | PAUSED | COMPLETED | ARCHIVED' },
           { name: 'targetThreshold', type: 'number', description: 'Updated expert target' },
-          { name: 'geographyIsoCodes', type: 'string[]', description: 'Updated country codes' }
+          { name: 'geographyIsoCodes', type: 'string[]', description: 'Updated country codes' },
+          { name: 'googleSheetsProviderAccountId', type: 'UUID | null', description: 'Bind or unbind Google Sheets export' },
+          { name: 'supabaseProviderAccountId', type: 'UUID | null', description: 'Bind or unbind Supabase export' }
         ],
-        bodyExample: '{\n  "status": "PAUSED",\n  "targetThreshold": 200\n}',
+        bodyExample: '{\n  "status": "PAUSED",\n  "targetThreshold": 200,\n  "googleSheetsProviderAccountId": "uuid-or-null"\n}',
         responses: [
           { status: 200, label: 'Updated', body: '{ "id": "uuid", "status": "PAUSED", ... }' }
         ]
@@ -387,7 +390,7 @@ const groups: EndpointGroup[] = [
           { name: 'pageSize', type: 'number', description: '1–200, default 50' }
         ],
         responses: [
-          { status: 200, label: 'Paginated leads', body: '{\n  "total": 150,\n  "page": 1,\n  "pageSize": 50,\n  "totalPages": 3,\n  "statusCounts": { "NEW": 80, "ENRICHED": 50, "DISQUALIFIED": 20 },\n  "leads": [\n    {\n      "id": "uuid",\n      "fullName": "Jane Doe",\n      "jobTitle": "CTO",\n      "status": "ENRICHED",\n      "project": { "id": "uuid", "name": "LATAM Engineering" },\n      "expert": { ... },\n      "contacts": [ { "type": "EMAIL", "value": "jane@example.com" } ],\n      "enrichmentAttempts": [ { "provider": "LEADMAGIC", "status": "SUCCESS" } ]\n    }\n  ]\n}' }
+          { status: 200, label: 'Paginated leads', body: '{\n  "total": 150,\n  "page": 1,\n  "pageSize": 50,\n  "totalPages": 3,\n  "statusCounts": { "NEW": 80, "ENRICHED": 50, "DISQUALIFIED": 20 },\n  "leads": [\n    {\n      "id": "uuid",\n      "fullName": "Jane Doe",\n      "jobTitle": "CTO",\n      "status": "ENRICHED",\n      "googleSheetsExportedAt": "2026-02-25T12:00:00.000Z",\n      "supabaseExportedAt": "2026-02-25T12:01:00.000Z",\n      "project": { "id": "uuid", "name": "LATAM Engineering" },\n      "expert": { ... },\n      "contacts": [ { "type": "EMAIL", "value": "jane@example.com" } ],\n      "enrichmentAttempts": [ { "provider": "LEADMAGIC", "status": "SUCCESS" } ]\n    }\n  ]\n}' }
         ]
       },
       {

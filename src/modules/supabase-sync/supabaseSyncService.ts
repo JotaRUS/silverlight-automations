@@ -184,5 +184,9 @@ export class SupabaseSyncService {
 
     const row = await this.buildLeadRow(input);
     await this.supabaseClient.writeLeadRow(credentials, row);
+    await this.prismaClient.lead.update({
+      where: { id: input.leadId },
+      data: { supabaseExportedAt: new Date() }
+    });
   }
 }

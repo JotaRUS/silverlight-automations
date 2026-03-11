@@ -10,6 +10,7 @@ import { CountryMultiSelect } from '@/components/ui/country-multi-select';
 import { Input } from '@/components/ui/input';
 import { TagInput } from '@/components/ui/tag-input';
 import {
+  EXPORT_DESTINATION_TYPES,
   PROVIDER_CATEGORIES,
   PROVIDER_DISPLAY_NAMES,
   PROVIDER_TYPE_TO_FIELD
@@ -23,7 +24,7 @@ import {
 } from '@/services/projectService';
 import type { ProviderAccount, ProviderType } from '@/types/provider';
 
-type WizardStep = 'basics' | 'sources' | 'done';
+type WizardStep = 'basics' | 'sources' | 'exports' | 'done';
 
 export default function NewProjectWizardPage(): JSX.Element {
   const router = useRouter();
@@ -40,9 +41,10 @@ export default function NewProjectWizardPage(): JSX.Element {
   const [projectId, setProjectId] = useState('');
   const [createError, setCreateError] = useState('');
 
-  // providerAccountId -> true/false
   const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({});
+  const [selectedExports, setSelectedExports] = useState<Record<string, boolean>>({});
   const [bindError, setBindError] = useState('');
+  const [exportError, setExportError] = useState('');
 
   const providersQuery = useQuery({
     queryKey: ['providerAccounts', 'active'],
@@ -58,6 +60,16 @@ export default function NewProjectWizardPage(): JSX.Element {
     }
     return map;
   }, [providersQuery.data]);
+
+  const exportAccounts = useMemo(() => {
+    const result: ProviderAccount[] = [];
+    for (const t of EXPORT_DESTINATION_TYPES) {
+      for (const acct of accountsByType.get(t) ?? []) {
+        result.push(acct);
+      }
+    }
+    return result;
+  }, [accountsByType]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -117,13 +129,52 @@ export default function NewProjectWizardPage(): JSX.Element {
       return updateProject(projectId, bindings as never);
     },
     onSuccess: () => {
-      setStep('done');
+      setStep('exports');
       setBindError('');
     },
     onError: (err) => {
       setBindError(err instanceof Error ? err.message : 'Failed to bind providers');
     }
   });
+
+  const exportBindMutation = useMutation({
+    mutationFn: async () => {
+      const bindings: Record<string, string> = {};
+      for (const acct of exportAccounts) {
+        if (selectedExports[acct.id]) {
+          const field = PROVIDER_TYPE_TO_FIELD[acct.providerType];
+          bindings[field] = acct.id;
+        }
+      }
+      if (Object.keys(bindings).length > 0) {
+        return updateProject(projectId, bindings as never);
+      }
+    },
+    onSuccess: () => {
+      setStep('done');
+      setExportError('');
+    },
+    onError: (err) => {
+      setExportError(err instanceof Error ? err.message : 'Failed to bind export destinations');
+    }
+  });
+
+  const toggleExport = useCallback((accountId: string, providerType: ProviderType) => {
+    setSelectedExports((prev) => {
+      const next = { ...prev };
+      if (next[accountId]) {
+        delete next[accountId];
+      } else {
+        for (const other of exportAccounts) {
+          if (other.providerType === providerType && other.id !== accountId) {
+            delete next[other.id];
+          }
+        }
+        next[accountId] = true;
+      }
+      return next;
+    });
+  }, [exportAccounts]);
 
   const toggleProvider = useCallback((accountId: string, providerType: ProviderType) => {
     setSelectedProviders((prev) => {
@@ -155,9 +206,11 @@ export default function NewProjectWizardPage(): JSX.Element {
       <div className="flex items-center gap-2">
         <StepIndicator num={1} label="Project Details" active={step === 'basics'} done={step !== 'basics'} />
         <div className="h-px flex-1 bg-slate-200" />
-        <StepIndicator num={2} label="Lead Sources" active={step === 'sources'} done={step === 'done'} />
+        <StepIndicator num={2} label="Lead Sources" active={step === 'sources'} done={step === 'exports' || step === 'done'} />
         <div className="h-px flex-1 bg-slate-200" />
-        <StepIndicator num={3} label="Start Prospecting" active={step === 'done'} done={false} />
+        <StepIndicator num={3} label="Export Destinations" active={step === 'exports'} done={step === 'done'} />
+        <div className="h-px flex-1 bg-slate-200" />
+        <StepIndicator num={4} label="Start Prospecting" active={step === 'done'} done={false} />
       </div>
 
       {/* Step 1: Project basics */}
@@ -272,7 +325,9 @@ export default function NewProjectWizardPage(): JSX.Element {
           {providersQuery.isSuccess && (providersQuery.data ?? []).length > 0 && (
             <div className="space-y-5">
               {PROVIDER_CATEGORIES.map((cat) => {
-                const available = cat.types.filter((t) => (accountsByType.get(t)?.length ?? 0) > 0);
+                const available = cat.types
+                  .filter((t) => !EXPORT_DESTINATION_TYPES.includes(t))
+                  .filter((t) => (accountsByType.get(t)?.length ?? 0) > 0);
                 if (available.length === 0) return null;
 
                 return (
@@ -342,7 +397,7 @@ export default function NewProjectWizardPage(): JSX.Element {
           {bindError && <p className="text-sm text-red-600">{bindError}</p>}
 
           <div className="flex justify-between">
-            <Button onClick={() => setStep('done')} className="bg-slate-100 text-slate-700 hover:bg-slate-200">
+            <Button onClick={() => setStep('exports')} className="bg-slate-100 text-slate-700 hover:bg-slate-200">
               Skip for now
             </Button>
             <Button
@@ -356,7 +411,99 @@ export default function NewProjectWizardPage(): JSX.Element {
         </Card>
       )}
 
-      {/* Step 3: Done */}
+      {/* Step 3: Export Destinations */}
+      {step === 'exports' && (
+        <Card className="space-y-5">
+          <div>
+            <h2 className="text-lg font-bold">Export Destinations</h2>
+            <p className="text-sm text-slate-500">
+              Choose where enriched leads should be automatically exported. Only configured Google Sheets or Supabase accounts are shown.
+            </p>
+          </div>
+
+          {exportAccounts.length === 0 && (
+            <div className="rounded-lg border-2 border-dashed border-slate-200 p-8 text-center">
+              <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">cloud_off</span>
+              <p className="text-sm font-medium text-slate-600">No export destinations configured</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Go to <button type="button" onClick={() => router.push('/admin/providers')} className="text-primary underline">Providers</button> to
+                add a Google Sheets or Supabase account first.
+              </p>
+            </div>
+          )}
+
+          {exportAccounts.length > 0 && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {exportAccounts.map((acct) => {
+                  const isSelected = !!selectedExports[acct.id];
+                  const displayName = PROVIDER_DISPLAY_NAMES[acct.providerType];
+                  return (
+                    <button
+                      key={acct.id}
+                      type="button"
+                      onClick={() => toggleExport(acct.id, acct.providerType)}
+                      className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
+                        isSelected
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div
+                        className={`flex size-5 shrink-0 items-center justify-center rounded border transition-colors ${
+                          isSelected
+                            ? 'border-primary bg-primary text-white'
+                            : 'border-slate-300 bg-white'
+                        }`}
+                      >
+                        {isSelected && (
+                          <span className="material-symbols-outlined text-sm">check</span>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-800 truncate">
+                          {displayName} — {acct.accountLabel}
+                        </p>
+                        {acct.lastHealthStatus && (
+                          <p className={`text-[11px] ${
+                            acct.lastHealthStatus === 'ok' ? 'text-emerald-600' : 'text-amber-600'
+                          }`}>
+                            {acct.lastHealthStatus === 'ok' ? 'Connected' : acct.lastHealthStatus}
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                <span className="material-symbols-outlined text-base text-slate-400">info</span>
+                <p className="text-xs text-slate-400">
+                  Enriched leads will be automatically sent to the selected destinations.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {exportError && <p className="text-sm text-red-600">{exportError}</p>}
+
+          <div className="flex justify-between">
+            <Button onClick={() => setStep('done')} className="bg-slate-100 text-slate-700 hover:bg-slate-200">
+              Skip for now
+            </Button>
+            <Button
+              onClick={() => exportBindMutation.mutate()}
+              disabled={Object.values(selectedExports).filter(Boolean).length === 0 || exportBindMutation.isPending}
+            >
+              {exportBindMutation.isPending ? 'Saving...' : 'Save & Continue'}
+              <span className="material-symbols-outlined text-base">arrow_forward</span>
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Step 4: Done */}
       {step === 'done' && (
         <Card className="space-y-5 text-center py-8">
           <div className="flex justify-center">
@@ -367,7 +514,7 @@ export default function NewProjectWizardPage(): JSX.Element {
           <div>
             <h2 className="text-lg font-bold">Project Created!</h2>
             <p className="text-sm text-slate-500 mt-1">
-              Your project is set up with the selected lead sources. Head to the Leads page to
+              Your project is set up with lead sources and export destinations. Head to the Leads page to
               watch leads flow through the pipeline in real time.
             </p>
           </div>

@@ -940,7 +940,11 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
       'Share target spreadsheet with service account email as Editor.',
       'Copy Spreadsheet ID from sheet URL and paste both fields into provider form.'
     ],
-    platformConfiguration: [...sharedPlatformSteps],
+    platformConfiguration: [
+      ...sharedPlatformSteps,
+      'When creating a new project, select the Google Sheets account in the "Export Destinations" step (Step 3). You can also bind it later from the project edit page.',
+      'Enriched leads are automatically synced to the bound spreadsheet.'
+    ],
     validationChecklist: [
       'Health check succeeds (JWT service-account flow + spreadsheet read).',
       'Export records start appearing in the destination spreadsheet.'
@@ -983,7 +987,7 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
     ],
     platformConfiguration: [
       ...sharedPlatformSteps,
-      'Bind the Supabase provider to the project that should export enriched leads.',
+      'When creating a new project, select the Supabase account in the "Export Destinations" step (Step 3). You can also bind it later from the project edit page.',
       'Once a lead reaches ENRICHED, the backend queues a Supabase sync job automatically.'
     ],
     validationChecklist: [

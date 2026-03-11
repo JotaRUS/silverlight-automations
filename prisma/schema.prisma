@@ -421,12 +421,14 @@ model Lead {
   countryIso           String?
   linkedinUrl          String?
   status               LeadStatus          @default(NEW)
-  enrichmentConfidence Decimal?            @db.Decimal(5, 2)
-  metadata             Json?               @db.JsonB
-  expertId             String?             @db.Uuid
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
-  deletedAt            DateTime?
+  enrichmentConfidence   Decimal?            @db.Decimal(5, 2)
+  metadata               Json?               @db.JsonB
+  expertId               String?             @db.Uuid
+  googleSheetsExportedAt DateTime?
+  supabaseExportedAt     DateTime?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  deletedAt              DateTime?
   project              Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   company              Company?            @relation(fields: [companyId], references: [id], onDelete: SetNull)
   salesNavSearch       SalesNavSearch?     @relation(fields: [salesNavSearchId], references: [id], onDelete: SetNull)

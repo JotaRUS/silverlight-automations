@@ -13,6 +13,7 @@ import { CountryMultiSelect } from '@/components/ui/country-multi-select';
 import { Input } from '@/components/ui/input';
 import { TagInput } from '@/components/ui/tag-input';
 import {
+  EXPORT_DESTINATION_TYPES,
   FIELD_TO_PROVIDER_TYPE,
   PROVIDER_CATEGORIES,
   PROVIDER_DISPLAY_NAMES,
@@ -200,6 +201,16 @@ export default function ProjectEditPage(): JSX.Element {
     });
   }, [providersQuery.data]);
 
+  const exportAccounts = useMemo(() => {
+    const result: ProviderAccount[] = [];
+    for (const t of EXPORT_DESTINATION_TYPES) {
+      for (const acct of accountsByType.get(t) ?? []) {
+        result.push(acct);
+      }
+    }
+    return result;
+  }, [accountsByType]);
+
   const selectedCount = Object.values(selectedProviders).filter(Boolean).length;
 
   if (projectQuery.isLoading) {
@@ -386,7 +397,9 @@ export default function ProjectEditPage(): JSX.Element {
         {providersQuery.isSuccess && (providersQuery.data ?? []).length > 0 && (
           <div className="space-y-5">
             {PROVIDER_CATEGORIES.map((cat) => {
-              const available = cat.types.filter((t) => (accountsByType.get(t)?.length ?? 0) > 0);
+              const available = cat.types
+                .filter((t) => !EXPORT_DESTINATION_TYPES.includes(t))
+                .filter((t) => (accountsByType.get(t)?.length ?? 0) > 0);
               if (available.length === 0) return null;
 
               return (
@@ -450,6 +463,72 @@ export default function ProjectEditPage(): JSX.Element {
                 One account per tool type.
               </p>
             </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Export Destinations */}
+      <Card className="space-y-5">
+        <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+          <span className="material-symbols-outlined text-base text-slate-500">cloud_upload</span>
+          Export Destinations
+        </h3>
+        <p className="text-sm text-slate-500">
+          Enriched leads are automatically exported to the selected destinations. Only configured Google Sheets or Supabase accounts are shown.
+        </p>
+
+        {exportAccounts.length === 0 && (
+          <div className="rounded-lg border-2 border-dashed border-slate-200 p-6 text-center">
+            <span className="material-symbols-outlined text-3xl text-slate-300">cloud_off</span>
+            <p className="text-sm font-medium text-slate-600 mt-1">No export destinations configured</p>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Go to <Link href="/admin/providers" className="text-primary underline">Providers</Link> to add a Google Sheets or Supabase account.
+            </p>
+          </div>
+        )}
+
+        {exportAccounts.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {exportAccounts.map((acct) => {
+              const isSelected = !!selectedProviders[acct.id];
+              const displayName = PROVIDER_DISPLAY_NAMES[acct.providerType];
+              return (
+                <button
+                  key={acct.id}
+                  type="button"
+                  onClick={() => toggleProvider(acct.id, acct.providerType)}
+                  className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
+                    isSelected
+                      ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <div
+                    className={`flex size-5 shrink-0 items-center justify-center rounded border transition-colors ${
+                      isSelected
+                        ? 'border-primary bg-primary text-white'
+                        : 'border-slate-300 bg-white'
+                    }`}
+                  >
+                    {isSelected && (
+                      <span className="material-symbols-outlined text-sm">check</span>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-800 truncate">
+                      {displayName} — {acct.accountLabel}
+                    </p>
+                    {acct.lastHealthStatus && (
+                      <p className={`text-[11px] ${
+                        acct.lastHealthStatus === 'ok' ? 'text-emerald-600' : 'text-amber-600'
+                      }`}>
+                        {acct.lastHealthStatus === 'ok' ? 'Connected' : acct.lastHealthStatus}
+                      </p>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
       </Card>

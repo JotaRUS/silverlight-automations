@@ -1328,15 +1328,18 @@ The platform includes a Next.js admin portal at `http://localhost:3001` (start w
 
 ### Project creation wizard
 
-Three-step guided flow for creating and configuring projects:
+Four-step guided flow for creating and configuring projects:
 
 1. **Project details** — Name, description, target threshold, full-world country selection, company filters, job-title filters, and priority.
-2. **Lead sources** — Select and bind provider accounts (Apollo, Sales Nav, enrichment providers, messaging channels, Google Sheets, Supabase). Provider health is validated before binding.
-3. **Review & create** — Summary of all settings before submission.
+2. **Lead sources** — Select and bind provider accounts (Apollo, Sales Nav, enrichment providers, messaging channels). Provider health is validated before binding.
+3. **Export destinations** — Choose where enriched leads should be automatically exported (Google Sheets and/or Supabase). Only accounts already configured on the Providers page are shown.
+4. **Start prospecting** — Summary and links to view leads in real time.
 
 ### Leads pipeline
 
 Displays all leads for a project with real-time status updates via live polling and socket events. Leads are grouped by pipeline stage (`NEW` → `ENRICHING` → `ENRICHED` → `OUTREACH_PENDING` → `CONTACTED` → `REPLIED` → `CONVERTED`). Supports filtering, search, and bulk actions.
+
+The table includes an **Exported** column showing whether a lead has been exported to Google Sheets and/or Supabase. Hovering over "Yes" reveals a tooltip listing each destination with its export timestamp.
 
 ### Outreach monitoring
 

@@ -373,7 +373,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"APAC Fintech Experts Q1\",\n  \"description\": \"Source senior fintech experts in APAC region\",\n  \"targetThreshold\": 50,\n  \"geographyIsoCodes\": [\"SG\", \"JP\", \"AU\"],\n  \"priority\": 1,\n  \"overrideCooldown\": false\n}"
+              "raw": "{\n  \"name\": \"APAC Fintech Experts Q1\",\n  \"description\": \"Source senior fintech experts in APAC region\",\n  \"targetThreshold\": 50,\n  \"geographyIsoCodes\": [\"SG\", \"JP\", \"AU\"],\n  \"priority\": 1,\n  \"overrideCooldown\": false,\n  \"googleSheetsProviderAccountId\": null,\n  \"supabaseProviderAccountId\": null\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/projects",
@@ -386,7 +386,7 @@
                 "projects"
               ]
             },
-            "description": "Creates a new sourcing project. The returned `id` is auto-saved to `{{projectId}}`.\n\n**Required fields:** name, targetThreshold, geographyIsoCodes\n**Optional:** description, priority (default 0), overrideCooldown (default false), regionConfig (default {})"
+            "description": "Creates a new sourcing project. The returned `id` is auto-saved to `{{projectId}}`.\n\n**Required fields:** name, targetThreshold, geographyIsoCodes\n**Optional:** description, priority (default 0), overrideCooldown (default false), regionConfig (default {}), googleSheetsProviderAccountId (UUID), supabaseProviderAccountId (UUID)\n\n**Export destinations:** Bind Google Sheets or Supabase provider accounts to automatically export enriched leads. Provider accounts must be created first in Admin → Providers."
           },
           "response": []
         },

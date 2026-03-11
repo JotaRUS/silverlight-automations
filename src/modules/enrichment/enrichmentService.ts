@@ -798,13 +798,14 @@ export class EnrichmentService {
       });
     }
 
-    await this.queuePhoneExports(updatedLead.expertId, normalizedPhones, job.projectId, correlationId);
+    await this.queuePhoneExports(updatedLead.id, updatedLead.expertId, normalizedPhones, job.projectId, correlationId);
     if (updatedLead.status === 'ENRICHED') {
       await this.queueSupabaseSync(updatedLead.id, job.projectId, correlationId);
     }
   }
 
   private async queuePhoneExports(
+    leadId: string,
     expertId: string,
     phones: string[],
     projectId: string,
@@ -855,6 +856,11 @@ export class EnrichmentService {
         }
       );
     }
+
+    await this.prismaClient.lead.update({
+      where: { id: leadId },
+      data: { googleSheetsExportedAt: new Date() }
+    });
   }
 
   private async queueSupabaseSync(

@@ -40,6 +40,8 @@ interface LeadRecord {
   countryIso?: string;
   status: LeadStatus;
   enrichmentConfidence?: number;
+  googleSheetsExportedAt?: string | null;
+  supabaseExportedAt?: string | null;
   createdAt: string;
   metadata?: { city?: string; state?: string; country?: string; [key: string]: unknown };
   project?: { id: string; name: string };
@@ -384,6 +386,7 @@ export default function LeadsPage(): JSX.Element {
                   <th className="px-4 py-3">Phone</th>
                   <th className="px-4 py-3">LinkedIn</th>
                   <th className="px-4 py-3">Confidence</th>
+                  <th className="px-4 py-3">Exported</th>
                   <th className="px-4 py-3">Added</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
@@ -512,6 +515,34 @@ export default function LeadsPage(): JSX.Element {
                         ) : (
                           <span className="text-xs text-slate-300">—</span>
                         )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const destinations: { name: string; at: string }[] = [];
+                          if (lead.googleSheetsExportedAt) destinations.push({ name: 'Google Sheets', at: lead.googleSheetsExportedAt });
+                          if (lead.supabaseExportedAt) destinations.push({ name: 'Supabase', at: lead.supabaseExportedAt });
+                          if (destinations.length === 0) {
+                            return <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-400">No</span>;
+                          }
+                          return (
+                            <div className="group relative inline-flex">
+                              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 cursor-default">
+                                Yes
+                              </span>
+                              <div className="pointer-events-none absolute left-0 top-full z-20 mt-1.5 hidden w-52 rounded-lg border border-slate-200 bg-white p-2.5 shadow-lg group-hover:block">
+                                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Export destinations</p>
+                                <div className="space-y-1">
+                                  {destinations.map((dest) => (
+                                    <div key={dest.name} className="flex items-center justify-between text-[11px]">
+                                      <span className="font-medium text-slate-700">{dest.name}</span>
+                                      <span className="text-emerald-600">{formatRelative(dest.at)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
                         {formatRelative(lead.createdAt)}
