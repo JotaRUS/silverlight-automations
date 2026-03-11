@@ -123,6 +123,9 @@ export class SupabaseSyncService {
         .filter((contact) => contact.type === 'PHONE')
         .map((contact) => contact.valueNormalized || contact.value)
     );
+    const linkedinContacts = lead.expert.contacts
+      .filter((contact) => contact.type === 'LINKEDIN')
+      .map((contact) => contact.value);
 
     const providerSummary = Array.from(
       new Map(
@@ -141,6 +144,9 @@ export class SupabaseSyncService {
     const state =
       metadataString(lead.metadata, 'state') ?? metadataString(lead.expert.metadata, 'state');
     const tags = metadataStringArray(lead.metadata, 'tags');
+    const linkedinUrl = lead.linkedinUrl ?? linkedinContacts[0] ?? null;
+    const primaryEmail = emails[0] ?? null;
+    const primaryPhone = phones[0] ?? null;
 
     return {
       project_id: lead.project.id,
@@ -158,16 +164,21 @@ export class SupabaseSyncService {
       first_name: lead.firstName ?? lead.expert.firstName,
       last_name: lead.lastName ?? lead.expert.lastName,
       job_title: lead.jobTitle ?? lead.expert.currentRole,
-      linkedin_url: lead.linkedinUrl,
+      linkedin_url: linkedinUrl,
       country_iso: lead.countryIso ?? lead.expert.countryIso,
+      country: lead.countryIso ?? lead.expert.countryIso,
       region_iso: lead.regionIso ?? lead.expert.regionIso,
       city,
       state,
       company_name: lead.company?.name ?? lead.expert.currentCompany,
+      current_company: lead.company?.name ?? lead.expert.currentCompany,
       emails,
       phones,
-      primary_email: emails[0] ?? null,
-      primary_phone: phones[0] ?? null,
+      email: primaryEmail,
+      phone: primaryPhone,
+      phone_e164: primaryPhone,
+      primary_email: primaryEmail,
+      primary_phone: primaryPhone,
       apollo_id: metadataString(lead.metadata, 'apolloId'),
       tags,
       enrichment_providers: providerSummary.map((item) => item.provider),

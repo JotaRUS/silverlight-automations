@@ -11,11 +11,13 @@ import { buildJobId } from '../queues/jobId';
 import { enqueueWithContext } from '../queues/producers/enqueueWithContext';
 import { emitNotification } from '../modules/notifications/emitNotification';
 import { ProjectCompletionService } from '../modules/projects/projectCompletionService';
+import { resolveTemplate, type TemplateContext } from '../modules/outreach/outreachService';
+import { isChannelAvailableForProject } from '../modules/outreach/channelSelection';
 import {
   extractApolloFiltersFromSalesNavSearch,
   mergeApolloSearchFilters
 } from '../modules/sales-nav/salesNavSearchParamExtractor';
-import type { Prisma } from '@prisma/client';
+import type { Channel as PrismaChannel, Prisma } from '@prisma/client';
 import { getSalesNavAccessToken } from '../integrations/sales-nav/salesNavOAuthClient';
 import { listLeadFormResponses } from '../integrations/sales-nav/linkedInLeadSyncClient';
 import { decryptProviderCredentials } from '../core/providers/providerCredentialsCrypto';
@@ -387,32 +389,33 @@ async function queuePendingEnrichment(projectId: string, timeSlice: string): Pro
   return newLeads.length;
 }
 
-const OUTREACH_CHANNEL_PROVIDER_TYPE: Record<string, string> = {
-  EMAIL: 'EMAIL_PROVIDER',
-  PHONE: 'YAY'
-};
+const OUTREACH_CHANNELS: PrismaChannel[] = [
+  'EMAIL', 'SMS', 'VOICEMAIL', 'WHATSAPP', 'RESPONDIO',
+  'LINE', 'WECHAT', 'VIBER', 'TELEGRAM', 'KAKAOTALK'
+];
 
 async function queuePendingOutreach(
   projectId: string,
-  projectName: string,
+  _projectName: string,
   timeSlice: string
 ): Promise<number> {
-  const availableProviderTypes = new Set(
-    (await prisma.providerAccount.findMany({
-      where: { isActive: true, providerType: { in: ['EMAIL_PROVIDER', 'YAY'] } as never },
-      select: { providerType: true },
-      distinct: ['providerType']
-    })).map((a) => a.providerType)
-  );
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { outreachMessageTemplate: true }
+  });
 
-  if (availableProviderTypes.size === 0) {
+  const template = (project as Record<string, unknown> | null)?.outreachMessageTemplate;
+  if (typeof template !== 'string' || !template.trim()) {
     return 0;
   }
 
-  const contactTypeFilter: string[] = [];
-  if (availableProviderTypes.has('EMAIL_PROVIDER')) contactTypeFilter.push('EMAIL');
-  if (availableProviderTypes.has('YAY')) contactTypeFilter.push('PHONE');
-  if (contactTypeFilter.length === 0) return 0;
+  const availableChannels: PrismaChannel[] = [];
+  for (const ch of OUTREACH_CHANNELS) {
+    if (await isChannelAvailableForProject(prisma, projectId, ch)) {
+      availableChannels.push(ch);
+    }
+  }
+  if (availableChannels.length === 0) return 0;
 
   const enrichedLeads = await prisma.lead.findMany({
     where: {
@@ -421,69 +424,87 @@ async function queuePendingOutreach(
       expertId: { not: null },
       deletedAt: null
     },
-    take: AUTO_SOURCING.OUTREACH_BATCH_SIZE
+    take: AUTO_SOURCING.OUTREACH_BATCH_SIZE,
+    select: {
+      id: true, expertId: true, firstName: true, lastName: true,
+      jobTitle: true, countryIso: true, metadata: true
+    }
   });
 
   let queued = 0;
   for (const lead of enrichedLeads) {
-    if (!lead.expertId) {
-      continue;
-    }
+    if (!lead.expertId) continue;
 
     const existingThread = await prisma.outreachThread.findFirst({
-      where: {
-        projectId,
-        expertId: lead.expertId
-      },
+      where: { projectId, expertId: lead.expertId },
       select: { id: true }
     });
-    if (existingThread) {
-      continue;
-    }
+    if (existingThread) continue;
 
-    const contact = await prisma.expertContact.findFirst({
-      where: {
-        expertId: lead.expertId,
-        verificationStatus: 'VERIFIED',
-        type: { in: contactTypeFilter as never },
-        deletedAt: null
-      },
-      orderBy: { type: 'asc' }
+    const expert = await prisma.expert.findUnique({
+      where: { id: lead.expertId },
+      select: { currentCompany: true, countryIso: true }
     });
-    if (!contact) {
-      continue;
-    }
 
-    const channel = contact.type === 'EMAIL' ? 'EMAIL' : 'PHONE';
-    const requiredProviderType = OUTREACH_CHANNEL_PROVIDER_TYPE[channel] ?? '';
-    if (!availableProviderTypes.has(requiredProviderType as never)) {
-      continue;
-    }
+    const meta = (lead.metadata as Record<string, unknown> | null) ?? {};
+    const countryIso = lead.countryIso ?? expert?.countryIso;
+    const countryName = countryIso ? isoCodeToLocationName(countryIso) : (meta.country as string | undefined) ?? null;
 
-    await getQueues().outreachQueue.add(
-      'outreach.send',
-      {
-        correlationId: 'scheduler',
-        data: {
-          projectId,
-          expertId: lead.expertId,
-          channel,
-          recipient: contact.value,
-          body: `Invitation to participate as an expert in ${projectName}. We believe your expertise would be valuable for this project.`,
-          overrideCooldown: false
-        }
-      },
-      {
-        jobId: buildJobId('outreach', projectId, lead.expertId, timeSlice)
+    const context: TemplateContext = {
+      firstName: lead.firstName,
+      lastName: lead.lastName,
+      country: countryName || null,
+      jobTitle: lead.jobTitle,
+      currentCompany: expert?.currentCompany ?? (meta.companyName as string | undefined) ?? null
+    };
+
+    const body = resolveTemplate(template, context);
+    if (!body) continue;
+
+    const contacts = await prisma.expertContact.findMany({
+      where: { expertId: lead.expertId, deletedAt: null },
+      select: { type: true, value: true }
+    });
+
+    let didQueue = false;
+    for (const channel of availableChannels) {
+      let recipient: string | undefined;
+      if (channel === 'EMAIL') {
+        recipient = contacts.find((c) => c.type === 'EMAIL')?.value;
+      } else if (channel === 'SMS' || channel === 'VOICEMAIL' || channel === 'WHATSAPP') {
+        recipient = contacts.find((c) => c.type === 'PHONE')?.value;
+      } else {
+        recipient = contacts.find((c) => c.type === 'PHONE')?.value ?? contacts.find((c) => c.type === 'EMAIL')?.value;
       }
-    );
+      if (!recipient) continue;
 
-    await prisma.lead.update({
-      where: { id: lead.id },
-      data: { status: 'OUTREACH_PENDING' }
-    });
+      await getQueues().outreachQueue.add(
+        'outreach.auto-send',
+        {
+          correlationId: 'scheduler',
+          data: {
+            projectId,
+            expertId: lead.expertId,
+            channel,
+            recipient,
+            body,
+            overrideCooldown: false
+          }
+        },
+        {
+          jobId: buildJobId('outreach', projectId, lead.expertId, channel, timeSlice)
+        }
+      );
+      didQueue = true;
+    }
 
-    queued += 1;
+    if (didQueue) {
+      await prisma.lead.update({
+        where: { id: lead.id },
+        data: { status: 'OUTREACH_PENDING' }
+      });
+      queued += 1;
+    }
   }
 
   if (queued > 0) {
