@@ -98,7 +98,6 @@ export default function ProjectsPage(): JSX.Element {
                   <th className="px-4 py-3">Progress</th>
                   <th className="px-4 py-3 text-right">Signed Up</th>
                   <th className="px-4 py-3 text-right">Target</th>
-                  <th className="px-4 py-3">Regions</th>
                   <th className="px-4 py-3">Priority</th>
                   <th className="px-4 py-3">Created</th>
                 </tr>
@@ -129,18 +128,6 @@ export default function ProjectsPage(): JSX.Element {
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-slate-500">
                       {project.targetThreshold}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {project.geographyIsoCodes.slice(0, 3).map((code) => (
-                          <span key={code} className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
-                            {code}
-                          </span>
-                        ))}
-                        {project.geographyIsoCodes.length > 3 && (
-                          <span className="text-xs text-slate-400">+{project.geographyIsoCodes.length - 3}</span>
-                        )}
-                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <PriorityIndicator priority={project.priority} />
