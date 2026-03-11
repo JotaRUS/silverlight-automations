@@ -1136,7 +1136,7 @@ function EndpointCard({ ep }: { ep: Endpoint }): JSX.Element {
         <div className="space-y-4 border-t border-slate-100 px-4 py-4">
           <p className="text-sm text-slate-600">{ep.description ?? ep.summary}</p>
           <div className="flex items-center gap-2">
-            <Badge className="bg-slate-100 text-slate-600">{ep.auth}</Badge>
+            <Badge tone="neutral">{ep.auth}</Badge>
           </div>
 
           {ep.pathParams?.length ? <ParamTable title="Path parameters" params={ep.pathParams} /> : null}

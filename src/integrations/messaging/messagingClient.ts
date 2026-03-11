@@ -79,19 +79,20 @@ const channelProviderConfigs: Partial<Record<Channel, ChannelProviderConfig>> = 
   },
   whatsapp: {
     providerType: 'WHATSAPP_2CHAT',
-    endpoint: 'https://api.2chat.co/v1/messages',
-    apiKeyHeader: 'x-api-key',
-    bodyBuilder: (recipient, text) => ({
+    endpoint: 'https://api.p.2chat.io/open/whatsapp/send-message',
+    apiKeyHeader: 'X-User-API-Key',
+    bodyBuilder: (recipient, text, credentials) => ({
+      from_number: credentialString(credentials, 'fromNumber'),
       to_number: recipient,
       text
     })
   },
   respondio: {
     providerType: 'RESPONDIO',
-    endpoint: 'https://api.respond.io/v2/message',
+    endpoint: 'https://api.respond.io/v2/contact/send-message',
     apiKeyHeader: 'authorization',
     bodyBuilder: (recipient, text) => ({
-      contact_id: recipient,
+      contactId: recipient,
       message: { type: 'text', text }
     })
   },
@@ -146,10 +147,13 @@ const channelProviderConfigs: Partial<Record<Channel, ChannelProviderConfig>> = 
     providerType: 'VIBER',
     endpoint: 'https://chatapi.viber.com/pa/send_message',
     apiKeyHeader: 'x-viber-auth-token',
-    bodyBuilder: (recipient, text) => ({
+    bodyBuilder: (recipient, text, credentials) => ({
       receiver: recipient,
       type: 'text',
-      text
+      text,
+      sender: {
+        name: credentialString(credentials, 'senderName') || 'Expert Network'
+      }
     })
   },
   telegram: {
@@ -164,15 +168,16 @@ const channelProviderConfigs: Partial<Record<Channel, ChannelProviderConfig>> = 
   },
   kakaotalk: {
     providerType: 'KAKAOTALK',
-    endpoint: 'https://kapi.kakao.com/v2/api/talk/memo/default/send',
+    endpoint: 'https://kapi.kakao.com/v1/api/talk/friends/message/default/send',
     apiKeyHeader: 'authorization',
+    contentType: 'application/x-www-form-urlencoded',
     bodyBuilder: (recipient, text) => ({
-      template_object: {
+      receiver_uuids: JSON.stringify([recipient]),
+      template_object: JSON.stringify({
         object_type: 'text',
         text,
-        link: {},
-        receiver_uuids: [recipient]
-      }
+        link: {}
+      })
     })
   },
   voicemail: {

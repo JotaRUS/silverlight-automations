@@ -533,17 +533,22 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
     providerType: 'EMAIL_PROVIDER',
     name: 'Email Provider',
     category: 'Outreach & Messaging',
-    summary: 'Generic email delivery provider credential (one API key field) for outreach email sends.',
+    summary: 'Email delivery via SMTP relay (SendGrid, Mailgun, Amazon SES, etc.). When the host is smtp.sendgrid.net, the platform also uses the SendGrid v3 Web API as the primary transport.',
     credentials: [
-      { key: 'apiKey', label: 'API Key', required: true, description: 'API key from your chosen email platform (SendGrid/Mailgun/Resend/etc.).' }
+      { key: 'host', label: 'SMTP Host', required: true, description: 'SMTP relay hostname, e.g. smtp.sendgrid.net, smtp.mailgun.org.' },
+      { key: 'port', label: 'SMTP Port', required: false, description: 'Port number (default 587). Use 465 for implicit TLS.' },
+      { key: 'user', label: 'SMTP Username', required: true, description: 'For SendGrid, always use the literal string "apikey".' },
+      { key: 'pass', label: 'SMTP Password / API Key', required: true, description: 'For SendGrid, paste your SendGrid API key here.' },
+      { key: 'from', label: 'From Address', required: false, description: 'Default sender email (e.g. outreach@yourdomain.com). Falls back to the SMTP user.' }
     ],
     prerequisites: [
-      'A transactional email provider account.',
+      'A transactional email provider account (SendGrid recommended).',
       'Verified sender domain and DNS records (SPF, DKIM, DMARC as recommended).'
     ],
     credentialSteps: [
-      'Choose an email provider (for example SendGrid, Mailgun, Resend, Amazon SES).',
-      'Create API key with sending permissions only (principle of least privilege).',
+      'Choose an email provider (SendGrid recommended for best deliverability).',
+      'For SendGrid: go to Settings → API Keys, create a key with "Mail Send" permissions.',
+      'Use host=smtp.sendgrid.net, port=587, user=apikey, pass=YOUR_API_KEY.',
       'Verify your sender identity/domain in the provider dashboard.',
       'Copy API key and save in this provider account.'
     ],
@@ -566,10 +571,11 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
     providerType: 'TWILIO',
     name: 'Twilio',
     category: 'Outreach & Messaging',
-    summary: 'SMS/iMessage/voice channel provider using Twilio Account SID and Auth Token.',
+    summary: 'SMS/iMessage channel provider using Twilio Account SID, Auth Token, and a provisioned phone number.',
     credentials: [
       { key: 'accountSid', label: 'Account SID', required: true, description: 'Found in Twilio Console dashboard account info.' },
-      { key: 'authToken', label: 'Auth Token', required: true, description: 'Primary auth token revealed in Twilio Console.' }
+      { key: 'authToken', label: 'Auth Token', required: true, description: 'Primary auth token revealed in Twilio Console.' },
+      { key: 'fromNumber', label: 'From Number', required: true, description: 'Twilio phone number in E.164 format (e.g. +15551234567) to send SMS from.' }
     ],
     prerequisites: [
       'Twilio account with active messaging products/channels.',
@@ -599,9 +605,10 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
     providerType: 'WHATSAPP_2CHAT',
     name: 'WhatsApp (2Chat)',
     category: 'Outreach & Messaging',
-    summary: 'WhatsApp messaging via 2Chat API key integration.',
+    summary: 'WhatsApp messaging via 2Chat API. Uses the v1 send-message endpoint at api.p.2chat.io.',
     credentials: [
-      { key: 'apiKey', label: 'API Key', required: true, description: '2Chat user API key from Developers → API Access.' }
+      { key: 'apiKey', label: 'API Key', required: true, description: '2Chat user API key from Developers → API Access.' },
+      { key: 'fromNumber', label: 'From Number', required: true, description: 'Your WhatsApp number connected to 2Chat in E.164 format (e.g. +15551234567).' }
     ],
     prerequisites: [
       '2Chat account with at least one connected WhatsApp channel.',
@@ -748,9 +755,10 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
     providerType: 'VIBER',
     name: 'Viber',
     category: 'Outreach & Messaging',
-    summary: 'Viber bot integration using bot authentication token.',
+    summary: 'Viber bot integration using bot authentication token and a sender display name.',
     credentials: [
-      { key: 'apiKey', label: 'API Key / Auth Token', required: true, description: 'Viber bot token used in X-Viber-Auth-Token header.' }
+      { key: 'apiKey', label: 'API Key / Auth Token', required: true, description: 'Viber bot token used in X-Viber-Auth-Token header.' },
+      { key: 'senderName', label: 'Sender Name', required: true, description: 'Display name shown to recipients (max 28 characters, required by Viber API).' }
     ],
     prerequisites: [
       'Viber bot created and approved (commercial terms apply for new bots).',
@@ -836,18 +844,15 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
     providerType: 'VOICEMAIL_DROP',
     name: 'Voicemail Drop',
     category: 'Outreach & Messaging',
-    summary: 'Ringless voicemail provider credential (single API key field) for voicemail drops.',
+    summary: 'Voicemail drop via Twilio Voice API. Places a call and plays a TwiML <Say> message.',
     credentials: [
-      {
-        key: 'apiKey',
-        label: 'API Key',
-        required: true,
-        description: 'Provider token/secret used by your voicemail drop vendor integration.'
-      }
+      { key: 'accountSid', label: 'Account SID', required: true, description: 'Twilio Account SID from Console dashboard.' },
+      { key: 'authToken', label: 'Auth Token', required: true, description: 'Twilio primary auth token.' },
+      { key: 'fromNumber', label: 'From Number', required: true, description: 'Twilio phone number in E.164 format to originate calls from.' }
     ],
     prerequisites: [
-      'Contracted voicemail-drop vendor (for example Slybroadcast, Drop Cowboy, or equivalent).',
-      'Compliance approval for voicemail outreach in target regions.'
+      'Twilio account with Programmable Voice enabled.',
+      'A provisioned Twilio phone number capable of outbound calls.'
     ],
     credentialSteps: [
       'Create API credentials in your chosen voicemail provider dashboard.',

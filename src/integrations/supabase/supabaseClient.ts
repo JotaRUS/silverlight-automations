@@ -105,15 +105,31 @@ export class SupabaseDataClient {
     this.ensureConfigured(credentials);
 
     const client = this.buildClient(credentials);
-    const operation = credentials.upsertKey
-      ? client.from(credentials.tableName).upsert([row], {
-          onConflict: credentials.upsertKey,
-          ignoreDuplicates: false
-        })
-      : client.from(credentials.tableName).insert([row]);
+    const filteredRow = { ...row };
+    const maxAttempts = Object.keys(row).length;
 
-    const { error } = await operation;
-    if (error) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const operation = credentials.upsertKey
+        ? client.from(credentials.tableName).upsert([filteredRow], {
+            onConflict: credentials.upsertKey,
+            ignoreDuplicates: false
+          })
+        : client.from(credentials.tableName).insert([filteredRow]);
+
+      const { error } = await operation;
+
+      if (!error) {
+        return { mode: credentials.upsertKey ? 'upsert' : 'insert' };
+      }
+
+      if (error.code === 'PGRST204') {
+        const match = error.message.match(/Could not find the '([^']+)' column/);
+        if (match?.[1] && match[1] in filteredRow) {
+          delete filteredRow[match[1]];
+          continue;
+        }
+      }
+
       throw new AppError('Supabase write failed', 502, 'provider_request_failed', {
         provider: 'supabase',
         operation: credentials.upsertKey ? 'upsert-row' : 'insert-row',
@@ -127,8 +143,13 @@ export class SupabaseDataClient {
       });
     }
 
-    return {
-      mode: credentials.upsertKey ? 'upsert' : 'insert'
-    };
+    throw new AppError('Supabase write failed — too many unknown columns', 502, 'provider_request_failed', {
+      provider: 'supabase',
+      operation: credentials.upsertKey ? 'upsert-row' : 'insert-row',
+      statusCode: 502,
+      responseBody: {
+        remainingColumns: Object.keys(filteredRow)
+      }
+    });
   }
 }

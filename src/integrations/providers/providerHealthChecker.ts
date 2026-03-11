@@ -930,7 +930,7 @@ export async function runProviderHealthCheck(
     const endpoint = 'https://api.p.2chat.io/open/info';
     const response = await fetch(endpoint, {
       method: 'GET',
-      headers: { 'x-api-key': apiKey }
+      headers: { 'X-User-API-Key': apiKey }
     });
 
     const responseText = await response.text().catch(() => '');

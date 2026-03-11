@@ -63,9 +63,24 @@ const linkedinCredentialSchema = z
     };
   });
 
+const emailProviderCredentialSchema = z.object({
+  host: z.string().min(1),
+  port: z.number().int().positive().default(587),
+  user: z.string().min(1),
+  pass: z.string().min(1),
+  from: z.string().min(1).optional()
+});
+
 const twilioCredentialSchema = z.object({
   accountSid: z.string().min(1),
-  authToken: z.string().min(1)
+  authToken: z.string().min(1),
+  fromNumber: z.string().min(1)
+});
+
+const voicemailDropCredentialSchema = z.object({
+  accountSid: z.string().min(1),
+  authToken: z.string().min(1),
+  fromNumber: z.string().min(1)
 });
 
 const telegramCredentialSchema = z.object({
@@ -112,16 +127,16 @@ const providerCredentialParsers: Record<ProviderType, z.ZodType<Record<string, u
   PEOPLEDATALABS: singleApiKeySchema,
   ANYLEADS: singleApiKeySchema,
   LINKEDIN: linkedinCredentialSchema,
-  EMAIL_PROVIDER: singleApiKeySchema,
+  EMAIL_PROVIDER: emailProviderCredentialSchema,
   TWILIO: twilioCredentialSchema,
-  WHATSAPP_2CHAT: singleApiKeySchema,
+  WHATSAPP_2CHAT: z.object({ apiKey: z.string().min(1), fromNumber: z.string().min(1) }),
   RESPONDIO: singleApiKeySchema,
   LINE: singleApiKeySchema,
   WECHAT: singleApiKeySchema,
-  VIBER: singleApiKeySchema,
+  VIBER: z.object({ apiKey: z.string().min(1), senderName: z.string().min(1).max(28) }),
   TELEGRAM: telegramCredentialSchema,
   KAKAOTALK: singleApiKeySchema,
-  VOICEMAIL_DROP: singleApiKeySchema,
+  VOICEMAIL_DROP: voicemailDropCredentialSchema,
   YAY: yayCredentialSchema,
   GOOGLE_SHEETS: googleSheetsCredentialSchema,
   SUPABASE: supabaseCredentialSchema
