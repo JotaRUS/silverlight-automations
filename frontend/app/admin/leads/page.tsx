@@ -1,8 +1,9 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Card } from '@/components/ui/card';
 import { useSocket } from '@/hooks/useSocket';
@@ -43,14 +44,35 @@ interface LeadRecord {
   googleSheetsExportedAt?: string | null;
   supabaseExportedAt?: string | null;
   createdAt: string;
-  metadata?: { city?: string; state?: string; country?: string; [key: string]: unknown };
+  metadata?: { city?: string; state?: string; country?: string; companyName?: string; [key: string]: unknown };
   project?: { id: string; name: string };
   expert?: {
     fullName?: string;
+    currentCompany?: string;
     contacts?: { type: string; value: string; verificationStatus?: string }[];
   };
   enrichmentAttempts?: EnrichmentAttemptRecord[];
 }
+
+type ColumnKey = 'firstName' | 'lastName' | 'jobTitle' | 'currentCompany' | 'status' | 'location' | 'email' | 'phone' | 'linkedin' | 'confidence' | 'exported' | 'added' | 'actions';
+
+const ALL_COLUMNS: { key: ColumnKey; label: string }[] = [
+  { key: 'firstName', label: 'First Name' },
+  { key: 'lastName', label: 'Last Name' },
+  { key: 'jobTitle', label: 'Job Title' },
+  { key: 'currentCompany', label: 'Current Company' },
+  { key: 'status', label: 'Status' },
+  { key: 'location', label: 'Location' },
+  { key: 'email', label: 'Email' },
+  { key: 'phone', label: 'Phone' },
+  { key: 'linkedin', label: 'LinkedIn' },
+  { key: 'confidence', label: 'Confidence' },
+  { key: 'exported', label: 'Exported' },
+  { key: 'added', label: 'Added' },
+  { key: 'actions', label: 'Actions' }
+];
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200] as const;
 
 function statusBadge(status: LeadStatus): { label: string; class: string } {
   const stage = PIPELINE_STAGES.find((s) => s.status === status);
@@ -69,18 +91,9 @@ function statusBadge(status: LeadStatus): { label: string; class: string } {
 }
 
 const ENRICHMENT_PROVIDER_LABELS: Record<string, string> = {
-  APOLLO: 'Apollo',
-  LEADMAGIC: 'LeadMagic',
-  PROSPEO: 'Prospeo',
-  EXA: 'Exa',
-  ROCKETREACH: 'RocketReach',
-  WIZA: 'Wiza',
-  FORAGER: 'Forager',
-  ZELIQ: 'Zeliq',
-  CONTACTOUT: 'ContactOut',
-  DATAGM: 'DataGM',
-  PEOPLEDATALABS: 'PeopleDataLabs',
-  ANYLEADS: 'AnyLeads'
+  APOLLO: 'Apollo', LEADMAGIC: 'LeadMagic', PROSPEO: 'Prospeo', EXA: 'Exa',
+  ROCKETREACH: 'RocketReach', WIZA: 'Wiza', FORAGER: 'Forager', ZELIQ: 'Zeliq',
+  CONTACTOUT: 'ContactOut', DATAGM: 'DataGM', PEOPLEDATALABS: 'PeopleDataLabs', ANYLEADS: 'AnyLeads'
 };
 
 function formatRelative(dateString: string): string {
@@ -150,6 +163,148 @@ function LeadActions({
   );
 }
 
+function PaginationBar({
+  currentPage,
+  totalPages,
+  totalItems,
+  pageSize,
+  onPageChange,
+  onPageSizeChange
+}: {
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5 text-xs">
+      <div className="flex items-center gap-2">
+        <span className="text-slate-500">
+          Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalItems)} of {totalItems}
+        </span>
+        <select
+          className="rounded border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-primary"
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value))}
+        >
+          {PAGE_SIZE_OPTIONS.map((size) => (
+            <option key={size} value={size}>{size} / page</option>
+          ))}
+        </select>
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => onPageChange(1)}
+          disabled={currentPage === 1}
+          className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+          title="First page"
+        >
+          <span className="material-symbols-outlined text-base">first_page</span>
+        </button>
+        <button
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+          className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+          title="Previous"
+        >
+          <span className="material-symbols-outlined text-base">chevron_left</span>
+        </button>
+        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+          let pageNum: number;
+          if (totalPages <= 5) {
+            pageNum = i + 1;
+          } else if (currentPage <= 3) {
+            pageNum = i + 1;
+          } else if (currentPage >= totalPages - 2) {
+            pageNum = totalPages - 4 + i;
+          } else {
+            pageNum = currentPage - 2 + i;
+          }
+          return (
+            <button
+              key={pageNum}
+              onClick={() => onPageChange(pageNum)}
+              className={`size-7 rounded text-xs font-medium transition-colors ${
+                pageNum === currentPage
+                  ? 'bg-primary text-white'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              {pageNum}
+            </button>
+          );
+        })}
+        <button
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+          className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+          title="Next"
+        >
+          <span className="material-symbols-outlined text-base">chevron_right</span>
+        </button>
+        <button
+          onClick={() => onPageChange(totalPages)}
+          disabled={currentPage === totalPages}
+          className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+          title="Last page"
+        >
+          <span className="material-symbols-outlined text-base">last_page</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ColumnToggle({
+  visibleColumns,
+  onToggle
+}: {
+  visibleColumns: Record<ColumnKey, boolean>;
+  onToggle: (key: ColumnKey) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+      >
+        <span className="material-symbols-outlined text-sm">view_column</span>
+        Columns
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-30 mt-1 w-48 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+          {ALL_COLUMNS.filter((c) => c.key !== 'actions').map((col) => (
+            <label key={col.key} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-slate-50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={visibleColumns[col.key]}
+                onChange={() => onToggle(col.key)}
+                className="rounded border-slate-300"
+              />
+              {col.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function LeadsPage(): JSX.Element {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -161,7 +316,12 @@ export default function LeadsPage(): JSX.Element {
   const [socketConnected, setSocketConnected] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 50;
+  const [pageSize, setPageSize] = useState(25);
+  const [visibleColumns, setVisibleColumns] = useState<Record<ColumnKey, boolean>>(() => {
+    const defaults: Record<ColumnKey, boolean> = {} as Record<ColumnKey, boolean>;
+    for (const col of ALL_COLUMNS) defaults[col.key] = true;
+    return defaults;
+  });
 
   useSocket('/admin', 'lead.ingested', () => {
     setRefreshNonce((v) => v + 1);
@@ -185,8 +345,14 @@ export default function LeadsPage(): JSX.Element {
     queryFn: () => listProjects()
   });
 
+  useEffect(() => {
+    if (!selectedProjectId && projectsQuery.data && projectsQuery.data.length > 0) {
+      setSelectedProjectId(projectsQuery.data[0].id);
+    }
+  }, [projectsQuery.data, selectedProjectId]);
+
   const leadsQuery = useQuery<LeadExplorerResponse>({
-    queryKey: ['leads-pipeline', selectedProjectId, filterStatus, currentPage, refreshNonce],
+    queryKey: ['leads-pipeline', selectedProjectId, filterStatus, currentPage, pageSize, refreshNonce],
     queryFn: () =>
       fetchLeadExplorer({
         projectId: selectedProjectId || undefined,
@@ -194,6 +360,7 @@ export default function LeadsPage(): JSX.Element {
         page: currentPage,
         pageSize
       }),
+    enabled: !!selectedProjectId,
     refetchInterval: 10_000
   });
 
@@ -222,6 +389,15 @@ export default function LeadsPage(): JSX.Element {
     []
   );
 
+  const handlePageSizeChange = useCallback((size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  }, []);
+
+  const toggleColumn = useCallback((key: ColumnKey) => {
+    setVisibleColumns((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
   const leads = (leadsQuery.data?.leads ?? []) as unknown as LeadRecord[];
   const totalLeads = leadsQuery.data?.total ?? 0;
   const totalPages = leadsQuery.data?.totalPages ?? 1;
@@ -230,7 +406,32 @@ export default function LeadsPage(): JSX.Element {
     return leadsQuery.data?.statusCounts ?? {};
   }, [leadsQuery.data?.statusCounts]);
 
-  const filteredLeads = leads;
+  const show = (key: ColumnKey) => visibleColumns[key];
+
+  const noProjects = projectsQuery.isSuccess && (projectsQuery.data?.length ?? 0) === 0;
+
+  if (noProjects) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-bold">Leads Pipeline</h2>
+          <p className="text-sm text-slate-500">Watch leads flow through the sourcing pipeline in real-time</p>
+        </div>
+        <Card className="py-16 text-center space-y-3">
+          <span className="material-symbols-outlined text-5xl text-slate-300">folder_open</span>
+          <p className="text-sm font-medium text-slate-600">No projects yet</p>
+          <p className="text-xs text-slate-400">Create your first project to start tracking leads.</p>
+          <Link
+            href="/admin/projects/new"
+            className="inline-flex items-center gap-1.5 mt-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
+          >
+            <span className="material-symbols-outlined text-base">add</span>
+            Create Project
+          </Link>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -293,7 +494,6 @@ export default function LeadsPage(): JSX.Element {
           value={selectedProjectId}
           onChange={(e) => { setSelectedProjectId(e.target.value); setCurrentPage(1); }}
         >
-          <option value="">All projects</option>
           {projectsQuery.data?.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
@@ -308,9 +508,10 @@ export default function LeadsPage(): JSX.Element {
             <option key={s.status} value={s.status}>{s.label}</option>
           ))}
         </select>
-        <span className="ml-auto text-xs text-slate-400">
-          {totalLeads} lead{totalLeads !== 1 ? 's' : ''}
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-slate-400">{totalLeads} lead{totalLeads !== 1 ? 's' : ''}</span>
+          <ColumnToggle visibleColumns={visibleColumns} onToggle={toggleColumn} />
+        </div>
       </Card>
 
       {/* Pipeline stage cards */}
@@ -351,12 +552,10 @@ export default function LeadsPage(): JSX.Element {
       )}
 
       {/* Empty state */}
-      {!leadsQuery.isLoading && leads.length === 0 && (
+      {!leadsQuery.isLoading && leads.length === 0 && selectedProjectId && (
         <Card className="py-12 text-center">
           <span className="material-symbols-outlined text-4xl text-slate-300">group_add</span>
-          <p className="mt-2 text-sm text-slate-500">
-            {selectedProjectId ? 'No leads for this project yet' : 'No leads in the system yet'}
-          </p>
+          <p className="mt-2 text-sm text-slate-500">No leads for this project yet</p>
           <p className="mt-1 text-xs text-slate-400">
             Leads are sourced automatically. The auto-sourcing engine queues enrichment and outreach for active projects.
           </p>
@@ -372,27 +571,43 @@ export default function LeadsPage(): JSX.Element {
       )}
 
       {/* Leads table */}
-      {!leadsQuery.isLoading && filteredLeads.length > 0 && (
+      {!leadsQuery.isLoading && leads.length > 0 && (
         <Card className="overflow-hidden p-0">
+          {/* Top pagination */}
+          {totalPages > 1 && (
+            <div className="border-b border-slate-100">
+              <PaginationBar
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalLeads}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={handlePageSizeChange}
+              />
+            </div>
+          )}
+
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/60 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  <th className="px-4 py-3">Lead</th>
-                  <th className="px-4 py-3">Project</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Location</th>
-                  <th className="px-4 py-3">Email</th>
-                  <th className="px-4 py-3">Phone</th>
-                  <th className="px-4 py-3">LinkedIn</th>
-                  <th className="px-4 py-3">Confidence</th>
-                  <th className="px-4 py-3">Exported</th>
-                  <th className="px-4 py-3">Added</th>
+                  {show('firstName') && <th className="px-4 py-3">First Name</th>}
+                  {show('lastName') && <th className="px-4 py-3">Last Name</th>}
+                  {show('jobTitle') && <th className="px-4 py-3">Job Title</th>}
+                  {show('currentCompany') && <th className="px-4 py-3">Current Company</th>}
+                  {show('status') && <th className="px-4 py-3">Status</th>}
+                  {show('location') && <th className="px-4 py-3">Location</th>}
+                  {show('email') && <th className="px-4 py-3">Email</th>}
+                  {show('phone') && <th className="px-4 py-3">Phone</th>}
+                  {show('linkedin') && <th className="px-4 py-3">LinkedIn</th>}
+                  {show('confidence') && <th className="px-4 py-3">Confidence</th>}
+                  {show('exported') && <th className="px-4 py-3">Exported</th>}
+                  {show('added') && <th className="px-4 py-3">Added</th>}
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredLeads.map((lead) => {
+                {leads.map((lead) => {
                   const badge = statusBadge(lead.status);
                   const contacts = lead.expert?.contacts ?? [];
                   const emails = contacts.filter((c) => c.type === 'EMAIL');
@@ -404,149 +619,175 @@ export default function LeadsPage(): JSX.Element {
                     lead.metadata?.state,
                     lead.countryIso
                   ].filter(Boolean);
+                  const firstName = lead.firstName ?? lead.fullName?.split(' ')[0] ?? '';
+                  const lastName = lead.lastName ?? (lead.fullName?.split(' ').slice(1).join(' ')) ?? '';
+                  const currentCompany = lead.expert?.currentCompany ?? lead.metadata?.companyName ?? '';
                   return (
                     <tr key={lead.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-4 py-3">
-                        <div>
-                          <p className="font-medium text-slate-800">
-                            {lead.fullName ?? ([lead.firstName, lead.lastName].filter(Boolean).join(' ') || 'Unknown')}
-                          </p>
-                          {lead.jobTitle && (
-                            <p className="text-xs text-slate-400 line-clamp-1">{lead.jobTitle}</p>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-500">
-                        {lead.project?.name ?? '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        {lead.status === 'ENRICHED' && lead.enrichmentAttempts && lead.enrichmentAttempts.length > 0 ? (
-                          <div className="group relative inline-flex">
-                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold cursor-default ${badge.class}`}>
-                              {badge.label}
-                            </span>
-                            <div className="pointer-events-none absolute left-0 top-full z-20 mt-1.5 hidden w-56 rounded-lg border border-slate-200 bg-white p-2.5 shadow-lg group-hover:block">
-                              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Enrichment providers</p>
-                              <div className="space-y-1">
-                                {lead.enrichmentAttempts.map((attempt, i) => (
-                                  <div key={i} className="flex items-center justify-between text-[11px]">
-                                    <span className="font-medium text-slate-700">
-                                      {ENRICHMENT_PROVIDER_LABELS[attempt.provider] ?? attempt.provider}
-                                    </span>
-                                    <span className={
-                                      attempt.status === 'SUCCESS'
-                                        ? 'text-emerald-600'
-                                        : attempt.status === 'RATE_LIMITED'
-                                          ? 'text-amber-600'
-                                          : 'text-red-500'
-                                    }>
-                                      {attempt.status === 'SUCCESS' ? 'found data' : attempt.status === 'RATE_LIMITED' ? 'rate limited' : 'no data'}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${badge.class}`}>
-                            {badge.label}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {locationParts.length > 0 ? (
-                          <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600" title={locationParts.join(', ')}>
-                            {locationParts.join(', ')}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-slate-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {emails.length > 0 ? (
-                          <p className="text-xs text-slate-600 flex items-center gap-1 max-w-[200px]" title={emails[0].value}>
-                            <span className="material-symbols-outlined text-xs text-slate-400 shrink-0">mail</span>
-                            <span className="truncate">{emails[0].value}</span>
-                          </p>
-                        ) : (
-                          <span className="text-xs text-slate-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {phones.length > 0 ? (
-                          <p className="text-xs text-slate-600 flex items-center gap-1">
-                            <span className="material-symbols-outlined text-xs text-slate-400 shrink-0">call</span>
-                            {phones[0].value}
-                          </p>
-                        ) : (
-                          <span className="text-xs text-slate-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {linkedinUrl ? (
-                          <a
-                            href={linkedinUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                          >
-                            <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z" />
-                            </svg>
-                            Profile
-                          </a>
-                        ) : (
-                          <span className="text-xs text-slate-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {lead.enrichmentConfidence != null ? (
-                          <div className="flex items-center gap-1.5">
-                            <div className="h-1.5 w-12 rounded-full bg-slate-100 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${Number(lead.enrichmentConfidence) >= 0.7 ? 'bg-emerald-500' : Number(lead.enrichmentConfidence) >= 0.4 ? 'bg-amber-400' : 'bg-red-400'}`}
-                                style={{ width: `${Math.min(100, Number(lead.enrichmentConfidence) * 100)}%` }}
-                              />
-                            </div>
-                            <span className="text-[10px] text-slate-400 tabular-nums">
-                              {(Number(lead.enrichmentConfidence) * 100).toFixed(0)}%
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {(() => {
-                          const destinations: { name: string; at: string }[] = [];
-                          if (lead.googleSheetsExportedAt) destinations.push({ name: 'Google Sheets', at: lead.googleSheetsExportedAt });
-                          if (lead.supabaseExportedAt) destinations.push({ name: 'Supabase', at: lead.supabaseExportedAt });
-                          if (destinations.length === 0) {
-                            return <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-400">No</span>;
-                          }
-                          return (
+                      {show('firstName') && (
+                        <td className="px-4 py-3 text-sm font-medium text-slate-800 whitespace-nowrap">
+                          {firstName || <span className="text-slate-300">—</span>}
+                        </td>
+                      )}
+                      {show('lastName') && (
+                        <td className="px-4 py-3 text-sm text-slate-700 whitespace-nowrap">
+                          {lastName || <span className="text-slate-300">—</span>}
+                        </td>
+                      )}
+                      {show('jobTitle') && (
+                        <td className="px-4 py-3 text-xs text-slate-600 max-w-[160px] truncate" title={lead.jobTitle ?? ''}>
+                          {lead.jobTitle || <span className="text-slate-300">—</span>}
+                        </td>
+                      )}
+                      {show('currentCompany') && (
+                        <td className="px-4 py-3 text-xs text-slate-600 max-w-[140px] truncate" title={currentCompany}>
+                          {currentCompany || <span className="text-slate-300">—</span>}
+                        </td>
+                      )}
+                      {show('status') && (
+                        <td className="px-4 py-3">
+                          {lead.status === 'ENRICHED' && lead.enrichmentAttempts && lead.enrichmentAttempts.length > 0 ? (
                             <div className="group relative inline-flex">
-                              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 cursor-default">
-                                Yes
+                              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold cursor-default ${badge.class}`}>
+                                {badge.label}
                               </span>
-                              <div className="pointer-events-none absolute left-0 top-full z-20 mt-1.5 hidden w-52 rounded-lg border border-slate-200 bg-white p-2.5 shadow-lg group-hover:block">
-                                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Export destinations</p>
+                              <div className="pointer-events-none absolute left-0 top-full z-20 mt-1.5 hidden w-56 rounded-lg border border-slate-200 bg-white p-2.5 shadow-lg group-hover:block">
+                                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Enrichment providers</p>
                                 <div className="space-y-1">
-                                  {destinations.map((dest) => (
-                                    <div key={dest.name} className="flex items-center justify-between text-[11px]">
-                                      <span className="font-medium text-slate-700">{dest.name}</span>
-                                      <span className="text-emerald-600">{formatRelative(dest.at)}</span>
+                                  {lead.enrichmentAttempts.map((attempt, i) => (
+                                    <div key={i} className="flex items-center justify-between text-[11px]">
+                                      <span className="font-medium text-slate-700">
+                                        {ENRICHMENT_PROVIDER_LABELS[attempt.provider] ?? attempt.provider}
+                                      </span>
+                                      <span className={
+                                        attempt.status === 'SUCCESS'
+                                          ? 'text-emerald-600'
+                                          : attempt.status === 'RATE_LIMITED'
+                                            ? 'text-amber-600'
+                                            : 'text-red-500'
+                                      }>
+                                        {attempt.status === 'SUCCESS' ? 'found data' : attempt.status === 'RATE_LIMITED' ? 'rate limited' : 'no data'}
+                                      </span>
                                     </div>
                                   ))}
                                 </div>
                               </div>
                             </div>
-                          );
-                        })()}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
-                        {formatRelative(lead.createdAt)}
-                      </td>
+                          ) : (
+                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${badge.class}`}>
+                              {badge.label}
+                            </span>
+                          )}
+                        </td>
+                      )}
+                      {show('location') && (
+                        <td className="px-4 py-3">
+                          {locationParts.length > 0 ? (
+                            <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600" title={locationParts.join(', ')}>
+                              {locationParts.join(', ')}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-300">—</span>
+                          )}
+                        </td>
+                      )}
+                      {show('email') && (
+                        <td className="px-4 py-3">
+                          {emails.length > 0 ? (
+                            <p className="text-xs text-slate-600 flex items-center gap-1 max-w-[180px]" title={emails[0].value}>
+                              <span className="material-symbols-outlined text-xs text-slate-400 shrink-0">mail</span>
+                              <span className="truncate">{emails[0].value}</span>
+                            </p>
+                          ) : (
+                            <span className="text-xs text-slate-300">—</span>
+                          )}
+                        </td>
+                      )}
+                      {show('phone') && (
+                        <td className="px-4 py-3">
+                          {phones.length > 0 ? (
+                            <p className="text-xs text-slate-600 flex items-center gap-1">
+                              <span className="material-symbols-outlined text-xs text-slate-400 shrink-0">call</span>
+                              {phones[0].value}
+                            </p>
+                          ) : (
+                            <span className="text-xs text-slate-300">—</span>
+                          )}
+                        </td>
+                      )}
+                      {show('linkedin') && (
+                        <td className="px-4 py-3">
+                          {linkedinUrl ? (
+                            <a
+                              href={linkedinUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                            >
+                              <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z" />
+                              </svg>
+                              Profile
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-300">—</span>
+                          )}
+                        </td>
+                      )}
+                      {show('confidence') && (
+                        <td className="px-4 py-3">
+                          {lead.enrichmentConfidence != null ? (
+                            <div className="flex items-center gap-1.5">
+                              <div className="h-1.5 w-12 rounded-full bg-slate-100 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${Number(lead.enrichmentConfidence) >= 0.7 ? 'bg-emerald-500' : Number(lead.enrichmentConfidence) >= 0.4 ? 'bg-amber-400' : 'bg-red-400'}`}
+                                  style={{ width: `${Math.min(100, Number(lead.enrichmentConfidence) * 100)}%` }}
+                                />
+                              </div>
+                              <span className="text-[10px] text-slate-400 tabular-nums">
+                                {(Number(lead.enrichmentConfidence) * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-300">—</span>
+                          )}
+                        </td>
+                      )}
+                      {show('exported') && (
+                        <td className="px-4 py-3">
+                          {(() => {
+                            const destinations: { name: string; at: string }[] = [];
+                            if (lead.googleSheetsExportedAt) destinations.push({ name: 'Google Sheets', at: lead.googleSheetsExportedAt });
+                            if (lead.supabaseExportedAt) destinations.push({ name: 'Supabase', at: lead.supabaseExportedAt });
+                            if (destinations.length === 0) {
+                              return <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-400">No</span>;
+                            }
+                            return (
+                              <div className="group relative inline-flex">
+                                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 cursor-default">
+                                  Yes
+                                </span>
+                                <div className="pointer-events-none absolute left-0 top-full z-20 mt-1.5 hidden w-52 rounded-lg border border-slate-200 bg-white p-2.5 shadow-lg group-hover:block">
+                                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Export destinations</p>
+                                  <div className="space-y-1">
+                                    {destinations.map((dest) => (
+                                      <div key={dest.name} className="flex items-center justify-between text-[11px]">
+                                        <span className="font-medium text-slate-700">{dest.name}</span>
+                                        <span className="text-emerald-600">{formatRelative(dest.at)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </td>
+                      )}
+                      {show('added') && (
+                        <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
+                          {formatRelative(lead.createdAt)}
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-right">
                         <LeadActions
                           lead={lead}
@@ -561,71 +802,17 @@ export default function LeadsPage(): JSX.Element {
             </table>
           </div>
 
-          {/* Pagination */}
+          {/* Bottom pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
-              <p className="text-xs text-slate-500">
-                Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalLeads)} of {totalLeads}
-              </p>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setCurrentPage(1)}
-                  disabled={currentPage === 1}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:pointer-events-none"
-                  title="First page"
-                >
-                  <span className="material-symbols-outlined text-lg">first_page</span>
-                </button>
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:pointer-events-none"
-                  title="Previous page"
-                >
-                  <span className="material-symbols-outlined text-lg">chevron_left</span>
-                </button>
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  let pageNum: number;
-                  if (totalPages <= 5) {
-                    pageNum = i + 1;
-                  } else if (currentPage <= 3) {
-                    pageNum = i + 1;
-                  } else if (currentPage >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i;
-                  } else {
-                    pageNum = currentPage - 2 + i;
-                  }
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => setCurrentPage(pageNum)}
-                      className={`size-8 rounded-lg text-xs font-medium transition-colors ${
-                        pageNum === currentPage
-                          ? 'bg-primary text-white'
-                          : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
-                <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:pointer-events-none"
-                  title="Next page"
-                >
-                  <span className="material-symbols-outlined text-lg">chevron_right</span>
-                </button>
-                <button
-                  onClick={() => setCurrentPage(totalPages)}
-                  disabled={currentPage === totalPages}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:pointer-events-none"
-                  title="Last page"
-                >
-                  <span className="material-symbols-outlined text-lg">last_page</span>
-                </button>
-              </div>
+            <div className="border-t border-slate-100">
+              <PaginationBar
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalLeads}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={handlePageSizeChange}
+              />
             </div>
           )}
         </Card>

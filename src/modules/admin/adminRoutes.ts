@@ -11,7 +11,7 @@ import { ProjectCompletionService } from '../projects/projectCompletionService';
 import { ScreeningService } from '../screening/screeningService';
 
 const leadQuerySchema = z.object({
-  projectId: z.string().uuid().optional(),
+  projectId: z.string().uuid(),
   status: z.nativeEnum(LeadStatus).optional(),
   enrichmentStatus: z.nativeEnum(LeadStatus).optional(),
   cooldownBlocked: z.enum(['true', 'false']).optional(),

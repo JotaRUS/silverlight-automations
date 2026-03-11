@@ -22,6 +22,8 @@ import type {
 import { getQueues } from '../../queues';
 import { buildJobId } from '../../queues/jobId';
 import { GOOGLE_SHEETS_TABS } from '../google-sheets-sync/googleSheetsTabMapping';
+import { resolveTemplate, type TemplateContext } from '../outreach/outreachService';
+import { isChannelAvailableForProject } from '../outreach/channelSelection';
 import { ProjectCompletionService } from '../projects/projectCompletionService';
 import { normalizeEmail, normalizePhone, isFakeEmail, isFakePhone } from './enrichmentValidators';
 
@@ -801,6 +803,7 @@ export class EnrichmentService {
     await this.queuePhoneExports(updatedLead.id, updatedLead.expertId, normalizedPhones, job.projectId, correlationId);
     if (updatedLead.status === 'ENRICHED') {
       await this.queueSupabaseSync(updatedLead.id, job.projectId, correlationId);
+      await this.queueAutoOutreach(updatedLead.id, updatedLead.expertId, job.projectId, correlationId);
     }
   }
 
@@ -889,5 +892,102 @@ export class EnrichmentService {
         jobId: buildJobId('supabase-sync', projectId, leadId)
       }
     );
+  }
+
+  private async queueAutoOutreach(
+    leadId: string,
+    expertId: string,
+    projectId: string,
+    correlationId: string
+  ): Promise<void> {
+    const project = await this.prismaClient.project.findUnique({
+      where: { id: projectId },
+      select: { outreachMessageTemplate: true }
+    });
+
+    const template = (project as Record<string, unknown> | null)?.outreachMessageTemplate;
+    if (typeof template !== 'string' || !template.trim()) {
+      return;
+    }
+
+    const lead = await this.prismaClient.lead.findUnique({
+      where: { id: leadId },
+      select: { firstName: true, lastName: true, jobTitle: true, countryIso: true, metadata: true }
+    });
+    const expert = await this.prismaClient.expert.findUnique({
+      where: { id: expertId },
+      select: { currentCompany: true, countryIso: true }
+    });
+    if (!lead) return;
+
+    const meta = (lead.metadata as Record<string, unknown> | null) ?? {};
+    const locationParts = [
+      meta.city as string | undefined,
+      meta.state as string | undefined,
+      lead.countryIso ?? (expert?.countryIso ?? undefined)
+    ].filter(Boolean);
+
+    const context: TemplateContext = {
+      firstName: lead.firstName,
+      lastName: lead.lastName,
+      location: locationParts.join(', ') || null,
+      jobTitle: lead.jobTitle,
+      currentCompany: expert?.currentCompany ?? (meta.companyName as string | undefined) ?? null
+    };
+
+    const body = resolveTemplate(template, context);
+    if (!body) {
+      return;
+    }
+
+    const channels: import('@prisma/client').Channel[] = [
+      'EMAIL', 'SMS', 'VOICEMAIL', 'WHATSAPP', 'RESPONDIO',
+      'LINE', 'WECHAT', 'VIBER', 'TELEGRAM', 'KAKAOTALK'
+    ];
+
+    for (const channel of channels) {
+      const available = await isChannelAvailableForProject(this.prismaClient, projectId, channel);
+      if (!available) continue;
+
+      const contacts = await this.prismaClient.expertContact.findMany({
+        where: { expertId, deletedAt: null },
+        select: { type: true, value: true }
+      });
+
+      let recipient: string | undefined;
+      if (channel === 'EMAIL') {
+        recipient = contacts.find((c) => c.type === 'EMAIL')?.value;
+      } else if (channel === 'SMS' || channel === 'VOICEMAIL' || channel === 'WHATSAPP') {
+        recipient = contacts.find((c) => c.type === 'PHONE')?.value;
+      } else {
+        recipient = contacts.find((c) => c.type === 'PHONE')?.value ?? contacts.find((c) => c.type === 'EMAIL')?.value;
+      }
+
+      if (!recipient) continue;
+
+      try {
+        await getQueues().outreachQueue.add(
+          'outreach.auto-send',
+          {
+            correlationId,
+            data: {
+              projectId,
+              expertId,
+              channel,
+              recipient,
+              body,
+              overrideCooldown: false
+            }
+          },
+          {
+            jobId: buildJobId('auto-outreach', projectId, expertId, channel)
+          }
+        );
+      } catch {
+        // queue may not exist yet - skip silently
+      }
+
+      break;
+    }
   }
 }

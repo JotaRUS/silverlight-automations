@@ -212,9 +212,10 @@ const groups: EndpointGroup[] = [
           { name: 'overrideCooldown', type: 'boolean', description: 'Skip outreach cooldowns' },
           { name: 'apolloProviderAccountId', type: 'UUID', description: 'Bind Apollo provider' },
           { name: 'googleSheetsProviderAccountId', type: 'UUID', description: 'Bind Google Sheets export destination' },
-          { name: 'supabaseProviderAccountId', type: 'UUID', description: 'Bind Supabase export destination' }
+          { name: 'supabaseProviderAccountId', type: 'UUID', description: 'Bind Supabase export destination' },
+          { name: 'outreachMessageTemplate', type: 'String', description: 'Outreach message template with variable placeholders like {{FirstName}}, {{LastName}}, etc.' }
         ],
-        bodyExample: '{\n  "name": "LATAM Engineering",\n  "targetThreshold": 50,\n  "geographyIsoCodes": ["AR", "BR", "UY"],\n  "priority": 1,\n  "googleSheetsProviderAccountId": "uuid-of-gsheets-account",\n  "supabaseProviderAccountId": "uuid-of-supabase-account"\n}',
+        bodyExample: '{\n  "name": "LATAM Engineering",\n  "targetThreshold": 50,\n  "geographyIsoCodes": ["AR", "BR", "UY"],\n  "priority": 1,\n  "googleSheetsProviderAccountId": "uuid-of-gsheets-account",\n  "supabaseProviderAccountId": "uuid-of-supabase-account",\n  "outreachMessageTemplate": "Hi {{FirstName}}, we have an opportunity at {{Company}}..."\n}',
         responses: [
           { status: 201, label: 'Created', body: '{\n  "id": "uuid",\n  "name": "LATAM Engineering",\n  "status": "ACTIVE",\n  ...\n}' },
           { status: 400, label: 'Validation error', body: '{ "error": "name is required" }' }
@@ -243,9 +244,10 @@ const groups: EndpointGroup[] = [
           { name: 'targetThreshold', type: 'number', description: 'Updated expert target' },
           { name: 'geographyIsoCodes', type: 'string[]', description: 'Updated country codes' },
           { name: 'googleSheetsProviderAccountId', type: 'UUID | null', description: 'Bind or unbind Google Sheets export' },
-          { name: 'supabaseProviderAccountId', type: 'UUID | null', description: 'Bind or unbind Supabase export' }
+          { name: 'supabaseProviderAccountId', type: 'UUID | null', description: 'Bind or unbind Supabase export' },
+          { name: 'outreachMessageTemplate', type: 'String | null', description: 'Outreach message template with variable placeholders; null to clear' }
         ],
-        bodyExample: '{\n  "status": "PAUSED",\n  "targetThreshold": 200,\n  "googleSheetsProviderAccountId": "uuid-or-null"\n}',
+        bodyExample: '{\n  "status": "PAUSED",\n  "targetThreshold": 200,\n  "googleSheetsProviderAccountId": "uuid-or-null",\n  "outreachMessageTemplate": "Hi {{FirstName}}, ..."\n}',
         responses: [
           { status: 200, label: 'Updated', body: '{ "id": "uuid", "status": "PAUSED", ... }' }
         ]
@@ -382,15 +384,16 @@ const groups: EndpointGroup[] = [
         method: 'GET',
         path: '/api/v1/admin/leads',
         summary: 'List leads with enrichment summaries',
+        description: 'List leads with enrichment summaries. The projectId query parameter is required.',
         auth: 'API key or Session (admin/ops)',
         queryParams: [
-          { name: 'projectId', type: 'UUID', description: 'Filter by project' },
+          { name: 'projectId', type: 'UUID', required: true, description: 'Filter by project (required)' },
           { name: 'status', type: 'enum', description: 'NEW | ENRICHED | OUTREACH | SCREENING | SIGNED_UP | DISQUALIFIED' },
           { name: 'page', type: 'number', description: 'Page number (default 1)' },
           { name: 'pageSize', type: 'number', description: '1–200, default 50' }
         ],
         responses: [
-          { status: 200, label: 'Paginated leads', body: '{\n  "total": 150,\n  "page": 1,\n  "pageSize": 50,\n  "totalPages": 3,\n  "statusCounts": { "NEW": 80, "ENRICHED": 50, "DISQUALIFIED": 20 },\n  "leads": [\n    {\n      "id": "uuid",\n      "fullName": "Jane Doe",\n      "jobTitle": "CTO",\n      "status": "ENRICHED",\n      "googleSheetsExportedAt": "2026-02-25T12:00:00.000Z",\n      "supabaseExportedAt": "2026-02-25T12:01:00.000Z",\n      "project": { "id": "uuid", "name": "LATAM Engineering" },\n      "expert": { ... },\n      "contacts": [ { "type": "EMAIL", "value": "jane@example.com" } ],\n      "enrichmentAttempts": [ { "provider": "LEADMAGIC", "status": "SUCCESS" } ]\n    }\n  ]\n}' }
+          { status: 200, label: 'Paginated leads', body: '{\n  "total": 150,\n  "page": 1,\n  "pageSize": 50,\n  "totalPages": 3,\n  "statusCounts": { "NEW": 80, "ENRICHED": 50, "DISQUALIFIED": 20 },\n  "leads": [\n    {\n      "id": "uuid",\n      "firstName": "Jane",\n      "lastName": "Doe",\n      "fullName": "Jane Doe",\n      "jobTitle": "CTO",\n      "status": "ENRICHED",\n      "googleSheetsExportedAt": "2026-02-25T12:00:00.000Z",\n      "supabaseExportedAt": "2026-02-25T12:01:00.000Z",\n      "project": { "id": "uuid", "name": "LATAM Engineering" },\n      "expert": { "currentCompany": "Acme Corp", ... },\n      "contacts": [ { "type": "EMAIL", "value": "jane@example.com" } ],\n      "enrichmentAttempts": [ { "provider": "LEADMAGIC", "status": "SUCCESS" } ]\n    }\n  ]\n}' }
         ]
       },
       {

@@ -48,6 +48,39 @@ function composeOutreachBody(isExistingNetworkExpert: boolean): string {
   );
 }
 
+export interface TemplateContext {
+  firstName?: string | null;
+  lastName?: string | null;
+  location?: string | null;
+  jobTitle?: string | null;
+  currentCompany?: string | null;
+}
+
+const TEMPLATE_VAR_MAP: Record<string, keyof TemplateContext> = {
+  '{{FirstName}}': 'firstName',
+  '{{LastName}}': 'lastName',
+  '{{Location}}': 'location',
+  '{{JobTitle}}': 'jobTitle',
+  '{{CurrentCompany}}': 'currentCompany'
+};
+
+/**
+ * Resolves a template string by replacing variables with context data.
+ * Returns null if any variable used in the template has no data, signalling
+ * that outreach should be skipped for this lead.
+ */
+export function resolveTemplate(template: string, context: TemplateContext): string | null {
+  let resolved = template;
+  for (const [variable, contextKey] of Object.entries(TEMPLATE_VAR_MAP)) {
+    if (resolved.includes(variable)) {
+      const value = context[contextKey];
+      if (!value) return null;
+      resolved = resolved.replaceAll(variable, value);
+    }
+  }
+  return resolved;
+}
+
 export class OutreachService {
   private readonly cooldownService: CooldownService;
   private readonly messagingClient: MessagingClient;

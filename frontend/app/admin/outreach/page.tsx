@@ -3,18 +3,26 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { useSocket } from '@/hooks/useSocket';
 import { fetchOutreachThreads, updateOutreachThread } from '@/services/adminService';
-import { apiRequest } from '@/services/apiClient';
 import { listProjects } from '@/services/projectService';
 
-const CHANNELS = [
-  'EMAIL', 'LINKEDIN', 'WHATSAPP', 'PHONE', 'SMS', 'RESPONDIO',
-  'IMESSAGE', 'LINE', 'WECHAT', 'VIBER', 'TELEGRAM', 'KAKAOTALK', 'VOICEMAIL'
-] as const;
+const CHANNELS: { value: string; label: string }[] = [
+  { value: 'EMAIL', label: 'Email (SendGrid)' },
+  { value: 'SMS', label: 'SMS (Twilio)' },
+  { value: 'VOICEMAIL', label: 'Voicemail (Twilio)' },
+  { value: 'LINKEDIN', label: 'LinkedIn' },
+  { value: 'WHATSAPP', label: 'WhatsApp (2Chat)' },
+  { value: 'PHONE', label: 'Phone (Yay.com)' },
+  { value: 'RESPONDIO', label: 'Respond.io' },
+  { value: 'IMESSAGE', label: 'iMessage (Twilio)' },
+  { value: 'LINE', label: 'LINE' },
+  { value: 'WECHAT', label: 'WeChat' },
+  { value: 'VIBER', label: 'Viber' },
+  { value: 'TELEGRAM', label: 'Telegram' },
+  { value: 'KAKAOTALK', label: 'KakaoTalk' }
+];
 
 type ThreadStatus = 'OPEN' | 'CLOSED' | 'ARCHIVED';
 
@@ -114,7 +122,6 @@ export default function OutreachPage(): JSX.Element {
   const queryClient = useQueryClient();
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [filterStatus, setFilterStatus] = useState<ThreadStatus | ''>('');
-  const [showNewOutreach, setShowNewOutreach] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
 
   useSocket('/admin', 'outreach.thread.updated', () => setRefreshNonce((v) => v + 1));
@@ -160,24 +167,7 @@ export default function OutreachPage(): JSX.Element {
           <h2 className="text-xl font-bold">Outreach</h2>
           <p className="text-sm text-slate-500">Manage and monitor expert outreach campaigns</p>
         </div>
-        <Button onClick={() => setShowNewOutreach((v) => !v)}>
-          <span className="flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-base">add</span>
-            New Outreach
-          </span>
-        </Button>
       </div>
-
-      {showNewOutreach && (
-        <NewOutreachForm
-          projects={projectsQuery.data ?? []}
-          onSent={() => {
-            setShowNewOutreach(false);
-            void queryClient.invalidateQueries({ queryKey: ['outreach-threads'] });
-          }}
-          onCancel={() => setShowNewOutreach(false)}
-        />
-      )}
 
       {/* Filters */}
       <Card className="flex flex-wrap items-center gap-3">
@@ -237,7 +227,7 @@ export default function OutreachPage(): JSX.Element {
           <p className="mt-2 text-sm text-slate-500">
             {selectedProjectId ? 'No outreach threads for this project' : 'No outreach threads yet'}
           </p>
-          <p className="mt-1 text-xs text-slate-400">Start a new outreach to begin contacting experts</p>
+          <p className="mt-1 text-xs text-slate-400">Outreach is sent automatically when leads are enriched in a project with configured channels.</p>
         </Card>
       )}
 
@@ -268,7 +258,7 @@ export default function OutreachPage(): JSX.Element {
                     <ThreadActions thread={thread} onStatusChange={handleStatusChange} />
                   </div>
                   <p className="mt-0.5 text-xs text-slate-400">
-                    {thread.channel} · {thread.expert?.email ?? ''}
+                    {CHANNELS.find((ch) => ch.value === thread.channel)?.label ?? thread.channel} · {thread.expert?.email ?? ''}
                   </p>
 
                   {thread.messages && thread.messages.length > 0 && (
@@ -290,121 +280,5 @@ export default function OutreachPage(): JSX.Element {
         </div>
       )}
     </div>
-  );
-}
-
-function NewOutreachForm({
-  projects,
-  onSent,
-  onCancel
-}: {
-  projects: { id: string; name: string }[];
-  onSent: () => void;
-  onCancel: () => void;
-}): JSX.Element {
-  const [projectId, setProjectId] = useState('');
-  const [expertId, setExpertId] = useState('');
-  const [channel, setChannel] = useState<string>('EMAIL');
-  const [recipient, setRecipient] = useState('');
-  const [body, setBody] = useState('');
-  const [error, setError] = useState('');
-
-  const sendMutation = useMutation({
-    mutationFn: async () => {
-      const payload: Record<string, string> = { projectId, expertId, channel, recipient };
-      if (body.trim()) payload.body = body;
-      return apiRequest('/api/v1/outreach/send', {
-        method: 'POST',
-        body: payload
-      });
-    },
-    onSuccess: () => onSent(),
-    onError: (err) => setError(err instanceof Error ? err.message : 'Send failed')
-  });
-
-  const canSubmit = projectId && expertId && channel && recipient;
-
-  const handleSubmit = useCallback(() => {
-    setError('');
-    sendMutation.mutate();
-  }, [sendMutation]);
-
-  return (
-    <Card className="space-y-4 border-primary/30">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary">send</span>
-          New Outreach Message
-        </h3>
-        <button onClick={onCancel} className="rounded-lg p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
-          <span className="material-symbols-outlined text-xl">close</span>
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Project</label>
-          <select
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-          >
-            <option value="">Select a project</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Channel</label>
-          <select
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-            value={channel}
-            onChange={(e) => setChannel(e.target.value)}
-          >
-            {CHANNELS.map((ch) => (
-              <option key={ch} value={ch}>{ch}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Expert ID</label>
-          <Input
-            value={expertId}
-            onChange={(e) => setExpertId(e.target.value)}
-            placeholder="UUID of the expert / lead"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Recipient</label>
-          <Input
-            value={recipient}
-            onChange={(e) => setRecipient(e.target.value)}
-            placeholder="Email, phone number, or handle"
-          />
-        </div>
-      </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700">Message Body</label>
-        <textarea
-          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary min-h-[80px] resize-y"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="Optional — leave blank to auto-generate based on expert status"
-        />
-        <p className="mt-1 text-xs text-slate-400">
-          If left blank, the system will use a project-specific invitation for existing network experts, or a general signup invitation for new experts.
-        </p>
-      </div>
-
-      {error && <p className="text-sm text-red-600">{error}</p>}
-
-      <div className="flex justify-end gap-2">
-        <Button onClick={onCancel} className="bg-slate-100 text-slate-700 hover:bg-slate-200">Cancel</Button>
-        <Button onClick={handleSubmit} disabled={!canSubmit || sendMutation.isPending}>
-          {sendMutation.isPending ? 'Sending...' : 'Send Outreach'}
-        </Button>
-      </div>
-    </Card>
   );
 }

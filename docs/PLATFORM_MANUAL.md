@@ -1011,6 +1011,16 @@ Each attempt is logged as an `EnrichmentAttempt` with provider, status, confiden
 
 **Region-aware rules:** Experts in Canada, GB, Australia, and all European countries require professional email addresses only (personal emails are filtered out).
 
+### Auto-outreach behavior
+
+When a lead reaches `ENRICHED` status, the system checks if the project has an outreach template and bound channels. If so:
+
+1. Template variables (`{{FirstName}}`, `{{LastName}}`, `{{Location}}`, `{{JobTitle}}`, `{{CurrentCompany}}`) are resolved with actual lead/expert data.
+2. If all variables used in the template have data, the outreach message is queued automatically.
+3. If any variable is missing, outreach is skipped for that lead.
+
+Outreach is therefore automatic after enrichment — no manual send is required when the project is configured with a template and healthy channels.
+
 ---
 
 ## 10. Channel Reference
@@ -1328,22 +1338,31 @@ The platform includes a Next.js admin portal at `http://localhost:3001` (start w
 
 ### Project creation wizard
 
-Four-step guided flow for creating and configuring projects:
+Five-step guided flow for creating and configuring projects:
 
-1. **Project details** — Name, description, target threshold, full-world country selection, company filters, job-title filters, and priority.
-2. **Lead sources** — Select and bind provider accounts (Apollo, Sales Nav, enrichment providers, messaging channels). Provider health is validated before binding.
-3. **Export destinations** — Choose where enriched leads should be automatically exported (Google Sheets and/or Supabase). Only accounts already configured on the Providers page are shown.
-4. **Start prospecting** — Summary and links to view leads in real time.
+1. **Project Details** — Basics: name, description, target threshold, geography, target companies, and job titles.
+2. **Lead Sources** — Select configured provider accounts for sourcing and enrichment (Apollo, Sales Nav, enrichment providers). Provider health is validated before binding.
+3. **Export Destinations** — Select Google Sheets and/or Supabase accounts for export. Only accounts already configured on the Providers page are shown.
+4. **Outreach** — Select healthy outreach channels and write a mandatory message template. The template supports variable insertion: `{{FirstName}}`, `{{LastName}}`, `{{Location}}`, `{{JobTitle}}`, `{{CurrentCompany}}`. Outreach is sent automatically after enrichment.
+5. **Start Prospecting** — Completion screen with summary and links to view leads in real time.
 
 ### Leads pipeline
 
-Displays all leads for a project with real-time status updates via live polling and socket events. Leads are grouped by pipeline stage (`NEW` → `ENRICHING` → `ENRICHED` → `OUTREACH_PENDING` → `CONTACTED` → `REPLIED` → `CONVERTED`). Supports filtering, search, and bulk actions.
+Project selection is mandatory — there is no "All projects" option. The first project is auto-selected when the page loads.
+
+Displays leads for the selected project with real-time status updates via live polling and socket events. Leads are grouped by pipeline stage (`NEW` → `ENRICHING` → `ENRICHED` → `OUTREACH_PENDING` → `CONTACTED` → `REPLIED` → `CONVERTED`). Supports filtering, search, and bulk actions.
+
+The table columns include **First Name**, **Last Name**, **Job Title**, and **Current Company** (the former single "Lead" column has been split). The **Project** column has been removed. A **column visibility toggle** at the top of the table lets you show or hide columns. **Pagination** is shown both above and below the table, with a page size selector (25, 50, 100, 200).
 
 The table includes an **Exported** column showing whether a lead has been exported to Google Sheets and/or Supabase. Hovering over "Yes" reveals a tooltip listing each destination with its export timestamp.
 
-### Outreach monitoring
+When no projects exist, an empty state directs the user to create one.
 
-Tracks all outreach threads and messages per project. Displays delivery status, channel used, and inbound reply content. Reply events update the view in real time via the `outreach.reply.received` event.
+### Outreach page
+
+Manual outreach has been removed from the frontend. The outreach page now only shows **thread history** — delivery status, channel used, and inbound reply content. Reply events update the view in real time via the `outreach.reply.received` event.
+
+Outreach is configured in the project wizard (Step 4) and sent automatically after enrichment. See [Auto-outreach behavior](#auto-outreach-behavior) above.
 
 ### Caller execution interface
 

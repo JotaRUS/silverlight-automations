@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -11,9 +11,11 @@ import { Input } from '@/components/ui/input';
 import { TagInput } from '@/components/ui/tag-input';
 import {
   EXPORT_DESTINATION_TYPES,
+  OUTREACH_CHANNEL_TYPES,
   PROVIDER_CATEGORIES,
   PROVIDER_DISPLAY_NAMES,
-  PROVIDER_TYPE_TO_FIELD
+  PROVIDER_TYPE_TO_FIELD,
+  TEMPLATE_VARIABLES
 } from '@/lib/providerConstants';
 import { listProviderAccounts } from '@/services/providerService';
 import {
@@ -24,11 +26,20 @@ import {
 } from '@/services/projectService';
 import type { ProviderAccount, ProviderType } from '@/types/provider';
 
-type WizardStep = 'basics' | 'sources' | 'exports' | 'done';
+type WizardStep = 'basics' | 'sources' | 'exports' | 'outreach' | 'done';
+
+const SAMPLE_DATA: Record<string, string> = {
+  '{{FirstName}}': 'Jane',
+  '{{LastName}}': 'Doe',
+  '{{Location}}': 'New York, US',
+  '{{JobTitle}}': 'VP of Engineering',
+  '{{CurrentCompany}}': 'Acme Corp'
+};
 
 export default function NewProjectWizardPage(): JSX.Element {
   const router = useRouter();
   const [step, setStep] = useState<WizardStep>('basics');
+  const templateRef = useRef<HTMLTextAreaElement>(null);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -43,8 +54,11 @@ export default function NewProjectWizardPage(): JSX.Element {
 
   const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({});
   const [selectedExports, setSelectedExports] = useState<Record<string, boolean>>({});
+  const [selectedOutreach, setSelectedOutreach] = useState<Record<string, boolean>>({});
+  const [outreachTemplate, setOutreachTemplate] = useState('');
   const [bindError, setBindError] = useState('');
   const [exportError, setExportError] = useState('');
+  const [outreachError, setOutreachError] = useState('');
 
   const providersQuery = useQuery({
     queryKey: ['providerAccounts', 'active'],
@@ -66,6 +80,16 @@ export default function NewProjectWizardPage(): JSX.Element {
     for (const t of EXPORT_DESTINATION_TYPES) {
       for (const acct of accountsByType.get(t) ?? []) {
         result.push(acct);
+      }
+    }
+    return result;
+  }, [accountsByType]);
+
+  const outreachAccounts = useMemo(() => {
+    const result: ProviderAccount[] = [];
+    for (const t of OUTREACH_CHANNEL_TYPES) {
+      for (const acct of accountsByType.get(t) ?? []) {
+        if (acct.lastHealthStatus === 'ok') result.push(acct);
       }
     }
     return result;
@@ -151,11 +175,38 @@ export default function NewProjectWizardPage(): JSX.Element {
       }
     },
     onSuccess: () => {
-      setStep('done');
+      setStep('outreach');
       setExportError('');
     },
     onError: (err) => {
       setExportError(err instanceof Error ? err.message : 'Failed to bind export destinations');
+    }
+  });
+
+  const outreachBindMutation = useMutation({
+    mutationFn: async () => {
+      if (!outreachTemplate.trim()) {
+        throw new Error('Message template is required');
+      }
+
+      const bindings: Record<string, string | null> = {
+        outreachMessageTemplate: outreachTemplate
+      };
+      for (const acct of outreachAccounts) {
+        if (selectedOutreach[acct.id]) {
+          const field = PROVIDER_TYPE_TO_FIELD[acct.providerType];
+          bindings[field] = acct.id;
+        }
+      }
+
+      return updateProject(projectId, bindings as never);
+    },
+    onSuccess: () => {
+      setStep('done');
+      setOutreachError('');
+    },
+    onError: (err) => {
+      setOutreachError(err instanceof Error ? err.message : 'Failed to save outreach configuration');
     }
   });
 
@@ -194,11 +245,61 @@ export default function NewProjectWizardPage(): JSX.Element {
     });
   }, [providersQuery.data]);
 
+  const toggleOutreach = useCallback((accountId: string, providerType: ProviderType) => {
+    setSelectedOutreach((prev) => {
+      const next = { ...prev };
+      if (next[accountId]) {
+        delete next[accountId];
+      } else {
+        for (const other of outreachAccounts) {
+          if (other.providerType === providerType && other.id !== accountId) {
+            delete next[other.id];
+          }
+        }
+        next[accountId] = true;
+      }
+      return next;
+    });
+  }, [outreachAccounts]);
+
+  const insertVariable = useCallback((variable: string) => {
+    const textarea = templateRef.current;
+    if (!textarea) {
+      setOutreachTemplate((prev) => prev + variable);
+      return;
+    }
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const before = outreachTemplate.slice(0, start);
+    const after = outreachTemplate.slice(end);
+    const newValue = before + variable + after;
+    setOutreachTemplate(newValue);
+    requestAnimationFrame(() => {
+      textarea.focus();
+      const cursorPos = start + variable.length;
+      textarea.setSelectionRange(cursorPos, cursorPos);
+    });
+  }, [outreachTemplate]);
+
+  const templatePreview = useMemo(() => {
+    let preview = outreachTemplate;
+    for (const [key, value] of Object.entries(SAMPLE_DATA)) {
+      preview = preview.split(key).join(value);
+    }
+    return preview;
+  }, [outreachTemplate]);
+
   const goToLeads = useCallback(() => {
     router.push(`/admin/leads?projectId=${projectId}`);
   }, [router, projectId]);
 
   const selectedCount = Object.values(selectedProviders).filter(Boolean).length;
+  const outreachSelectedCount = Object.values(selectedOutreach).filter(Boolean).length;
+
+  const isAfterStep = (target: WizardStep): boolean => {
+    const order: WizardStep[] = ['basics', 'sources', 'exports', 'outreach', 'done'];
+    return order.indexOf(step) > order.indexOf(target);
+  };
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -206,11 +307,13 @@ export default function NewProjectWizardPage(): JSX.Element {
       <div className="flex items-center gap-2">
         <StepIndicator num={1} label="Project Details" active={step === 'basics'} done={step !== 'basics'} />
         <div className="h-px flex-1 bg-slate-200" />
-        <StepIndicator num={2} label="Lead Sources" active={step === 'sources'} done={step === 'exports' || step === 'done'} />
+        <StepIndicator num={2} label="Lead Sources" active={step === 'sources'} done={isAfterStep('sources')} />
         <div className="h-px flex-1 bg-slate-200" />
-        <StepIndicator num={3} label="Export Destinations" active={step === 'exports'} done={step === 'done'} />
+        <StepIndicator num={3} label="Export Destinations" active={step === 'exports'} done={isAfterStep('exports')} />
         <div className="h-px flex-1 bg-slate-200" />
-        <StepIndicator num={4} label="Start Prospecting" active={step === 'done'} done={false} />
+        <StepIndicator num={4} label="Outreach" active={step === 'outreach'} done={isAfterStep('outreach')} />
+        <div className="h-px flex-1 bg-slate-200" />
+        <StepIndicator num={5} label="Start Prospecting" active={step === 'done'} done={false} />
       </div>
 
       {/* Step 1: Project basics */}
@@ -294,7 +397,7 @@ export default function NewProjectWizardPage(): JSX.Element {
         </Card>
       )}
 
-      {/* Step 2: Lead Sources — provider account selection matrix */}
+      {/* Step 2: Lead Sources */}
       {step === 'sources' && (
         <Card className="space-y-5">
           <div>
@@ -326,7 +429,7 @@ export default function NewProjectWizardPage(): JSX.Element {
             <div className="space-y-5">
               {PROVIDER_CATEGORIES.map((cat) => {
                 const available = cat.types
-                  .filter((t) => !EXPORT_DESTINATION_TYPES.includes(t))
+                  .filter((t) => !EXPORT_DESTINATION_TYPES.includes(t) && !OUTREACH_CHANNEL_TYPES.includes(t))
                   .filter((t) => (accountsByType.get(t)?.length ?? 0) > 0);
                 if (available.length === 0) return null;
 
@@ -489,7 +592,7 @@ export default function NewProjectWizardPage(): JSX.Element {
           {exportError && <p className="text-sm text-red-600">{exportError}</p>}
 
           <div className="flex justify-between">
-            <Button onClick={() => setStep('done')} className="bg-slate-100 text-slate-700 hover:bg-slate-200">
+            <Button onClick={() => setStep('outreach')} className="bg-slate-100 text-slate-700 hover:bg-slate-200">
               Skip for now
             </Button>
             <Button
@@ -503,7 +606,129 @@ export default function NewProjectWizardPage(): JSX.Element {
         </Card>
       )}
 
-      {/* Step 4: Done */}
+      {/* Step 4: Outreach */}
+      {step === 'outreach' && (
+        <Card className="space-y-5">
+          <div>
+            <h2 className="text-lg font-bold">Outreach Configuration</h2>
+            <p className="text-sm text-slate-500">
+              Select outreach channels and write a message template. Outreach is sent automatically when leads are enriched.
+            </p>
+          </div>
+
+          {outreachAccounts.length === 0 && (
+            <div className="rounded-lg border-2 border-dashed border-slate-200 p-8 text-center">
+              <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">campaign</span>
+              <p className="text-sm font-medium text-slate-600">No healthy outreach channels available</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Go to <button type="button" onClick={() => router.push('/admin/providers')} className="text-primary underline">Providers</button> to
+                configure and verify outreach channels (Email, SMS, WhatsApp, etc.).
+              </p>
+            </div>
+          )}
+
+          {outreachAccounts.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-slate-700">Outreach Channels</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {outreachAccounts.map((acct) => {
+                  const isSelected = !!selectedOutreach[acct.id];
+                  const displayName = PROVIDER_DISPLAY_NAMES[acct.providerType];
+                  return (
+                    <button
+                      key={acct.id}
+                      type="button"
+                      onClick={() => toggleOutreach(acct.id, acct.providerType)}
+                      className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
+                        isSelected
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div
+                        className={`flex size-5 shrink-0 items-center justify-center rounded border transition-colors ${
+                          isSelected
+                            ? 'border-primary bg-primary text-white'
+                            : 'border-slate-300 bg-white'
+                        }`}
+                      >
+                        {isSelected && <span className="material-symbols-outlined text-sm">check</span>}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-800 truncate">
+                          {displayName} — {acct.accountLabel}
+                        </p>
+                        <p className="text-[11px] text-emerald-600">Connected</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-700">Message Template *</h3>
+              <span className="text-xs text-slate-400">{outreachTemplate.length} chars</span>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {TEMPLATE_VARIABLES.map((v) => (
+                <button
+                  key={v.key}
+                  type="button"
+                  onClick={() => insertVariable(v.key)}
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:border-slate-300 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-xs">{v.icon}</span>
+                  {v.label}
+                </button>
+              ))}
+            </div>
+
+            <textarea
+              ref={templateRef}
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary min-h-[100px] resize-y"
+              value={outreachTemplate}
+              onChange={(e) => setOutreachTemplate(e.target.value)}
+              placeholder="Hi {{FirstName}}, we have a project that matches your expertise..."
+            />
+
+            {outreachTemplate.trim() && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Preview with sample data</p>
+                <p className="text-sm text-slate-700 whitespace-pre-wrap">{templatePreview}</p>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+              <span className="material-symbols-outlined text-base text-amber-500">info</span>
+              <p className="text-xs text-slate-500">
+                Outreach will only be sent when all template variables have data for a lead.
+                If a variable like {'{{CurrentCompany}}'} is missing, outreach is skipped for that lead.
+              </p>
+            </div>
+          </div>
+
+          {outreachError && <p className="text-sm text-red-600">{outreachError}</p>}
+
+          <div className="flex justify-between">
+            <Button onClick={() => setStep('done')} className="bg-slate-100 text-slate-700 hover:bg-slate-200">
+              Skip for now
+            </Button>
+            <Button
+              onClick={() => outreachBindMutation.mutate()}
+              disabled={!outreachTemplate.trim() || outreachSelectedCount === 0 || outreachBindMutation.isPending}
+            >
+              {outreachBindMutation.isPending ? 'Saving...' : 'Save & Start Prospecting'}
+              <span className="material-symbols-outlined text-base">arrow_forward</span>
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Step 5: Done */}
       {step === 'done' && (
         <Card className="space-y-5 text-center py-8">
           <div className="flex justify-center">
@@ -514,8 +739,8 @@ export default function NewProjectWizardPage(): JSX.Element {
           <div>
             <h2 className="text-lg font-bold">Project Created!</h2>
             <p className="text-sm text-slate-500 mt-1">
-              Your project is set up with lead sources and export destinations. Head to the Leads page to
-              watch leads flow through the pipeline in real time.
+              Your project is set up with lead sources, export destinations, and outreach channels.
+              Head to the Leads page to watch leads flow through the pipeline in real time.
             </p>
           </div>
           <div className="flex justify-center gap-3">

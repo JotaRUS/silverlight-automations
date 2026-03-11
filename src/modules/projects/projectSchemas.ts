@@ -76,7 +76,8 @@ export const projectCreateSchema = z
         )
       })
       .optional()
-      .nullable()
+      .nullable(),
+    outreachMessageTemplate: z.string().optional().nullable()
   })
   .merge(providerBindingSchema)
   .strict();

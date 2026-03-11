@@ -106,6 +106,19 @@ export const PROVIDER_CATEGORIES: ProviderCategory[] = [
 
 export const EXPORT_DESTINATION_TYPES: ProviderType[] = ['GOOGLE_SHEETS', 'SUPABASE'];
 
+export const OUTREACH_CHANNEL_TYPES: ProviderType[] = [
+  'EMAIL_PROVIDER', 'TWILIO', 'VOICEMAIL_DROP', 'WHATSAPP_2CHAT',
+  'RESPONDIO', 'LINE', 'WECHAT', 'VIBER', 'TELEGRAM', 'KAKAOTALK'
+];
+
+export const TEMPLATE_VARIABLES = [
+  { key: '{{FirstName}}', label: 'First Name', icon: 'person' },
+  { key: '{{LastName}}', label: 'Last Name', icon: 'badge' },
+  { key: '{{Location}}', label: 'Location', icon: 'location_on' },
+  { key: '{{JobTitle}}', label: 'Job Title', icon: 'work' },
+  { key: '{{CurrentCompany}}', label: 'Current Company', icon: 'business' }
+] as const;
+
 export const GEOGRAPHY_OPTIONS = [
   { code: 'US', label: 'United States' },
   { code: 'GB', label: 'United Kingdom' },

@@ -258,6 +258,7 @@ model Project {
   anyleadsProviderAccountId        String?             @db.Uuid
   googleSheetsProviderAccountId    String?             @db.Uuid
   supabaseProviderAccountId        String?             @db.Uuid
+  outreachMessageTemplate          String?
   metadata                         Json?               @db.JsonB
   createdAt                        DateTime            @default(now())
   updatedAt                        DateTime            @updatedAt

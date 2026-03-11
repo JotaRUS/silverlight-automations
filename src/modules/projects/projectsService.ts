@@ -37,6 +37,7 @@ export interface ProjectCreateInput {
   yayProviderAccountId?: string | null;
   googleSheetsProviderAccountId?: string | null;
   supabaseProviderAccountId?: string | null;
+  outreachMessageTemplate?: string | null;
 }
 
 export interface ProjectUpdateInput {
@@ -75,6 +76,7 @@ export interface ProjectUpdateInput {
   yayProviderAccountId?: string | null;
   googleSheetsProviderAccountId?: string | null;
   supabaseProviderAccountId?: string | null;
+  outreachMessageTemplate?: string | null;
 }
 
 export interface AttachCompaniesInput {
@@ -170,6 +172,7 @@ export class ProjectsService {
         overrideCooldown: input.overrideCooldown ?? false,
         regionConfig: toJsonValue(input.regionConfig) ?? {},
         enrichmentRoutingConfig: toJsonValue(input.enrichmentRoutingConfig ?? undefined),
+        outreachMessageTemplate: input.outreachMessageTemplate,
         ...this.projectProviderBindings(input)
       }
     });
@@ -188,6 +191,7 @@ export class ProjectsService {
         overrideCooldown: input.overrideCooldown,
         regionConfig: toJsonValue(input.regionConfig),
         enrichmentRoutingConfig: toJsonValue(input.enrichmentRoutingConfig ?? undefined),
+        outreachMessageTemplate: input.outreachMessageTemplate,
         ...this.projectProviderBindings(input)
       }
     });
