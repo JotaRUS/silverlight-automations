@@ -15,8 +15,8 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderType, string> = {
   PEOPLEDATALABS: 'People Data Labs',
   ANYLEADS: 'Anyleads',
   LINKEDIN: 'LinkedIn Messaging (Legacy)',
-  EMAIL_PROVIDER: 'Email',
-  TWILIO: 'Twilio',
+  EMAIL_PROVIDER: 'Email (SendGrid)',
+  TWILIO: 'SMS (Twilio)',
   WHATSAPP_2CHAT: 'WhatsApp (2Chat)',
   RESPONDIO: 'Respond.io',
   LINE: 'LINE',
@@ -24,7 +24,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderType, string> = {
   VIBER: 'Viber',
   TELEGRAM: 'Telegram',
   KAKAOTALK: 'KakaoTalk',
-  VOICEMAIL_DROP: 'Voicemail Drop',
+  VOICEMAIL_DROP: 'Voicemail (Twilio)',
   YAY: 'Yay.com',
   GOOGLE_SHEETS: 'Google Sheets',
   SUPABASE: 'Supabase'
@@ -88,7 +88,7 @@ export const PROVIDER_CATEGORIES: ProviderCategory[] = [
     key: 'outreach',
     label: 'Outreach Channels',
     icon: 'campaign',
-    types: ['EMAIL_PROVIDER', 'TWILIO', 'WHATSAPP_2CHAT', 'RESPONDIO', 'LINE', 'WECHAT', 'VIBER', 'TELEGRAM', 'KAKAOTALK', 'VOICEMAIL_DROP']
+    types: ['EMAIL_PROVIDER', 'TWILIO', 'VOICEMAIL_DROP', 'WHATSAPP_2CHAT', 'RESPONDIO', 'LINE', 'WECHAT', 'VIBER', 'TELEGRAM', 'KAKAOTALK']
   },
   {
     key: 'operations',

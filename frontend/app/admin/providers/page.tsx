@@ -38,6 +38,7 @@ const providerTypes: ProviderType[] = [
   'ANYLEADS',
   'EMAIL_PROVIDER',
   'TWILIO',
+  'VOICEMAIL_DROP',
   'WHATSAPP_2CHAT',
   'RESPONDIO',
   'LINE',
@@ -45,7 +46,6 @@ const providerTypes: ProviderType[] = [
   'VIBER',
   'TELEGRAM',
   'KAKAOTALK',
-  'VOICEMAIL_DROP',
   'YAY',
   'GOOGLE_SHEETS',
   'SUPABASE'
@@ -80,19 +80,36 @@ const CREDENTIAL_FIELDS: Record<ProviderType, CredentialFieldDef[]> = {
   PEOPLEDATALABS: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   ANYLEADS: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter Anyleads API key' }],
   LINKEDIN: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
-  EMAIL_PROVIDER: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  EMAIL_PROVIDER: [
+    { key: 'host', label: 'SMTP Host', type: 'text', placeholder: 'smtp.sendgrid.net' },
+    { key: 'port', label: 'SMTP Port', type: 'text', placeholder: '587' },
+    { key: 'user', label: 'SMTP Username', type: 'text', placeholder: 'apikey (literal for SendGrid)' },
+    { key: 'pass', label: 'SMTP Password / API Key', type: 'password', placeholder: 'Your SendGrid API key' },
+    { key: 'from', label: 'From Address', type: 'text', placeholder: 'outreach@yourdomain.com' }
+  ],
   TWILIO: [
     { key: 'accountSid', label: 'Account SID', type: 'text', placeholder: 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' },
-    { key: 'authToken', label: 'Auth Token', type: 'password', placeholder: 'Enter auth token' }
+    { key: 'authToken', label: 'Auth Token', type: 'password', placeholder: 'Enter auth token' },
+    { key: 'fromNumber', label: 'From Number', type: 'text', placeholder: '+15551234567' }
   ],
-  WHATSAPP_2CHAT: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  WHATSAPP_2CHAT: [
+    { key: 'apiKey', label: 'API Key', type: 'password', placeholder: '2Chat user API key' },
+    { key: 'fromNumber', label: 'From WhatsApp Number', type: 'text', placeholder: '+15551234567' }
+  ],
   RESPONDIO: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   LINE: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   WECHAT: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
-  VIBER: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  VIBER: [
+    { key: 'apiKey', label: 'Auth Token', type: 'password', placeholder: 'Viber bot auth token' },
+    { key: 'senderName', label: 'Sender Name', type: 'text', placeholder: 'Your Bot Name (max 28 chars)' }
+  ],
   TELEGRAM: [{ key: 'botToken', label: 'Bot Token', type: 'password', placeholder: 'Enter bot token' }],
   KAKAOTALK: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
-  VOICEMAIL_DROP: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
+  VOICEMAIL_DROP: [
+    { key: 'accountSid', label: 'Account SID', type: 'text', placeholder: 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' },
+    { key: 'authToken', label: 'Auth Token', type: 'password', placeholder: 'Twilio auth token' },
+    { key: 'fromNumber', label: 'From Number', type: 'text', placeholder: '+15551234567' }
+  ],
   YAY: [
     { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' },
     { key: 'webhookSecret', label: 'Webhook Secret', type: 'password', placeholder: 'Enter webhook secret' }
