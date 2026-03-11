@@ -621,7 +621,7 @@ export default function LeadsPage(): JSX.Element {
                   return (
                     <tr key={lead.id} className="hover:bg-slate-50/50 transition-colors">
                       {show('firstName') && (
-                        <td className="px-4 py-3 text-sm font-medium text-slate-800 whitespace-nowrap">
+                        <td className="px-4 py-3 text-sm text-slate-700 whitespace-nowrap">
                           {firstName || <span className="text-slate-300">—</span>}
                         </td>
                       )}
