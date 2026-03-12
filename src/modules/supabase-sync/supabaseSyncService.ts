@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 
 import { AppError } from '../../core/errors/appError';
+import { isoCodeToCapitalTimezone } from '../../config/constants';
 import { ProviderAccountsService } from '../providers/providerAccountsService';
 import {
   SupabaseDataClient,
@@ -148,6 +149,11 @@ export class SupabaseSyncService {
     const primaryEmail = emails[0] ?? null;
     const primaryPhone = phones[0] ?? null;
 
+    const countryIso = lead.countryIso ?? lead.expert.countryIso;
+    const timezone =
+      lead.expert.timezone ??
+      (countryIso ? isoCodeToCapitalTimezone(countryIso) : null);
+
     return {
       project_id: lead.project.id,
       project_name: lead.project.name,
@@ -165,8 +171,9 @@ export class SupabaseSyncService {
       last_name: lead.lastName ?? lead.expert.lastName,
       job_title: lead.jobTitle ?? lead.expert.currentRole,
       linkedin_url: linkedinUrl,
-      country_iso: lead.countryIso ?? lead.expert.countryIso,
-      country: lead.countryIso ?? lead.expert.countryIso,
+      country_iso: countryIso,
+      country: countryIso,
+      timezone,
       region_iso: lead.regionIso ?? lead.expert.regionIso,
       city,
       state,
