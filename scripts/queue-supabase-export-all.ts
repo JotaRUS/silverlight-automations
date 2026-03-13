@@ -38,7 +38,8 @@ async function main(): Promise<void> {
   }
 
   const queues = getQueues();
-  const correlationId = `bulk-export-${Date.now()}`;
+  const batchTs = Date.now();
+  const correlationId = `bulk-export-${batchTs}`;
 
   for (const lead of leads) {
     await queues.supabaseSyncQueue.add(
@@ -47,7 +48,7 @@ async function main(): Promise<void> {
         correlationId,
         data: { projectId: lead.projectId, leadId: lead.id }
       },
-      { jobId: buildJobId('supabase-sync', lead.projectId, lead.id) }
+      { jobId: buildJobId('supabase-sync', lead.projectId, lead.id, batchTs) }
     );
   }
 
