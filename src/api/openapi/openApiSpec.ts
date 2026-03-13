@@ -191,7 +191,7 @@ export const openApiSpec = {
       post: {
         summary: 'Create provider account',
         description:
-          'Supports source, enrichment, outreach, Google Sheets, and Supabase destination providers. Supabase credentials: projectUrl, serviceRoleKey, schema, tableName, optional upsertKey.',
+          'Supports source, enrichment, outreach, Google Sheets, and Supabase destination providers. Supabase credentials: projectUrl, serviceRoleKey, schema, tableName, optional upsertKey, and optional column mappings (columnEmail, columnPhone, columnCountry, columnCurrentCompany, columnLinkedinUrl, columnJobTitle) to match your Supabase table schema.',
         security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
       }
     },

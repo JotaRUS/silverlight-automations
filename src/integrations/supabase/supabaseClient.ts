@@ -2,12 +2,22 @@ import { createClient } from '@supabase/supabase-js';
 
 import { AppError } from '../../core/errors/appError';
 
+export interface SupabaseColumnMapping {
+  email?: string;
+  phone?: string;
+  country?: string;
+  currentCompany?: string;
+  linkedinUrl?: string;
+  jobTitle?: string;
+}
+
 export interface SupabaseProviderCredentials {
   projectUrl: string;
   serviceRoleKey: string;
   schema?: string;
   tableName: string;
   upsertKey?: string;
+  columnMapping?: SupabaseColumnMapping;
 }
 
 interface SupabaseWriteResult {
@@ -20,20 +30,35 @@ interface SupabaseHealthResult {
   rowCount: number | null;
 }
 
+function optStr(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
 function normalizeCredentials(
   credentials: Record<string, unknown> | SupabaseProviderCredentials
 ): SupabaseProviderCredentials {
+  const raw = credentials as Record<string, unknown>;
+  const mapping: SupabaseColumnMapping = {};
+  const ce = optStr(raw.columnEmail);
+  const cp = optStr(raw.columnPhone);
+  const cc = optStr(raw.columnCountry);
+  const cco = optStr(raw.columnCurrentCompany);
+  const cl = optStr(raw.columnLinkedinUrl);
+  const cj = optStr(raw.columnJobTitle);
+  if (ce) mapping.email = ce;
+  if (cp) mapping.phone = cp;
+  if (cc) mapping.country = cc;
+  if (cco) mapping.currentCompany = cco;
+  if (cl) mapping.linkedinUrl = cl;
+  if (cj) mapping.jobTitle = cj;
+
   return {
-    projectUrl: typeof credentials.projectUrl === 'string' ? credentials.projectUrl : '',
-    serviceRoleKey: typeof credentials.serviceRoleKey === 'string' ? credentials.serviceRoleKey : '',
-    schema: typeof credentials.schema === 'string' && credentials.schema.trim().length > 0
-      ? credentials.schema.trim()
-      : 'public',
-    tableName: typeof credentials.tableName === 'string' ? credentials.tableName : '',
-    upsertKey:
-      typeof credentials.upsertKey === 'string' && credentials.upsertKey.trim().length > 0
-        ? credentials.upsertKey.trim()
-        : undefined
+    projectUrl: typeof raw.projectUrl === 'string' ? (raw.projectUrl as string) : '',
+    serviceRoleKey: typeof raw.serviceRoleKey === 'string' ? (raw.serviceRoleKey as string) : '',
+    schema: optStr(raw.schema) ?? 'public',
+    tableName: typeof raw.tableName === 'string' ? (raw.tableName as string) : '',
+    upsertKey: optStr(raw.upsertKey),
+    columnMapping: Object.keys(mapping).length > 0 ? mapping : undefined
   };
 }
 

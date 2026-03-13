@@ -56,6 +56,7 @@ interface CredentialFieldDef {
   label: string;
   type?: 'text' | 'password' | 'textarea';
   placeholder?: string;
+  optional?: boolean;
 }
 
 const CREDENTIAL_FIELDS: Record<ProviderType, CredentialFieldDef[]> = {
@@ -123,7 +124,13 @@ const CREDENTIAL_FIELDS: Record<ProviderType, CredentialFieldDef[]> = {
     { key: 'serviceRoleKey', label: 'Service Role Key', type: 'password', placeholder: 'Supabase service role key' },
     { key: 'schema', label: 'Schema', type: 'text', placeholder: 'public' },
     { key: 'tableName', label: 'Table Name', type: 'text', placeholder: 'enriched_leads' },
-    { key: 'upsertKey', label: 'Upsert Key', type: 'text', placeholder: 'lead_id' }
+    { key: 'upsertKey', label: 'Upsert Key', type: 'text', placeholder: 'lead_id' },
+    { key: 'columnEmail', label: 'Email Column', type: 'text', placeholder: 'primary_email', optional: true },
+    { key: 'columnPhone', label: 'Phone Column', type: 'text', placeholder: 'primary_phone', optional: true },
+    { key: 'columnCountry', label: 'Country Column', type: 'text', placeholder: 'country_iso', optional: true },
+    { key: 'columnCurrentCompany', label: 'Current Company Column', type: 'text', placeholder: 'company_name', optional: true },
+    { key: 'columnLinkedinUrl', label: 'LinkedIn URL Column', type: 'text', placeholder: 'linkedin_url', optional: true },
+    { key: 'columnJobTitle', label: 'Job Title Column', type: 'text', placeholder: 'job_title', optional: true }
   ]
 };
 
@@ -165,7 +172,7 @@ function UpdateCredentialsForm({
   const [creds, setCreds] = useState<Record<string, string>>(() => buildEmptyCredentials(pt));
   const [error, setError] = useState('');
 
-  const allFilled = fields.every((f) => (creds[f.key] ?? '').trim().length > 0);
+  const allFilled = fields.every((f) => f.optional || (creds[f.key] ?? '').trim().length > 0);
 
   const mutation = useMutation({
     mutationFn: () => updateProviderAccount(accountId, { credentials: creds }),
@@ -382,14 +389,21 @@ export default function ProviderAccountsPage(): JSX.Element {
   });
 
   const activeFields = CREDENTIAL_FIELDS[providerType];
-  const allFieldsFilled = activeFields.every((f) => (credentials[f.key] ?? '').trim().length > 0);
+  const allFieldsFilled = activeFields.every((f) => f.optional || (credentials[f.key] ?? '').trim().length > 0);
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      const filteredCredentials = Object.fromEntries(
+        Object.entries(credentials).filter(([key, value]) => {
+          const field = activeFields.find((f) => f.key === key);
+          if (field?.optional && !value.trim()) return false;
+          return true;
+        })
+      );
       return createProviderAccount({
         providerType,
         accountLabel,
-        credentials
+        credentials: filteredCredentials
       });
     },
     onSuccess: () => {
@@ -444,27 +458,38 @@ export default function ProviderAccountsPage(): JSX.Element {
 
         <div className="space-y-3">
           <p className="text-sm font-medium">Credentials <span className="text-xs font-normal text-slate-500">(encrypted at rest)</span></p>
-          {activeFields.map((field) => (
-            <div key={field.key}>
-              <label className="mb-1 block text-sm text-slate-600">{field.label}</label>
-              {field.type === 'textarea' ? (
-                <textarea
-                  value={credentials[field.key] ?? ''}
-                  onChange={(event) => setCredentialField(field.key, event.target.value)}
-                  placeholder={field.placeholder}
-                  rows={4}
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
-                />
-              ) : (
-                <Input
-                  type={field.type ?? 'text'}
-                  value={credentials[field.key] ?? ''}
-                  onChange={(event) => setCredentialField(field.key, event.target.value)}
-                  placeholder={field.placeholder}
-                />
-              )}
-            </div>
-          ))}
+          {activeFields.map((field, idx) => {
+            const isFirstOptional = field.optional && (idx === 0 || !activeFields[idx - 1].optional);
+            return (
+              <div key={field.key}>
+                {isFirstOptional ? (
+                  <div className="mt-4 mb-2 border-t border-slate-200 pt-4">
+                    <p className="text-sm font-medium text-slate-700">Column Mapping <span className="text-xs font-normal text-slate-500">(match your Supabase table columns)</span></p>
+                  </div>
+                ) : null}
+                <label className="mb-1 block text-sm text-slate-600">
+                  {field.label}
+                  {field.optional ? <span className="ml-1 text-xs text-slate-400">(optional)</span> : null}
+                </label>
+                {field.type === 'textarea' ? (
+                  <textarea
+                    value={credentials[field.key] ?? ''}
+                    onChange={(event) => setCredentialField(field.key, event.target.value)}
+                    placeholder={field.placeholder}
+                    rows={4}
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
+                  />
+                ) : (
+                  <Input
+                    type={field.type ?? 'text'}
+                    value={credentials[field.key] ?? ''}
+                    onChange={(event) => setCredentialField(field.key, event.target.value)}
+                    placeholder={field.placeholder}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}

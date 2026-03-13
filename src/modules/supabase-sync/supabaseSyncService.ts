@@ -5,7 +5,8 @@ import { isoCodeToCapitalTimezone } from '../../config/constants';
 import { ProviderAccountsService } from '../providers/providerAccountsService';
 import {
   SupabaseDataClient,
-  type SupabaseProviderCredentials
+  type SupabaseProviderCredentials,
+  type SupabaseColumnMapping
 } from '../../integrations/supabase/supabaseClient';
 
 export interface SupabaseSyncInput {
@@ -75,7 +76,10 @@ export class SupabaseSyncService {
     return credentials as unknown as SupabaseProviderCredentials;
   }
 
-  private async buildLeadRow(input: SupabaseSyncInput): Promise<Record<string, unknown>> {
+  private async buildLeadRow(
+    input: SupabaseSyncInput,
+    columnMapping?: SupabaseColumnMapping
+  ): Promise<Record<string, unknown>> {
     const lead = await this.prismaClient.lead.findUnique({
       where: { id: input.leadId },
       include: {
@@ -154,7 +158,14 @@ export class SupabaseSyncService {
       lead.expert.timezone ??
       (countryIso ? isoCodeToCapitalTimezone(countryIso) : null);
 
-    return {
+    const colEmail = columnMapping?.email ?? 'primary_email';
+    const colPhone = columnMapping?.phone ?? 'primary_phone';
+    const colCountry = columnMapping?.country ?? 'country_iso';
+    const colCompany = columnMapping?.currentCompany ?? 'company_name';
+    const colLinkedin = columnMapping?.linkedinUrl ?? 'linkedin_url';
+    const colJobTitle = columnMapping?.jobTitle ?? 'job_title';
+
+    const row: Record<string, unknown> = {
       project_id: lead.project.id,
       project_name: lead.project.name,
       lead_id: lead.id,
@@ -169,29 +180,26 @@ export class SupabaseSyncService {
       full_name: lead.fullName ?? lead.expert.fullName,
       first_name: lead.firstName ?? lead.expert.firstName,
       last_name: lead.lastName ?? lead.expert.lastName,
-      job_title: lead.jobTitle ?? lead.expert.currentRole,
-      linkedin_url: linkedinUrl,
-      country_iso: countryIso,
-      country: countryIso,
+      [colJobTitle]: lead.jobTitle ?? lead.expert.currentRole,
+      [colLinkedin]: linkedinUrl,
+      [colCountry]: countryIso,
       timezone,
       region_iso: lead.regionIso ?? lead.expert.regionIso,
       city,
       state,
-      company_name: lead.company?.name ?? lead.expert.currentCompany,
-      current_company: lead.company?.name ?? lead.expert.currentCompany,
+      [colCompany]: lead.company?.name ?? lead.expert.currentCompany,
       emails,
       phones,
-      email: primaryEmail,
-      phone: primaryPhone,
-      phone_e164: primaryPhone,
-      primary_email: primaryEmail,
-      primary_phone: primaryPhone,
+      [colEmail]: primaryEmail,
+      [colPhone]: primaryPhone,
       apollo_id: metadataString(lead.metadata, 'apolloId'),
       tags,
       enrichment_providers: providerSummary.map((item) => item.provider),
       enrichment_provider_summary: providerSummary,
       synced_at: new Date().toISOString()
     };
+
+    return row;
   }
 
   public async syncLead(input: SupabaseSyncInput): Promise<void> {
@@ -200,7 +208,7 @@ export class SupabaseSyncService {
       return;
     }
 
-    const row = await this.buildLeadRow(input);
+    const row = await this.buildLeadRow(input, credentials.columnMapping);
     await this.supabaseClient.writeLeadRow(credentials, row);
     await this.prismaClient.lead.update({
       where: { id: input.leadId },

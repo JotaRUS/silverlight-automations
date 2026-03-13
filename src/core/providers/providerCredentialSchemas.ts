@@ -109,7 +109,13 @@ const supabaseCredentialSchema = z.object({
   serviceRoleKey: z.string().min(1),
   schema: z.string().min(1).default('public'),
   tableName: z.string().min(1),
-  upsertKey: z.string().min(1).optional()
+  upsertKey: z.string().min(1).optional(),
+  columnEmail: z.string().min(1).optional(),
+  columnPhone: z.string().min(1).optional(),
+  columnCountry: z.string().min(1).optional(),
+  columnCurrentCompany: z.string().min(1).optional(),
+  columnLinkedinUrl: z.string().min(1).optional(),
+  columnJobTitle: z.string().min(1).optional()
 });
 
 const providerCredentialParsers: Record<ProviderType, z.ZodType<Record<string, unknown>>> = {

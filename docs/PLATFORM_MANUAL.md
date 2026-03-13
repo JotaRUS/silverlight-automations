@@ -1386,6 +1386,21 @@ Real-time operational dashboard with:
 
 Lists all configured provider accounts with connection health checks. Supports adding new provider accounts, testing connectivity, and viewing usage metrics. Supabase can be bound as a destination provider so enriched leads are exported automatically into a configured table.
 
+#### Supabase column mapping
+
+When configuring a Supabase provider account, you can optionally specify the exact column names in your Supabase table for each exported field. This avoids the need to rename columns in your table to match the platform defaults. The configurable column mappings are:
+
+| Setting | Default column name | Description |
+|---|---|---|
+| `columnEmail` | `primary_email` | Lead's primary email address |
+| `columnPhone` | `primary_phone` | Lead's primary phone number |
+| `columnCountry` | `country_iso` | Lead's country (ISO code) |
+| `columnCurrentCompany` | `company_name` | Lead's current company |
+| `columnLinkedinUrl` | `linkedin_url` | Lead's LinkedIn profile URL |
+| `columnJobTitle` | `job_title` | Lead's job title |
+
+If a column mapping is left blank, the platform uses the default column name shown above.
+
 ### API keys and API docs
 
 The admin UI now includes:

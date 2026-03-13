@@ -1407,6 +1407,75 @@
       "description": "Dispatch screening questions to experts and record their responses.\n\n**Auth:** admin or ops."
     },
     {
+      "name": "Providers",
+      "item": [
+        {
+          "name": "Create Supabase Provider",
+          "id": "a1b2c3d4-e5f6-7890-abcd-ef0123456789",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"providerType\": \"SUPABASE\",\n  \"accountLabel\": \"Prod Export\",\n  \"credentials\": {\n    \"projectUrl\": \"https://your-project.supabase.co\",\n    \"serviceRoleKey\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"schema\": \"public\",\n    \"tableName\": \"enriched_leads\",\n    \"upsertKey\": \"lead_id\",\n    \"columnEmail\": \"email\",\n    \"columnPhone\": \"phone\",\n    \"columnCountry\": \"country\",\n    \"columnCurrentCompany\": \"current_company\",\n    \"columnLinkedinUrl\": \"linkedin_url\",\n    \"columnJobTitle\": \"job_title\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/providers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "providers"
+              ]
+            },
+            "description": "Creates a Supabase provider account for exporting enriched leads.\n\n**Required credentials:** projectUrl, serviceRoleKey, tableName\n**Optional credentials:** schema (default: public), upsertKey\n**Column mappings (optional):** columnEmail, columnPhone, columnCountry, columnCurrentCompany, columnLinkedinUrl, columnJobTitle — specify the exact column names in your Supabase table. If omitted, defaults are used (primary_email, primary_phone, country_iso, company_name, linkedin_url, job_title)."
+          },
+          "response": []
+        },
+        {
+          "name": "Test Provider Connection",
+          "id": "b2c3d4e5-f6a7-8901-bcde-f01234567890",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/providers/{{providerAccountId}}/test-connection",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "providers",
+                "{{providerAccountId}}",
+                "test-connection"
+              ]
+            },
+            "description": "Runs a provider-specific health check. For Supabase, verifies table access and returns row count.\n\n**Response:** `{\"healthy\": true}` or `{\"healthy\": false, \"error\": \"...\"}`"
+          },
+          "response": []
+        }
+      ],
+      "id": "c3d4e5f6-a7b8-9012-cdef-012345678901",
+      "description": "Manage provider accounts (create, test, update). Includes Supabase with configurable column mappings for email, phone, country, current company, LinkedIn URL, and job title."
+    },
+    {
       "name": "Documentation Generator",
       "item": [
         {
