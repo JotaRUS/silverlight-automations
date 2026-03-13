@@ -87,6 +87,16 @@ providerAccountRoutes.patch('/:providerAccountId', authorize(['admin', 'ops']), 
   }
 });
 
+providerAccountRoutes.delete('/:providerAccountId', authorize(['admin', 'ops']), async (request, response, next) => {
+  try {
+    const params = parseOrThrow(providerAccountPathParamsSchema, request.params);
+    const deleted = await providerAccountsService.softDelete(params.providerAccountId);
+    response.status(200).json(deleted);
+  } catch (error) {
+    next(error);
+  }
+});
+
 providerAccountRoutes.post(
   '/:providerAccountId/test-connection',
   authorize(['admin', 'ops']),

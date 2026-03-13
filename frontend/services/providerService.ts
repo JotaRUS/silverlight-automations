@@ -45,6 +45,14 @@ export async function updateProviderAccount(
   });
 }
 
+export async function deleteProviderAccount(
+  providerAccountId: string
+): Promise<{ id: string; deletedAt: string }> {
+  return apiRequest<{ id: string; deletedAt: string }>(`/api/v1/providers/${providerAccountId}`, {
+    method: 'DELETE'
+  });
+}
+
 export async function testProviderConnection(providerAccountId: string): Promise<ProviderAccount> {
   return apiRequest<ProviderAccount>(`/api/v1/providers/${providerAccountId}/test-connection`, {
     method: 'POST'

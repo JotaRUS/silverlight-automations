@@ -100,9 +100,10 @@ export class ProviderAccountsService {
   public constructor(private readonly prismaClient: PrismaClient) {}
 
   private async getOrThrow(providerAccountId: string): Promise<ProviderAccount> {
-    const account = await this.prismaClient.providerAccount.findUnique({
+    const account = await this.prismaClient.providerAccount.findFirst({
       where: {
-        id: providerAccountId
+        id: providerAccountId,
+        deletedAt: null
       }
     });
     if (!account) {
@@ -121,7 +122,8 @@ export class ProviderAccountsService {
     const rows = await this.prismaClient.providerAccount.findMany({
       where: {
         providerType: filters.providerType as ProviderAccount['providerType'] | undefined,
-        isActive: filters.isActive
+        isActive: filters.isActive,
+        deletedAt: null
       },
       orderBy: [
         {
@@ -349,6 +351,36 @@ export class ProviderAccountsService {
       },
       data: projectUpdateData
     });
+  }
+
+  public async softDelete(providerAccountId: string): Promise<{ id: string; deletedAt: Date }> {
+    const account = await this.getOrThrow(providerAccountId);
+    const bindingField = PROVIDER_TYPE_TO_PROJECT_BINDING_FIELD[account.providerType as ProviderType];
+    const deletedAt = clock.now();
+    const archivedLabel = `${account.accountLabel} [deleted ${account.id.slice(0, 8)}]`;
+
+    await this.prismaClient.$transaction([
+      this.prismaClient.project.updateMany({
+        where: {
+          [bindingField]: providerAccountId
+        } as Prisma.ProjectWhereInput,
+        data: {
+          [bindingField]: null
+        } as Prisma.ProjectUpdateManyMutationInput
+      }),
+      this.prismaClient.providerAccount.update({
+        where: {
+          id: providerAccountId
+        },
+        data: {
+          deletedAt,
+          isActive: false,
+          accountLabel: archivedLabel
+        }
+      })
+    ]);
+
+    return { id: providerAccountId, deletedAt };
   }
 }
 

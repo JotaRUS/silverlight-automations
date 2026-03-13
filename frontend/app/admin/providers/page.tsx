@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { PROVIDER_DISPLAY_NAMES } from '@/lib/providerConstants';
 import { ApiError } from '@/services/apiClient';
 import {
   createProviderAccount,
+  deleteProviderAccount,
   deleteLinkedInWebhookSubscription,
   listLinkedInLeadForms,
   listProviderAccounts,
@@ -394,6 +395,7 @@ export default function ProviderAccountsPage(): JSX.Element {
   const [credentials, setCredentials] = useState<Record<string, string>>(() => buildEmptyCredentials('APOLLO'));
   const [errorMessage, setErrorMessage] = useState('');
   const [editingCredentials, setEditingCredentials] = useState<string | null>(null);
+  const [newAccountId, setNewAccountId] = useState<string | null>(null);
   const [accountActionFeedback, setAccountActionFeedback] = useState<
     Record<string, { tone: 'success' | 'error'; message: string }>
   >({});
@@ -411,6 +413,18 @@ export default function ProviderAccountsPage(): JSX.Element {
     queryKey: ['provider-accounts'],
     queryFn: () => listProviderAccounts()
   });
+
+  useEffect(() => {
+    if (!newAccountId || !providerAccountsQuery.data?.some((account) => account.id === newAccountId)) {
+      return;
+    }
+    const node = document.getElementById(`provider-account-${newAccountId}`);
+    if (!node) {
+      return;
+    }
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setNewAccountId(null);
+  }, [newAccountId, providerAccountsQuery.data]);
 
   const activeFields = CREDENTIAL_FIELDS[providerType];
   const allFieldsFilled = activeFields.every((f) => f.optional || (credentials[f.key] ?? '').trim().length > 0);
@@ -430,10 +444,11 @@ export default function ProviderAccountsPage(): JSX.Element {
         credentials: filteredCredentials
       });
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       setErrorMessage('');
       setAccountLabel('');
       setCredentials(buildEmptyCredentials(providerType));
+      setNewAccountId(created.id);
       void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
     },
     onError: (error) => {
@@ -534,6 +549,7 @@ export default function ProviderAccountsPage(): JSX.Element {
             {accounts.map((account) => (
               <div
                 key={account.id}
+                id={`provider-account-${account.id}`}
                 className={`rounded border p-3 ${
                   account.lastHealthStatus === 'out_of_credits'
                     ? 'border-amber-300 bg-amber-50/60'
@@ -619,22 +635,56 @@ export default function ProviderAccountsPage(): JSX.Element {
                   >
                     Test Connection
                   </Button>
+                  {!account.isActive ? (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        void (async () => {
+                          try {
+                            await updateProviderAccount(account.id, {
+                              isActive: true
+                            });
+                            await queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
+                            setAccountActionFeedback((prev) => ({
+                              ...prev,
+                              [account.id]: {
+                                tone: 'success',
+                                message: 'Account activated.'
+                              }
+                            }));
+                          } catch (error) {
+                            setAccountActionFeedback((prev) => ({
+                              ...prev,
+                              [account.id]: {
+                                tone: 'error',
+                                message:
+                                  error instanceof Error
+                                    ? error.message
+                                    : 'Unable to update account status.'
+                              }
+                            }));
+                          }
+                        })();
+                      }}
+                    >
+                      Activate
+                    </Button>
+                  ) : null}
                   <Button
                     variant="secondary"
                     onClick={() => {
                       void (async () => {
                         try {
-                          await updateProviderAccount(account.id, {
-                            isActive: !account.isActive
-                          });
+                          await deleteProviderAccount(account.id);
                           await queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
-                          setAccountActionFeedback((prev) => ({
-                            ...prev,
-                            [account.id]: {
-                              tone: 'success',
-                              message: `Account ${account.isActive ? 'deactivated' : 'activated'}.`
-                            }
-                          }));
+                          setAccountActionFeedback((prev) => {
+                            const next = { ...prev };
+                            delete next[account.id];
+                            return next;
+                          });
+                          if (editingCredentials === account.id) {
+                            setEditingCredentials(null);
+                          }
                         } catch (error) {
                           setAccountActionFeedback((prev) => ({
                             ...prev,
@@ -643,14 +693,14 @@ export default function ProviderAccountsPage(): JSX.Element {
                               message:
                                 error instanceof Error
                                   ? error.message
-                                  : 'Unable to update account status.'
+                                  : 'Unable to delete account.'
                             }
                           }));
                         }
                       })();
                     }}
                   >
-                    {account.isActive ? 'Deactivate' : 'Activate'}
+                    Delete
                   </Button>
                   <Button
                     variant="secondary"

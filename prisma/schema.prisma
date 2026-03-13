@@ -313,6 +313,7 @@ model ProviderAccount {
   accountLabel                 String
   credentialsJson              Json         @db.JsonB
   isActive                     Boolean      @default(true)
+  deletedAt                    DateTime?
   rateLimitConfig              Json?        @db.JsonB
   createdByAdminId             String       @db.Uuid
   lastHealthCheckAt            DateTime?
@@ -351,6 +352,7 @@ model ProviderAccount {
   supabaseBoundProjects        Project[]    @relation("project_supabase_provider_account")
 
   @@unique([providerType, accountLabel], map: "uniq_provider_account_label")
+  @@index([deletedAt], map: "idx_provider_account_deleted_at")
   @@index([providerType, isActive], map: "idx_provider_account_type_active")
   @@index([createdByAdminId], map: "idx_provider_account_created_by")
 }
