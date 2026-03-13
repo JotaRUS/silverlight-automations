@@ -21,6 +21,7 @@ const sidebarLinks = [
   { href: '/admin/calls', icon: 'podium', label: 'Calls' },
   { href: '/admin/ranking', icon: 'bar_chart', label: 'Ranking' },
   { href: '/admin/observability', icon: 'sensors', label: 'Observability' },
+  { href: '/admin/workers', icon: 'precision_manufacturing', label: 'Workers' },
   { href: '/admin/users', icon: 'group', label: 'Users' },
   { href: '/admin/api-keys', icon: 'vpn_key', label: 'API Keys' },
   { href: '/admin/api-docs', icon: 'menu_book', label: 'API Docs' }

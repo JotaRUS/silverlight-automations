@@ -6,6 +6,7 @@ import { authenticate, authorize } from '../../core/auth/authMiddleware';
 import { AppError } from '../../core/errors/appError';
 import { publishRealtimeEvent } from '../../core/realtime/realtimePubSub';
 import { prisma } from '../../db/client';
+import { getQueues } from '../../queues';
 import { redisConnection } from '../../queues/redis';
 import { ProjectCompletionService } from '../projects/projectCompletionService';
 import { ScreeningService } from '../screening/screeningService';
@@ -593,6 +594,31 @@ adminRoutes.get('/observability/state-violations', async (_request, response, ne
       take: 200
     });
     response.status(200).json(events);
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRoutes.get('/workers/queue-stats', async (_request, response, next) => {
+  try {
+    const registry = getQueues();
+    const allQueues = Object.values(registry) as import('bullmq').Queue[];
+
+    const stats = await Promise.all(
+      allQueues.map(async (queue) => {
+        const counts = await queue.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed');
+        return {
+          name: queue.name,
+          waiting: counts.waiting ?? 0,
+          active: counts.active ?? 0,
+          completed: counts.completed ?? 0,
+          failed: counts.failed ?? 0,
+          delayed: counts.delayed ?? 0
+        };
+      })
+    );
+
+    response.status(200).json({ queues: stats });
   } catch (error) {
     next(error);
   }

@@ -18,6 +18,8 @@ import { createRankingWorker } from '../queues/workers/rankingWorker';
 import { createSalesNavIngestionWorker } from '../queues/workers/salesNavIngestionWorker';
 import { createScreeningWorker } from '../queues/workers/screeningWorker';
 import { createYayCallEventsWorker } from '../queues/workers/yayCallEventsWorker';
+import { registerWorkerEventEmitter } from '../queues/workers/workerEventEmitter';
+import { QUEUE_NAMES } from '../queues/definitions/queueNames';
 
 const yayWorker = createYayCallEventsWorker();
 const callAllocationWorker = createCallAllocationWorker();
@@ -35,6 +37,23 @@ const supabaseSyncWorker = createSupabaseSyncWorker();
 const screeningWorker = createScreeningWorker();
 const documentationWorker = createDocumentationWorker();
 const deadLetterWorker = createDeadLetterWorker();
+
+registerWorkerEventEmitter(yayWorker, QUEUE_NAMES.YAY_CALL_EVENTS);
+registerWorkerEventEmitter(callAllocationWorker, QUEUE_NAMES.CALL_ALLOCATION);
+registerWorkerEventEmitter(callValidationWorker, QUEUE_NAMES.CALL_VALIDATION);
+registerWorkerEventEmitter(enrichmentWorker, QUEUE_NAMES.ENRICHMENT);
+registerWorkerEventEmitter(outreachWorker, QUEUE_NAMES.OUTREACH);
+registerWorkerEventEmitter(apolloLeadSourcingWorker, QUEUE_NAMES.APOLLO_LEAD_SOURCING);
+registerWorkerEventEmitter(salesNavIngestionWorker, QUEUE_NAMES.SALES_NAV_INGESTION);
+registerWorkerEventEmitter(leadIngestionWorker, QUEUE_NAMES.LEAD_INGESTION);
+registerWorkerEventEmitter(jobTitleDiscoveryWorker, QUEUE_NAMES.JOB_TITLE_DISCOVERY);
+registerWorkerEventEmitter(rankingWorker, QUEUE_NAMES.RANKING);
+registerWorkerEventEmitter(performanceWorker, QUEUE_NAMES.PERFORMANCE);
+registerWorkerEventEmitter(googleSheetsSyncWorker, QUEUE_NAMES.GOOGLE_SHEETS_SYNC);
+registerWorkerEventEmitter(supabaseSyncWorker, QUEUE_NAMES.SUPABASE_SYNC);
+registerWorkerEventEmitter(screeningWorker, QUEUE_NAMES.SCREENING);
+registerWorkerEventEmitter(documentationWorker, QUEUE_NAMES.DOCUMENTATION);
+registerWorkerEventEmitter(deadLetterWorker, QUEUE_NAMES.DEAD_LETTER);
 
 let shuttingDown = false;
 

@@ -171,3 +171,16 @@ export async function fetchFraudEvents(): Promise<Record<string, unknown>> {
 export async function fetchStateViolations(): Promise<Record<string, unknown>[]> {
   return apiRequest<Record<string, unknown>[]>('/api/v1/admin/observability/state-violations');
 }
+
+export interface QueueStat {
+  name: string;
+  waiting: number;
+  active: number;
+  completed: number;
+  failed: number;
+  delayed: number;
+}
+
+export async function fetchQueueStats(): Promise<{ queues: QueueStat[] }> {
+  return apiRequest<{ queues: QueueStat[] }>('/api/v1/admin/workers/queue-stats');
+}
