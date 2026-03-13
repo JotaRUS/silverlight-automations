@@ -16,12 +16,11 @@ export interface SupabaseProviderCredentials {
   serviceRoleKey: string;
   schema?: string;
   tableName: string;
-  upsertKey?: string;
   columnMapping?: SupabaseColumnMapping;
 }
 
 interface SupabaseWriteResult {
-  mode: 'insert' | 'upsert';
+  mode: 'insert';
 }
 
 interface SupabaseHealthResult {
@@ -57,7 +56,6 @@ function normalizeCredentials(
     serviceRoleKey: typeof raw.serviceRoleKey === 'string' ? (raw.serviceRoleKey as string) : '',
     schema: optStr(raw.schema) ?? 'public',
     tableName: typeof raw.tableName === 'string' ? (raw.tableName as string) : '',
-    upsertKey: optStr(raw.upsertKey),
     columnMapping: Object.keys(mapping).length > 0 ? mapping : undefined
   };
 }
@@ -134,17 +132,12 @@ export class SupabaseDataClient {
     const maxAttempts = Object.keys(row).length;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const operation = credentials.upsertKey
-        ? client.from(credentials.tableName).upsert([filteredRow], {
-            onConflict: credentials.upsertKey,
-            ignoreDuplicates: false
-          })
-        : client.from(credentials.tableName).insert([filteredRow]);
+      const operation = client.from(credentials.tableName).insert([filteredRow]);
 
       const { error } = await operation;
 
       if (!error) {
-        return { mode: credentials.upsertKey ? 'upsert' : 'insert' };
+        return { mode: 'insert' };
       }
 
       if (error.code === 'PGRST204') {
@@ -157,7 +150,7 @@ export class SupabaseDataClient {
 
       throw new AppError('Supabase write failed', 502, 'provider_request_failed', {
         provider: 'supabase',
-        operation: credentials.upsertKey ? 'upsert-row' : 'insert-row',
+        operation: 'insert-row',
         statusCode: 502,
         responseBody: {
           code: error.code,
@@ -170,7 +163,7 @@ export class SupabaseDataClient {
 
     throw new AppError('Supabase write failed — too many unknown columns', 502, 'provider_request_failed', {
       provider: 'supabase',
-      operation: credentials.upsertKey ? 'upsert-row' : 'insert-row',
+      operation: 'insert-row',
       statusCode: 502,
       responseBody: {
         remainingColumns: Object.keys(filteredRow)

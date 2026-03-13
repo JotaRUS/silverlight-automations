@@ -1388,7 +1388,7 @@ Lists all configured provider accounts with connection health checks. Supports a
 
 #### Supabase column mapping
 
-When configuring a Supabase provider account, you can optionally specify the exact column names in your Supabase table for each exported field. This avoids the need to rename columns in your table to match the platform defaults. The configurable column mappings are:
+When configuring a Supabase provider account, you can optionally specify the exact column names in your Supabase table for each exported field. This avoids the need to rename columns in your table to match the platform defaults. The platform inserts only these mapped fields into Supabase. The configurable column mappings are:
 
 | Setting | Default column name | Description |
 |---|---|---|

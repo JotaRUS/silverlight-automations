@@ -456,7 +456,7 @@ const groups: EndpointGroup[] = [
           { name: 'credentials', type: 'object', required: true, description: 'Provider-specific keys (encrypted at rest)' },
           { name: 'isActive', type: 'boolean', description: 'Default true' }
         ],
-        bodyExample: '{\n  "providerType": "SUPABASE",\n  "accountLabel": "Prod Export",\n  "credentials": {\n    "projectUrl": "https://xyz.supabase.co",\n    "serviceRoleKey": "eyJ...",\n    "schema": "public",\n    "tableName": "enriched_leads",\n    "upsertKey": "lead_id",\n    "columnEmail": "email",\n    "columnPhone": "phone",\n    "columnCountry": "country",\n    "columnCurrentCompany": "current_company",\n    "columnLinkedinUrl": "linkedin_url",\n    "columnJobTitle": "job_title"\n  }\n}',
+        bodyExample: '{\n  "providerType": "SUPABASE",\n  "accountLabel": "Prod Export",\n  "credentials": {\n    "projectUrl": "https://xyz.supabase.co",\n    "serviceRoleKey": "eyJ...",\n    "schema": "public",\n    "tableName": "enriched_leads",\n    "columnEmail": "email",\n    "columnPhone": "phone",\n    "columnCountry": "country",\n    "columnCurrentCompany": "current_company",\n    "columnLinkedinUrl": "linkedin_url",\n    "columnJobTitle": "job_title"\n  }\n}',
         responses: [
           { status: 201, label: 'Created', body: '{ "id": "uuid", "providerType": "SUPABASE", "accountLabel": "Prod Export", ... }' },
           { status: 400, label: 'Invalid credentials', body: '{ "error": "Missing required credential: serviceRoleKey" }' }

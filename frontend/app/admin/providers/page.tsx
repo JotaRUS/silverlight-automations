@@ -125,7 +125,6 @@ const CREDENTIAL_FIELDS: Record<ProviderType, CredentialFieldDef[]> = {
     { key: 'serviceRoleKey', label: 'Service Role Key', type: 'password', placeholder: 'Supabase service role key' },
     { key: 'schema', label: 'Schema', type: 'text', placeholder: 'public' },
     { key: 'tableName', label: 'Table Name', type: 'text', placeholder: 'enriched_leads' },
-    { key: 'upsertKey', label: 'Upsert Key', type: 'text', placeholder: 'lead_id' },
     { key: 'columnEmail', label: 'Email Column', type: 'text', placeholder: 'primary_email', optional: true },
     { key: 'columnPhone', label: 'Phone Column', type: 'text', placeholder: 'primary_phone', optional: true },
     { key: 'columnCountry', label: 'Country Column', type: 'text', placeholder: 'country_iso', optional: true },

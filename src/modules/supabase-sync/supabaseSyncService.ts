@@ -1,39 +1,15 @@
 import type { PrismaClient } from '@prisma/client';
 
 import { AppError } from '../../core/errors/appError';
-import { isoCodeToCapitalTimezone } from '../../config/constants';
 import { ProviderAccountsService } from '../providers/providerAccountsService';
 import {
   SupabaseDataClient,
-  type SupabaseProviderCredentials,
-  type SupabaseColumnMapping
+  type SupabaseProviderCredentials
 } from '../../integrations/supabase/supabaseClient';
 
 export interface SupabaseSyncInput {
   projectId: string;
   leadId: string;
-}
-
-function metadataString(metadata: unknown, key: string): string | null {
-  if (!metadata || typeof metadata !== 'object') {
-    return null;
-  }
-  const value = (metadata as Record<string, unknown>)[key];
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
-}
-
-function metadataStringArray(metadata: unknown, key: string): string[] {
-  if (!metadata || typeof metadata !== 'object') {
-    return [];
-  }
-  const value = (metadata as Record<string, unknown>)[key];
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value
-    .filter((item): item is string => typeof item === 'string')
-    .map((item) => item.trim())
-    .filter(Boolean);
 }
 
 function uniqStrings(values: string[]): string[] {
@@ -78,7 +54,7 @@ export class SupabaseSyncService {
 
   private async buildLeadRow(
     input: SupabaseSyncInput,
-    columnMapping?: SupabaseColumnMapping
+    credentials: SupabaseProviderCredentials
   ): Promise<Record<string, unknown>> {
     const lead = await this.prismaClient.lead.findUnique({
       where: { id: input.leadId },
@@ -132,71 +108,25 @@ export class SupabaseSyncService {
       .filter((contact) => contact.type === 'LINKEDIN')
       .map((contact) => contact.value);
 
-    const providerSummary = Array.from(
-      new Map(
-        lead.enrichmentAttempts.map((attempt) => [
-          attempt.provider,
-          {
-            provider: attempt.provider,
-            status: attempt.status,
-            attemptedAt: attempt.attemptedAt.toISOString()
-          }
-        ])
-      ).values()
-    );
-
-    const city = metadataString(lead.metadata, 'city') ?? metadataString(lead.expert.metadata, 'city');
-    const state =
-      metadataString(lead.metadata, 'state') ?? metadataString(lead.expert.metadata, 'state');
-    const tags = metadataStringArray(lead.metadata, 'tags');
     const linkedinUrl = lead.linkedinUrl ?? linkedinContacts[0] ?? null;
     const primaryEmail = emails[0] ?? null;
     const primaryPhone = phones[0] ?? null;
 
     const countryIso = lead.countryIso ?? lead.expert.countryIso;
-    const timezone =
-      lead.expert.timezone ??
-      (countryIso ? isoCodeToCapitalTimezone(countryIso) : null);
-
-    const colEmail = columnMapping?.email ?? 'primary_email';
-    const colPhone = columnMapping?.phone ?? 'primary_phone';
-    const colCountry = columnMapping?.country ?? 'country_iso';
-    const colCompany = columnMapping?.currentCompany ?? 'company_name';
-    const colLinkedin = columnMapping?.linkedinUrl ?? 'linkedin_url';
-    const colJobTitle = columnMapping?.jobTitle ?? 'job_title';
+    const colEmail = credentials.columnMapping?.email ?? 'primary_email';
+    const colPhone = credentials.columnMapping?.phone ?? 'primary_phone';
+    const colCountry = credentials.columnMapping?.country ?? 'country_iso';
+    const colCompany = credentials.columnMapping?.currentCompany ?? 'company_name';
+    const colLinkedin = credentials.columnMapping?.linkedinUrl ?? 'linkedin_url';
+    const colJobTitle = credentials.columnMapping?.jobTitle ?? 'job_title';
 
     const row: Record<string, unknown> = {
-      project_id: lead.project.id,
-      project_name: lead.project.name,
-      lead_id: lead.id,
-      lead_status: lead.status,
-      lead_created_at: lead.createdAt.toISOString(),
-      lead_updated_at: lead.updatedAt.toISOString(),
-      enrichment_confidence:
-        lead.enrichmentConfidence !== null && lead.enrichmentConfidence !== undefined
-          ? Number(lead.enrichmentConfidence)
-          : null,
-      expert_id: lead.expert.id,
-      full_name: lead.fullName ?? lead.expert.fullName,
-      first_name: lead.firstName ?? lead.expert.firstName,
-      last_name: lead.lastName ?? lead.expert.lastName,
       [colJobTitle]: lead.jobTitle ?? lead.expert.currentRole,
       [colLinkedin]: linkedinUrl,
       [colCountry]: countryIso,
-      timezone,
-      region_iso: lead.regionIso ?? lead.expert.regionIso,
-      city,
-      state,
       [colCompany]: lead.company?.name ?? lead.expert.currentCompany,
-      emails,
-      phones,
       [colEmail]: primaryEmail,
-      [colPhone]: primaryPhone,
-      apollo_id: metadataString(lead.metadata, 'apolloId'),
-      tags,
-      enrichment_providers: providerSummary.map((item) => item.provider),
-      enrichment_provider_summary: providerSummary,
-      synced_at: new Date().toISOString()
+      [colPhone]: primaryPhone
     };
 
     return row;
@@ -208,7 +138,7 @@ export class SupabaseSyncService {
       return;
     }
 
-    const row = await this.buildLeadRow(input, credentials.columnMapping);
+    const row = await this.buildLeadRow(input, credentials);
     await this.supabaseClient.writeLeadRow(credentials, row);
     await this.prismaClient.lead.update({
       where: { id: input.leadId },

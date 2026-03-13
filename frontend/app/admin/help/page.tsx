@@ -916,21 +916,20 @@ export default function HelpPage(): JSX.Element {
           <ProviderGuide
             name="Supabase"
             role="Export enriched leads to a Supabase table"
-            fields={['Project URL', 'Service Role Key', 'Schema', 'Table Name', 'Upsert Key', 'Column Mappings (Email, Phone, Country, Company, LinkedIn, Job Title)']}
+            fields={['Project URL', 'Service Role Key', 'Schema', 'Table Name', 'Column Mappings (Email, Phone, Country, Company, LinkedIn, Job Title)']}
             steps={[
               'Log in to your Supabase project at app.supabase.com.',
               'Go to Project Settings > API. Copy the Project URL (e.g. https://xyz.supabase.co).',
               'On the same page, copy the service_role key (under "Project API keys"). This key has full table access.',
-              'Create the target table in Supabase with the columns you need (e.g. lead_id, full_name, email, phone, etc.).',
+              'Create the target table in Supabase with the columns you need (for example email, phone, country, company, linkedin, title).',
               'Enter the table name and optionally a schema (defaults to "public").',
-              'Set the Upsert Key to a column that uniquely identifies rows (e.g. lead_id) to enable update-on-conflict.',
               'Under Column Mapping, enter the exact column names in your Supabase table for email, phone, country, current company, LinkedIn URL, and job title. Leave blank to use defaults (primary_email, primary_phone, country_iso, company_name, linkedin_url, job_title).'
             ]}
             links={[
               { label: 'Supabase Dashboard', url: 'https://app.supabase.com' },
               { label: 'Supabase API Docs', url: 'https://supabase.com/docs/guides/api' }
             ]}
-            notes="The service_role key bypasses Row Level Security. Keep it secret. Column mapping lets you match your existing table schema without renaming columns."
+            notes="The service_role key bypasses Row Level Security. Keep it secret. Only the visible mapped fields are exported, so your Supabase table only needs the columns you configure here."
           />
         </div>
       </Card>

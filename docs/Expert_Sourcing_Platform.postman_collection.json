@@ -1426,7 +1426,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"providerType\": \"SUPABASE\",\n  \"accountLabel\": \"Prod Export\",\n  \"credentials\": {\n    \"projectUrl\": \"https://your-project.supabase.co\",\n    \"serviceRoleKey\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"schema\": \"public\",\n    \"tableName\": \"enriched_leads\",\n    \"upsertKey\": \"lead_id\",\n    \"columnEmail\": \"email\",\n    \"columnPhone\": \"phone\",\n    \"columnCountry\": \"country\",\n    \"columnCurrentCompany\": \"current_company\",\n    \"columnLinkedinUrl\": \"linkedin_url\",\n    \"columnJobTitle\": \"job_title\"\n  }\n}"
+              "raw": "{\n  \"providerType\": \"SUPABASE\",\n  \"accountLabel\": \"Prod Export\",\n  \"credentials\": {\n    \"projectUrl\": \"https://your-project.supabase.co\",\n    \"serviceRoleKey\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"schema\": \"public\",\n    \"tableName\": \"enriched_leads\",\n    \"columnEmail\": \"email\",\n    \"columnPhone\": \"phone\",\n    \"columnCountry\": \"country\",\n    \"columnCurrentCompany\": \"current_company\",\n    \"columnLinkedinUrl\": \"linkedin_url\",\n    \"columnJobTitle\": \"job_title\"\n  }\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/providers",
@@ -1439,7 +1439,7 @@
                 "providers"
               ]
             },
-            "description": "Creates a Supabase provider account for exporting enriched leads.\n\n**Required credentials:** projectUrl, serviceRoleKey, tableName\n**Optional credentials:** schema (default: public), upsertKey\n**Column mappings (optional):** columnEmail, columnPhone, columnCountry, columnCurrentCompany, columnLinkedinUrl, columnJobTitle — specify the exact column names in your Supabase table. If omitted, defaults are used (primary_email, primary_phone, country_iso, company_name, linkedin_url, job_title)."
+            "description": "Creates a Supabase provider account for exporting enriched leads.\n\n**Required credentials:** projectUrl, serviceRoleKey, tableName\n**Optional credentials:** schema (default: public)\n**Column mappings (optional):** columnEmail, columnPhone, columnCountry, columnCurrentCompany, columnLinkedinUrl, columnJobTitle — specify the exact column names in your Supabase table. If omitted, defaults are used (primary_email, primary_phone, country_iso, company_name, linkedin_url, job_title)."
           },
           "response": []
         },

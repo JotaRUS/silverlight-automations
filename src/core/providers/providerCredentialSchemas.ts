@@ -109,7 +109,6 @@ const supabaseCredentialSchema = z.object({
   serviceRoleKey: z.string().min(1),
   schema: z.string().min(1).default('public'),
   tableName: z.string().min(1),
-  upsertKey: z.string().min(1).optional(),
   columnEmail: z.string().min(1).optional(),
   columnPhone: z.string().min(1).optional(),
   columnCountry: z.string().min(1).optional(),

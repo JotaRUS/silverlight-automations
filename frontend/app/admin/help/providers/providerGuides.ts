@@ -975,8 +975,7 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
       { key: 'projectUrl', label: 'Project URL', required: true, description: 'Project API URL, e.g. https://your-project.supabase.co.' },
       { key: 'serviceRoleKey', label: 'Service Role Key', required: true, description: 'Server-side service role key from Project Settings → API Keys.' },
       { key: 'schema', label: 'Schema', required: true, description: 'Database schema to target. Defaults to public.' },
-      { key: 'tableName', label: 'Table Name', required: true, description: 'Destination table for enriched lead rows.' },
-      { key: 'upsertKey', label: 'Upsert Key', required: false, description: 'Optional unique column used for idempotent upserts, such as lead_id.' }
+      { key: 'tableName', label: 'Table Name', required: true, description: 'Destination table for enriched lead rows.' }
     ],
     prerequisites: [
       'Supabase project with a destination table created ahead of time.',
@@ -987,8 +986,8 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
       'Open Supabase Dashboard and select your project.',
       'Go to Settings → API Keys and copy the service_role key.',
       'Copy the Project URL from the same page.',
-      'Create a table (for example enriched_leads) with a unique lead_id column if you want idempotent upserts.',
-      'Paste projectUrl, serviceRoleKey, schema, tableName, and optional upsertKey into the provider form.'
+      'Create a table (for example enriched_leads) with the columns you want to receive from the platform.',
+      'Paste projectUrl, serviceRoleKey, schema, tableName, and any optional column mappings into the provider form.'
     ],
     platformConfiguration: [
       ...sharedPlatformSteps,
@@ -998,16 +997,15 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
     validationChecklist: [
       'Health check succeeds and confirms table accessibility.',
       'Newly enriched leads appear in the configured Supabase table.',
-      'If upsertKey is configured, repeated syncs update the same row instead of duplicating it.'
+      'Only the mapped fields are inserted, so your Supabase schema stays minimal.'
     ],
     commonPitfalls: [
       { issue: 'Table not found during test.', resolution: 'Verify schema and tableName exactly match the destination table in Supabase.' },
-      { issue: 'Duplicates appear after repeated syncs.', resolution: 'Configure a unique upsertKey such as lead_id and create the matching unique index in Supabase.' }
+      { issue: 'Sync fails with unknown columns.', resolution: 'Set the optional column mappings so they exactly match your Supabase table column names.' }
     ],
     officialLinks: [
       { label: 'Supabase API Keys', url: 'https://supabase.com/docs/guides/api/api-keys' },
-      { label: 'Supabase REST API', url: 'https://supabase.com/docs/guides/api' },
-      { label: 'Supabase JavaScript upsert', url: 'https://supabase.com/docs/reference/javascript/upsert' }
+      { label: 'Supabase REST API', url: 'https://supabase.com/docs/guides/api' }
     ],
     lastReviewed: '2026-03-10'
   }
