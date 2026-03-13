@@ -40,4 +40,5 @@ export interface ProviderAccount {
   lastHealthStatus: string | null;
   lastHealthError: string | null;
   credentialFields: string[];
+  credentialHints?: Record<string, string>;
 }

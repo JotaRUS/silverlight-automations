@@ -257,6 +257,160 @@ function PaginationBar({
   );
 }
 
+function TopScrollbar({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | null> }) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const dragState = useRef<{ startX: number; startScrollLeft: number } | null>(null);
+  const [metrics, setMetrics] = useState({
+    maxScroll: 0,
+    scrollLeft: 0,
+    clientWidth: 0,
+    scrollWidth: 0
+  });
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      setMetrics({
+        maxScroll: Math.max(0, el.scrollWidth - el.clientWidth),
+        scrollLeft: el.scrollLeft,
+        clientWidth: el.clientWidth,
+        scrollWidth: el.scrollWidth
+      });
+    };
+    const syncFromTable = () =>
+      setMetrics((current) => ({
+        ...current,
+        maxScroll: Math.max(0, el.scrollWidth - el.clientWidth),
+        scrollLeft: el.scrollLeft,
+        clientWidth: el.clientWidth,
+        scrollWidth: el.scrollWidth
+      }));
+
+    measure();
+
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    const table = el.querySelector('table');
+    if (table) ro.observe(table);
+
+    const mo = new MutationObserver(measure);
+    mo.observe(el, { childList: true, subtree: true });
+    el.addEventListener('scroll', syncFromTable);
+
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+      el.removeEventListener('scroll', syncFromTable);
+    };
+  }, [scrollRef]);
+
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      const el = scrollRef.current;
+      const track = trackRef.current;
+      const drag = dragState.current;
+      if (!el || !track || !drag || metrics.maxScroll <= 0) return;
+
+      const trackWidth = track.clientWidth;
+      if (trackWidth <= 0) return;
+
+      const deltaRatio = (event.clientX - drag.startX) / trackWidth;
+      const next = Math.max(0, Math.min(metrics.maxScroll, drag.startScrollLeft + deltaRatio * metrics.maxScroll));
+      el.scrollLeft = next;
+    };
+
+    const handleMouseUp = () => {
+      dragState.current = null;
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [metrics.maxScroll, scrollRef]);
+
+  const setTableScroll = (next: number) => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollLeft = Math.max(0, Math.min(metrics.maxScroll, next));
+  };
+
+  const scrollByAmount = (delta: number) => {
+    setTableScroll(metrics.scrollLeft + delta);
+  };
+
+  const thumbWidthPercent =
+    metrics.scrollWidth > 0 ? Math.max(12, (metrics.clientWidth / metrics.scrollWidth) * 100) : 100;
+  const thumbLeftPercent =
+    metrics.maxScroll > 0 ? (metrics.scrollLeft / metrics.maxScroll) * (100 - thumbWidthPercent) : 0;
+
+  if (metrics.maxScroll <= 0) return null;
+
+  return (
+    <div className="border-b border-slate-100 px-3 py-2">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => scrollByAmount(-240)}
+          className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50"
+          aria-label="Scroll table left"
+        >
+          <span className="material-symbols-outlined text-sm">chevron_left</span>
+        </button>
+        <div
+          ref={trackRef}
+          className="relative h-3 flex-1 rounded-full bg-slate-200"
+          onMouseDown={(event) => {
+            const track = trackRef.current;
+            if (!track || metrics.maxScroll <= 0) return;
+            const rect = track.getBoundingClientRect();
+            const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+            setTableScroll(ratio * metrics.maxScroll);
+          }}
+        >
+          <button
+            type="button"
+            aria-label="Horizontal table scroll"
+            className="absolute top-0 h-3 rounded-full bg-slate-500"
+            style={{
+              left: `${thumbLeftPercent}%`,
+              width: `${thumbWidthPercent}%`
+            }}
+            onMouseDown={(event) => {
+              event.stopPropagation();
+              dragState.current = {
+                startX: event.clientX,
+                startScrollLeft: metrics.scrollLeft
+              };
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowLeft') {
+                event.preventDefault();
+                scrollByAmount(-120);
+              }
+              if (event.key === 'ArrowRight') {
+                event.preventDefault();
+                scrollByAmount(120);
+              }
+            }}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => scrollByAmount(240)}
+          className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50"
+          aria-label="Scroll table right"
+        >
+          <span className="material-symbols-outlined text-sm">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ColumnToggle({
   visibleColumns,
   onToggle
@@ -311,6 +465,7 @@ export default function LeadsPage(): JSX.Element {
   const initialProjectId = searchParams.get('projectId') ?? '';
 
   const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
   const [filterStatus, setFilterStatus] = useState<LeadStatus | ''>('');
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -587,7 +742,8 @@ export default function LeadsPage(): JSX.Element {
             </div>
           )}
 
-          <div className="overflow-x-auto">
+          <TopScrollbar scrollRef={tableScrollRef} />
+          <div className="overflow-x-auto" ref={tableScrollRef}>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/60 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">

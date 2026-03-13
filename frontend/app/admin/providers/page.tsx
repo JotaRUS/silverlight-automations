@@ -161,18 +161,37 @@ function formatHealthMessage(raw: string | null): string {
 function UpdateCredentialsForm({
   accountId,
   providerType: pt,
+  credentialHints,
   onDone
 }: {
   accountId: string;
   providerType: ProviderType;
+  credentialHints?: Record<string, string>;
   onDone: () => void;
 }): JSX.Element {
   const queryClient = useQueryClient();
   const fields = CREDENTIAL_FIELDS[pt];
-  const [creds, setCreds] = useState<Record<string, string>>(() => buildEmptyCredentials(pt));
+  const [creds, setCreds] = useState<Record<string, string>>(() => {
+    const initial = buildEmptyCredentials(pt);
+    if (credentialHints) {
+      for (const [key, value] of Object.entries(credentialHints)) {
+        if (key in initial) initial[key] = value;
+      }
+    }
+    return initial;
+  });
   const [error, setError] = useState('');
 
-  const allFilled = fields.every((f) => f.optional || (creds[f.key] ?? '').trim().length > 0);
+  const isSecretField = (field: CredentialFieldDef): boolean =>
+    field.type === 'password' || field.type === 'textarea';
+  const hasStoredValue = (field: CredentialFieldDef): boolean =>
+    isSecretField(field) && !credentialHints?.[field.key] && (credentialHints !== undefined);
+
+  const allFilled = fields.every((f) => {
+    if (f.optional) return true;
+    if (hasStoredValue(f) && !(creds[f.key] ?? '').trim()) return true;
+    return (creds[f.key] ?? '').trim().length > 0;
+  });
 
   const mutation = useMutation({
     mutationFn: () => updateProviderAccount(accountId, { credentials: creds }),
@@ -186,14 +205,19 @@ function UpdateCredentialsForm({
   return (
     <div className="mt-3 space-y-2 rounded-md border border-indigo-200 bg-indigo-50/50 p-3">
       <p className="text-sm font-medium text-indigo-700">Update Credentials</p>
+      <p className="text-xs text-slate-500">Non-secret fields are pre-filled. Leave secret fields blank to keep current values.</p>
       {fields.map((field) => (
         <div key={field.key}>
-          <label className="mb-1 block text-xs text-slate-600">{field.label}</label>
+          <label className="mb-1 block text-xs text-slate-600">
+            {field.label}
+            {hasStoredValue(field) ? <span className="ml-1 text-xs text-emerald-600">(stored)</span> : null}
+            {field.optional ? <span className="ml-1 text-xs text-slate-400">(optional)</span> : null}
+          </label>
           {field.type === 'textarea' ? (
             <textarea
               value={creds[field.key] ?? ''}
               onChange={(e) => setCreds((p) => ({ ...p, [field.key]: e.target.value }))}
-              placeholder={field.placeholder}
+              placeholder={hasStoredValue(field) ? 'Leave blank to keep current' : field.placeholder}
               rows={3}
               className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
             />
@@ -202,7 +226,7 @@ function UpdateCredentialsForm({
               type={field.type ?? 'text'}
               value={creds[field.key] ?? ''}
               onChange={(e) => setCreds((p) => ({ ...p, [field.key]: e.target.value }))}
-              placeholder={field.placeholder}
+              placeholder={hasStoredValue(field) ? 'Leave blank to keep current' : field.placeholder}
             />
           )}
         </div>
@@ -650,6 +674,7 @@ export default function ProviderAccountsPage(): JSX.Element {
                   <UpdateCredentialsForm
                     accountId={account.id}
                     providerType={account.providerType as ProviderType}
+                    credentialHints={account.credentialHints}
                     onDone={() => setEditingCredentials(null)}
                   />
                 ) : null}

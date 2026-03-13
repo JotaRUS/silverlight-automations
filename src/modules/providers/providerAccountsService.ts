@@ -41,6 +41,7 @@ export interface ProviderAccountSanitizedView {
   lastHealthStatus: string | null;
   lastHealthError: string | null;
   credentialFields: string[];
+  credentialHints: Record<string, string>;
 }
 
 function toJsonValue(value: Record<string, unknown> | undefined): Prisma.InputJsonValue | undefined {
@@ -64,6 +65,19 @@ function healthErrorMessageFromDetails(details: unknown): string {
   }
 }
 
+const SECRET_FIELD_PATTERNS = /^(apiKey|serviceRoleKey|clientSecret|oauthAccessToken|oauthRefreshToken|pass|authToken|webhookSecret|botToken|serviceAccountJson)$/;
+
+function buildCredentialHints(credentials: Record<string, unknown>): Record<string, string> {
+  const hints: Record<string, string> = {};
+  for (const [key, value] of Object.entries(credentials)) {
+    if (SECRET_FIELD_PATTERNS.test(key)) continue;
+    if (typeof value === 'string' && value.length > 0) {
+      hints[key] = value;
+    }
+  }
+  return hints;
+}
+
 function sanitizeAccount(account: ProviderAccount, credentials: Record<string, unknown>): ProviderAccountSanitizedView {
   return {
     id: account.id,
@@ -77,7 +91,8 @@ function sanitizeAccount(account: ProviderAccount, credentials: Record<string, u
     lastHealthCheckAt: account.lastHealthCheckAt,
     lastHealthStatus: account.lastHealthStatus,
     lastHealthError: account.lastHealthError,
-    credentialFields: Object.keys(credentials)
+    credentialFields: Object.keys(credentials),
+    credentialHints: buildCredentialHints(credentials)
   };
 }
 
@@ -175,10 +190,16 @@ export class ProviderAccountsService {
   ): Promise<ProviderAccountSanitizedView> {
     const existing = await this.getOrThrow(providerAccountId);
     const currentCredentials = this.parseEncryptedCredentials(existing);
-    const parsedCredentials =
-      input.credentials !== undefined
-        ? parseProviderCredentials(existing.providerType as ProviderType, input.credentials)
-        : currentCredentials;
+    let parsedCredentials = currentCredentials;
+    if (input.credentials !== undefined) {
+      const incoming: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(input.credentials)) {
+        if (typeof value === 'string' && value.trim().length === 0) continue;
+        incoming[key] = value;
+      }
+      const merged = { ...currentCredentials, ...incoming };
+      parsedCredentials = parseProviderCredentials(existing.providerType as ProviderType, merged);
+    }
 
     const updated = await this.prismaClient.providerAccount.update({
       where: {
