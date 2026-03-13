@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { AppError } from '../../core/errors/appError';
 import { ProviderAccountsService } from '../providers/providerAccountsService';
 import {
+  normalizeSupabaseCredentials,
   SupabaseDataClient,
   type SupabaseProviderCredentials
 } from '../../integrations/supabase/supabaseClient';
@@ -44,12 +45,12 @@ export class SupabaseSyncService {
       return null;
     }
 
-    const credentials = await this.providerAccountsService.getDecryptedCredentials(
+    const raw = await this.providerAccountsService.getDecryptedCredentials(
       project.supabaseProviderAccountId,
       'SUPABASE'
     );
 
-    return credentials as unknown as SupabaseProviderCredentials;
+    return normalizeSupabaseCredentials(raw as Record<string, unknown>);
   }
 
   private async buildLeadRow(
@@ -113,6 +114,14 @@ export class SupabaseSyncService {
     const primaryPhone = phones[0] ?? null;
 
     const countryIso = lead.countryIso ?? lead.expert.countryIso;
+    const fullName =
+      lead.fullName ??
+      lead.expert.fullName ??
+      ([lead.firstName ?? lead.expert.firstName, lead.lastName ?? lead.expert.lastName]
+        .filter(Boolean)
+        .join(' ')
+        .trim() || null);
+    const colFullName = credentials.columnMapping?.fullName;
     const colEmail = credentials.columnMapping?.email ?? 'primary_email';
     const colPhone = credentials.columnMapping?.phone ?? 'primary_phone';
     const colCountry = credentials.columnMapping?.country ?? 'country_iso';
@@ -128,6 +137,9 @@ export class SupabaseSyncService {
       [colEmail]: primaryEmail,
       [colPhone]: primaryPhone
     };
+    if (colFullName) {
+      row[colFullName] = fullName ?? '';
+    }
 
     return row;
   }

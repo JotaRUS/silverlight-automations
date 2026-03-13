@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { AppError } from '../../core/errors/appError';
 
 export interface SupabaseColumnMapping {
+  fullName?: string;
   email?: string;
   phone?: string;
   country?: string;
@@ -33,17 +34,19 @@ function optStr(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-function normalizeCredentials(
+export function normalizeSupabaseCredentials(
   credentials: Record<string, unknown> | SupabaseProviderCredentials
 ): SupabaseProviderCredentials {
   const raw = credentials as Record<string, unknown>;
   const mapping: SupabaseColumnMapping = {};
+  const cfn = optStr(raw.columnFullName);
   const ce = optStr(raw.columnEmail);
   const cp = optStr(raw.columnPhone);
   const cc = optStr(raw.columnCountry);
   const cco = optStr(raw.columnCurrentCompany);
   const cl = optStr(raw.columnLinkedinUrl);
   const cj = optStr(raw.columnJobTitle);
+  if (cfn) mapping.fullName = cfn;
   if (ce) mapping.email = ce;
   if (cp) mapping.phone = cp;
   if (cc) mapping.country = cc;
@@ -90,7 +93,7 @@ export class SupabaseDataClient {
   public async verifyTableAccess(
     rawCredentials: Record<string, unknown> | SupabaseProviderCredentials
   ): Promise<SupabaseHealthResult> {
-    const credentials = normalizeCredentials(rawCredentials);
+    const credentials = normalizeSupabaseCredentials(rawCredentials);
     this.ensureConfigured(credentials);
 
     const client = this.buildClient(credentials);
@@ -124,7 +127,7 @@ export class SupabaseDataClient {
     rawCredentials: Record<string, unknown> | SupabaseProviderCredentials,
     row: Record<string, unknown>
   ): Promise<SupabaseWriteResult> {
-    const credentials = normalizeCredentials(rawCredentials);
+    const credentials = normalizeSupabaseCredentials(rawCredentials);
     this.ensureConfigured(credentials);
 
     const client = this.buildClient(credentials);
