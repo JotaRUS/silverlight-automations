@@ -68,7 +68,8 @@ const emailProviderCredentialSchema = z.object({
   port: z.number().int().positive().default(587),
   user: z.string().min(1),
   pass: z.string().min(1),
-  from: z.string().min(1).optional()
+  from: z.string().min(1).optional(),
+  inboundParseVerificationKey: z.string().min(1).optional()
 });
 
 const twilioCredentialSchema = z.object({
@@ -84,7 +85,8 @@ const voicemailDropCredentialSchema = z.object({
 });
 
 const telegramCredentialSchema = z.object({
-  botToken: z.string().min(1)
+  botToken: z.string().min(1),
+  webhookSecretToken: z.string().min(1).optional()
 });
 
 const yayCredentialSchema = z.object({
@@ -135,10 +137,10 @@ const providerCredentialParsers: Record<ProviderType, z.ZodType<Record<string, u
   LINKEDIN: linkedinCredentialSchema,
   EMAIL_PROVIDER: emailProviderCredentialSchema,
   TWILIO: twilioCredentialSchema,
-  WHATSAPP_2CHAT: z.object({ apiKey: z.string().min(1), fromNumber: z.string().min(1) }),
+  WHATSAPP_2CHAT: z.object({ apiKey: z.string().min(1), fromNumber: z.string().min(1), webhookSecret: z.string().min(1).optional() }),
   RESPONDIO: singleApiKeySchema,
-  LINE: singleApiKeySchema,
-  WECHAT: singleApiKeySchema,
+  LINE: z.object({ apiKey: z.string().min(1), channelSecret: z.string().min(1).optional() }),
+  WECHAT: z.object({ apiKey: z.string().min(1), verifyToken: z.string().min(1).optional() }),
   VIBER: z.object({ apiKey: z.string().min(1), senderName: z.string().min(1).max(28) }),
   TELEGRAM: telegramCredentialSchema,
   KAKAOTALK: singleApiKeySchema,

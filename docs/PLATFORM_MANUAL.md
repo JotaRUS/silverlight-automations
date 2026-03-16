@@ -891,6 +891,100 @@ Credentials are obtained from the [LinkedIn Developer Portal](https://www.linked
 
 **Payload:** Contains a `projectId`, search URL, and an array of `leads` (name, company, title, LinkedIn URL, contact info). Leads are enqueued individually for ingestion and enrichment.
 
+#### Inbound message webhooks
+
+The platform accepts inbound messages from all outreach providers. When an expert replies, the webhook automatically:
+
+1. Resolves the sender to an expert via `ExpertContact` lookup
+2. Finds the matching outreach thread and records the inbound message
+3. Updates the expert's preferred channel and moves leads to `REPLIED` status
+4. Auto-matches the reply to any pending screening response for the expert
+
+All inbound webhooks are idempotent (via `ProcessedWebhookEvents`). Configure each provider's dashboard to point to the URL shown below — replace `<providerAccountId>` with the UUID of your provider account.
+
+**Twilio (SMS + Voicemail)**
+
+```
+POST /webhooks/twilio/<providerAccountId>
+```
+
+Verification: `x-twilio-signature` HMAC-SHA1 using the Twilio `authToken` stored in the provider account credentials. Twilio sends `application/x-www-form-urlencoded` form data. In the Twilio console, set the Messaging "A message comes in" webhook URL to this endpoint. Response format: TwiML `<Response/>`.
+
+**SendGrid (Email — Inbound Parse)**
+
+```
+POST /webhooks/sendgrid/<providerAccountId>
+```
+
+Verification: HTTP Basic Auth using the optional `inboundParseVerificationKey` credential. In SendGrid, go to Settings → Inbound Parse, add a host/domain, and set the destination URL. SendGrid forwards the full email as `application/x-www-form-urlencoded` or JSON.
+
+**2Chat (WhatsApp)**
+
+```
+POST /webhooks/2chat/<providerAccountId>
+```
+
+Verification: `X-User-API-Key` header compared against the stored `webhookSecret` (or `apiKey`). In the 2Chat dashboard, configure the inbound message webhook URL under your WhatsApp number settings.
+
+**Respond.io**
+
+```
+POST /webhooks/respondio/<providerAccountId>
+```
+
+Verification: `Authorization: Bearer <apiKey>` header. In Respond.io, configure a webhook integration under Settings → Integrations and point it to this URL.
+
+**Telegram**
+
+```
+POST /webhooks/telegram/<providerAccountId>
+```
+
+Verification: `X-Telegram-Bot-Api-Secret-Token` header compared against the optional `webhookSecretToken` credential. Register the webhook with Telegram using:
+
+```bash
+curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=https://<YOUR_HOST>/webhooks/telegram/<providerAccountId>&secret_token=<SECRET>"
+```
+
+**LINE**
+
+```
+POST /webhooks/line/<providerAccountId>
+```
+
+Verification: `x-line-signature` HMAC-SHA256 using the `channelSecret` credential. In the LINE Developers Console, set the webhook URL under your Messaging API channel settings.
+
+**Viber**
+
+```
+POST /webhooks/viber/<providerAccountId>
+```
+
+Verification: `X-Viber-Content-Signature` HMAC-SHA256 using the Viber auth token (`apiKey`). Register via:
+
+```bash
+curl -X POST https://chatapi.viber.com/pa/set_webhook \
+  -H "X-Viber-Auth-Token: <AUTH_TOKEN>" \
+  -d '{"url":"https://<YOUR_HOST>/webhooks/viber/<providerAccountId>","event_types":["message"]}'
+```
+
+**KakaoTalk**
+
+```
+POST /webhooks/kakaotalk/<providerAccountId>
+```
+
+Verification: `Authorization: KakaoAK <apiKey>` header. In the Kakao Developers console, register a Chatbot skill webhook and set the endpoint URL.
+
+**WeChat**
+
+```
+POST /webhooks/wechat/<providerAccountId>
+GET  /webhooks/wechat/<providerAccountId>  (verification challenge)
+```
+
+Verification: SHA1 signature via `signature`, `timestamp`, `nonce` query parameters using the `verifyToken` credential. In the WeChat Official Account admin, configure the server URL and token under Basic Configuration.
+
 ---
 
 ### 4.12 OpenAPI Spec

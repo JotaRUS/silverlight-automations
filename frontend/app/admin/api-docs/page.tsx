@@ -1067,6 +1067,99 @@ const groups: EndpointGroup[] = [
         responses: [
           { status: 200, label: 'OK', body: '' }
         ]
+      },
+      {
+        method: 'POST',
+        path: '/webhooks/twilio/{providerAccountId}',
+        summary: 'Twilio inbound SMS / voicemail',
+        description: 'Receives inbound SMS messages. Resolves sender to expert, records reply on outreach thread, and auto-matches pending screening responses.',
+        auth: 'x-twilio-signature HMAC-SHA1',
+        pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: 'Twilio provider' }],
+        responses: [
+          { status: 200, label: 'TwiML', body: '<Response/>' }
+        ]
+      },
+      {
+        method: 'POST',
+        path: '/webhooks/sendgrid/{providerAccountId}',
+        summary: 'SendGrid inbound email parse',
+        description: 'Receives inbound emails via SendGrid Inbound Parse. Resolves sender to expert and records reply.',
+        auth: 'HTTP Basic Auth (inboundParseVerificationKey)',
+        pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: 'Email provider' }],
+        responses: [
+          { status: 200, label: 'Accepted', body: '{ "accepted": true }' }
+        ]
+      },
+      {
+        method: 'POST',
+        path: '/webhooks/2chat/{providerAccountId}',
+        summary: '2Chat WhatsApp inbound message',
+        description: 'Receives WhatsApp replies via 2Chat. Resolves sender phone to expert and records reply.',
+        auth: 'X-User-API-Key header',
+        pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: '2Chat provider' }],
+        responses: [
+          { status: 200, label: 'Accepted', body: '{ "accepted": true }' }
+        ]
+      },
+      {
+        method: 'POST',
+        path: '/webhooks/respondio/{providerAccountId}',
+        summary: 'Respond.io inbound message',
+        auth: 'Authorization: Bearer (apiKey)',
+        pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: 'Respond.io provider' }],
+        responses: [
+          { status: 200, label: 'Accepted', body: '{ "accepted": true }' }
+        ]
+      },
+      {
+        method: 'POST',
+        path: '/webhooks/telegram/{providerAccountId}',
+        summary: 'Telegram bot inbound message',
+        auth: 'X-Telegram-Bot-Api-Secret-Token header',
+        pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: 'Telegram provider' }],
+        responses: [
+          { status: 200, label: 'Accepted', body: '{ "accepted": true }' }
+        ]
+      },
+      {
+        method: 'POST',
+        path: '/webhooks/line/{providerAccountId}',
+        summary: 'LINE Messaging API inbound',
+        auth: 'x-line-signature HMAC-SHA256',
+        pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: 'LINE provider' }],
+        responses: [
+          { status: 200, label: 'Accepted', body: '{ "accepted": true }' }
+        ]
+      },
+      {
+        method: 'POST',
+        path: '/webhooks/viber/{providerAccountId}',
+        summary: 'Viber bot inbound message',
+        auth: 'X-Viber-Content-Signature HMAC-SHA256',
+        pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: 'Viber provider' }],
+        responses: [
+          { status: 200, label: 'Accepted', body: '{ "accepted": true }' }
+        ]
+      },
+      {
+        method: 'POST',
+        path: '/webhooks/kakaotalk/{providerAccountId}',
+        summary: 'KakaoTalk chatbot skill webhook',
+        auth: 'Authorization: KakaoAK (apiKey)',
+        pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: 'KakaoTalk provider' }],
+        responses: [
+          { status: 200, label: 'Accepted', body: '{ "accepted": true }' }
+        ]
+      },
+      {
+        method: 'POST',
+        path: '/webhooks/wechat/{providerAccountId}',
+        summary: 'WeChat Official Account inbound message',
+        auth: 'SHA1 signature (token + timestamp + nonce)',
+        pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: 'WeChat provider' }],
+        responses: [
+          { status: 200, label: 'Success', body: 'success' }
+        ]
       }
     ]
   }

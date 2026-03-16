@@ -13,6 +13,7 @@ import { buildJobId } from '../../queues/jobId';
 import { parseYayWebhookEvent } from '../../integrations/yay/eventParser';
 import { verifyYayWebhookSignature } from '../../integrations/yay/webhookVerifier';
 import { EVENT_CATEGORIES } from '../../core/logging/observability';
+import { inboundWebhookRoutes } from '../../modules/inbound/inboundWebhookRoutes';
 import { salesNavWebhookRoutes } from '../../modules/sales-nav/salesNavWebhookRoutes';
 import { ProviderAccountsService } from '../../modules/providers/providerAccountsService';
 
@@ -26,6 +27,7 @@ const yayWebhookParamsSchema = z.object({
 export const webhookRoutes = Router();
 
 webhookRoutes.use('/sales-nav', salesNavWebhookRoutes);
+webhookRoutes.use(inboundWebhookRoutes);
 
 webhookRoutes.post('/yay/:providerAccountId', async (request, response, next) => {
   try {

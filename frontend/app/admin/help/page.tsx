@@ -208,6 +208,11 @@ export default function HelpPage(): JSX.Element {
               icon: 'precision_manufacturing',
               title: 'Workers dashboard',
               desc: 'A new Workers page shows live BullMQ queue statistics, a real-time event feed of job activity, and bulk action buttons to export leads to Supabase or queue outreach for enriched leads.'
+            },
+            {
+              icon: 'webhook',
+              title: 'Inbound message webhooks',
+              desc: 'All messaging providers (Twilio, SendGrid, 2Chat, Respond.io, Telegram, LINE, Viber, KakaoTalk, WeChat) now have inbound webhook endpoints. Expert replies are automatically captured, outreach threads updated, and screening responses matched.'
             }
           ].map((item) => (
             <div key={item.title} className="flex gap-3 items-start">
@@ -996,6 +1001,18 @@ export default function HelpPage(): JSX.Element {
           <li>Dispatched questions are sent via the expert&apos;s preferred channel. Responses appear in the table below with status tracking (Pending, In Progress, Complete, Escalated).</li>
           <li>If a response is incomplete after 15 minutes, the system automatically sends a follow-up reminder. You can also trigger one manually from the response actions menu.</li>
           <li>Use <strong>Escalate to Call</strong> on a response to create a phone call task for a caller to follow up directly.</li>
+        </ol>
+
+        <SubHeading>Configure inbound webhooks</SubHeading>
+        <ol className="list-decimal list-inside space-y-2 text-sm text-slate-600">
+          <li>Go to <strong>Providers</strong> and find the provider account you want to receive inbound messages from (e.g. Twilio, 2Chat, SendGrid).</li>
+          <li>Copy the provider account UUID from the card.</li>
+          <li>In the external provider&apos;s dashboard, configure the webhook URL: <code>https://&lt;YOUR_HOST&gt;/webhooks/&lt;provider&gt;/&lt;providerAccountId&gt;</code></li>
+          <li>For Twilio: set the &quot;A message comes in&quot; URL under your phone number&apos;s Messaging settings.</li>
+          <li>For SendGrid: go to Settings → Inbound Parse and add the destination URL.</li>
+          <li>For 2Chat: configure the inbound webhook URL under your WhatsApp number settings.</li>
+          <li>For Telegram: use the <code>setWebhook</code> Bot API method with the URL and optional <code>secret_token</code>.</li>
+          <li>When an expert replies via any configured channel, the system automatically records the reply on the outreach thread, updates the expert&apos;s preferred channel, and matches the reply to pending screening questions.</li>
         </ol>
 
         <SubHeading>Manage users and roles</SubHeading>
