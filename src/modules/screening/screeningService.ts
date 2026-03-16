@@ -40,9 +40,11 @@ export class ScreeningService {
       })
     ]);
 
-    if (!expert?.preferredChannel) {
+    if (!expert || questions.length === 0) {
       return 0;
     }
+
+    const channel = expert.preferredChannel ?? 'EMAIL';
 
     let sentCount = 0;
     for (const question of questions) {
@@ -60,17 +62,18 @@ export class ScreeningService {
             projectId: input.projectId,
             questionId: question.id,
             expertId: input.expertId,
-            channel: expert.preferredChannel,
+            channel,
             status: 'PENDING'
           }
         });
+        sentCount += 1;
       }
 
       const recipientContact = await this.prismaClient.expertContact.findFirst({
         where: {
           expertId: input.expertId,
           deletedAt: null,
-          type: expert.preferredChannel === 'EMAIL' ? 'EMAIL' : 'PHONE'
+          type: channel === 'EMAIL' ? 'EMAIL' : 'PHONE'
         },
         orderBy: { isPrimary: 'desc' }
       });
@@ -81,12 +84,11 @@ export class ScreeningService {
       await this.outreachService.sendMessage({
         projectId: input.projectId,
         expertId: input.expertId,
-        channel: expert.preferredChannel,
+        channel,
         recipient: recipientContact.value,
         body: `Screening question ${String(question.displayOrder)}: ${question.prompt}`,
         overrideCooldown: true
       });
-      sentCount += 1;
     }
 
     return sentCount;

@@ -53,7 +53,9 @@ const screeningActionParamsSchema = z.object({
 
 const screeningUpdateSchema = z.object({
   status: z.nativeEnum(ScreeningStatus).optional(),
-  responseText: z.string().optional()
+  responseText: z.string().optional(),
+  score: z.number().min(0).max(10).optional(),
+  qualified: z.boolean().optional()
 });
 
 const screeningService = new ScreeningService(prisma);

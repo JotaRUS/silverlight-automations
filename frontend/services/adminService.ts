@@ -117,7 +117,7 @@ export async function updateOutreachThread(
 
 export async function updateScreeningResponse(
   responseId: string,
-  data: { status?: string; responseText?: string }
+  data: { status?: string; responseText?: string; score?: number; qualified?: boolean }
 ): Promise<Record<string, unknown>> {
   return apiRequest<Record<string, unknown>>(`/api/v1/admin/screening/${responseId}`, {
     method: 'PATCH',

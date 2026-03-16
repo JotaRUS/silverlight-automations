@@ -394,14 +394,21 @@ function DispatchForm({
   const [expertId, setExpertId] = useState('');
   const [error, setError] = useState('');
 
+  const [successMsg, setSuccessMsg] = useState('');
+
   const mutation = useMutation({
     mutationFn: () => dispatchScreening({ projectId, expertId }),
     onSuccess: (data) => {
       setError('');
-      setProjectId('');
-      setExpertId('');
-      onDispatched();
-      if (data.sent === 0) setError('No screening questions found for this project.');
+      setSuccessMsg('');
+      if (data.sent === 0) {
+        setError('No questions dispatched. Ensure the project has screening questions and the expert exists.');
+      } else {
+        setSuccessMsg(`Dispatched ${data.sent} screening question${data.sent > 1 ? 's' : ''}. Responses are now tracked below.`);
+        setProjectId('');
+        setExpertId('');
+        onDispatched();
+      }
     },
     onError: (err) => setError(err instanceof Error ? err.message : 'Dispatch failed')
   });
@@ -444,10 +451,11 @@ function DispatchForm({
         </div>
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {successMsg && <p className="text-sm text-emerald-600">{successMsg}</p>}
       <div className="flex justify-end gap-2">
         <Button onClick={onCancel} className="bg-slate-100 text-slate-700 hover:bg-slate-200">Cancel</Button>
         <Button
-          onClick={() => mutation.mutate()}
+          onClick={() => { setError(''); setSuccessMsg(''); mutation.mutate(); }}
           disabled={!projectId || !expertId || mutation.isPending}
         >
           {mutation.isPending ? 'Dispatching...' : 'Dispatch Questions'}
@@ -520,12 +528,14 @@ function EditResponseModal({
   isPending
 }: {
   record: ScreeningRecord;
-  onSave: (id: string, data: { status?: string; responseText?: string }) => void;
+  onSave: (id: string, data: { status?: string; responseText?: string; score?: number; qualified?: boolean }) => void;
   onCancel: () => void;
   isPending: boolean;
 }) {
   const [status, setStatus] = useState<ScreeningStatus>(record.status);
   const [responseText, setResponseText] = useState(record.responseText ?? '');
+  const [score, setScore] = useState(record.score != null ? String(record.score) : '');
+  const [qualified, setQualified] = useState<boolean | null>(record.qualified ?? null);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
@@ -568,13 +578,44 @@ function EditResponseModal({
           />
         </div>
 
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Score (0–10)</label>
+            <input
+              type="number"
+              min={0}
+              max={10}
+              step={0.5}
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+              value={score}
+              onChange={(e) => setScore(e.target.value)}
+              placeholder="—"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Qualified</label>
+            <select
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+              value={qualified === null ? '' : qualified ? 'true' : 'false'}
+              onChange={(e) => setQualified(e.target.value === '' ? null : e.target.value === 'true')}
+            >
+              <option value="">Not assessed</option>
+              <option value="true">Yes — Qualified</option>
+              <option value="false">No — Not qualified</option>
+            </select>
+          </div>
+        </div>
+
         <div className="flex justify-end gap-2">
           <Button onClick={onCancel} className="bg-slate-100 text-slate-700 hover:bg-slate-200">Cancel</Button>
           <Button
             onClick={() => {
-              const data: { status?: string; responseText?: string } = {};
+              const data: { status?: string; responseText?: string; score?: number; qualified?: boolean } = {};
               if (status !== record.status) data.status = status;
               if (responseText !== (record.responseText ?? '')) data.responseText = responseText;
+              const numScore = score !== '' ? Number(score) : undefined;
+              if (numScore !== undefined && numScore !== Number(record.score)) data.score = numScore;
+              if (qualified !== null && qualified !== record.qualified) data.qualified = qualified;
               onSave(record.id, data);
             }}
             disabled={isPending}
@@ -619,7 +660,7 @@ export default function ScreeningPage(): JSX.Element {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { status?: string; responseText?: string } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { status?: string; responseText?: string; score?: number; qualified?: boolean } }) =>
       updateScreeningResponse(id, data),
     onSuccess: () => {
       setEditingRecord(null);
@@ -630,7 +671,7 @@ export default function ScreeningPage(): JSX.Element {
   const handleFollowUp = useCallback((id: string) => followUpMutation.mutate(id), [followUpMutation]);
   const handleEscalate = useCallback((id: string) => escalateMutation.mutate(id), [escalateMutation]);
   const handleSave = useCallback(
-    (id: string, data: { status?: string; responseText?: string }) => updateMutation.mutate({ id, data }),
+    (id: string, data: { status?: string; responseText?: string; score?: number; qualified?: boolean }) => updateMutation.mutate({ id, data }),
     [updateMutation]
   );
 
@@ -791,6 +832,7 @@ export default function ScreeningPage(): JSX.Element {
                   <th className="px-4 py-3">Channel</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Score</th>
+                  <th className="px-4 py-3">Qualified</th>
                   <th className="px-4 py-3">Updated</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
@@ -840,6 +882,23 @@ export default function ScreeningPage(): JSX.Element {
                             <span className="text-[10px] text-slate-400 tabular-nums">{Number(record.score).toFixed(1)}</span>
                           </div>
                         ) : (
+                          <span className="text-xs text-slate-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {record.qualified === true && (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                            <span className="material-symbols-outlined text-xs">check_circle</span>
+                            Yes
+                          </span>
+                        )}
+                        {record.qualified === false && (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-red-50 border border-red-200 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+                            <span className="material-symbols-outlined text-xs">cancel</span>
+                            No
+                          </span>
+                        )}
+                        {record.qualified == null && (
                           <span className="text-xs text-slate-300">—</span>
                         )}
                       </td>
