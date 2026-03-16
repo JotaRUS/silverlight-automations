@@ -1852,6 +1852,66 @@
         }
       },
       "response": []
+    },
+    {
+      "name": "Ranking",
+      "item": [
+        {
+          "name": "Get Latest Ranking (All)",
+          "id": "d1a2b3c4-e5f6-7890-abcd-ef1234567890",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/ranking/latest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "ranking",
+                "latest"
+              ]
+            },
+            "description": "Returns the latest expert ranking snapshots across all projects. Includes expert contacts, project completion summaries, and boost metadata. Rankings are computed every 60 seconds."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Latest Ranking (By Project)",
+          "id": "e2b3c4d5-f6a7-8901-bcde-f23456789012",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/ranking/latest?projectId={{projectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "ranking",
+                "latest"
+              ],
+              "query": [
+                {
+                  "key": "projectId",
+                  "value": "{{projectId}}",
+                  "description": "Filter ranking snapshots to a specific project"
+                }
+              ]
+            },
+            "description": "Returns expert ranking snapshots filtered to a specific project. Use the projectId variable or paste a UUID directly."
+          },
+          "response": []
+        }
+      ],
+      "id": "c0d1e2f3-a4b5-6789-0abc-def123456789",
+      "description": "Expert priority ranking for call allocation. Experts are scored based on project completion deficit and boost tiers (fresh reply, signup chase, callback chase)."
     }
   ],
   "variable": [

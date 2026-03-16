@@ -176,6 +176,8 @@ async function runScheduledMaintenance(): Promise<void> {
     });
   }
 
+  const rankingJobsEnqueued = await computeRankingSnapshots();
+
   logger.info(
     {
       archivedCount,
@@ -183,7 +185,8 @@ async function runScheduledMaintenance(): Promise<void> {
       performanceJobsEnqueued: activeCallers.length,
       callAllocationJobsEnqueued: activeCallers.length,
       screeningFollowupsEnqueued: pendingScreenings.length,
-      signupChaseCandidates: signupChaseCandidates.length
+      signupChaseCandidates: signupChaseCandidates.length,
+      rankingJobsEnqueued
     },
     'scheduler-maintenance-run-completed'
   );
@@ -194,6 +197,120 @@ async function runScheduledMaintenance(): Promise<void> {
     await runAutoSourcingLoop();
     await pollLinkedInLeadResponses();
   }
+}
+
+const RANKING_STALE_MS = 60 * 60 * 1000;
+const FRESH_REPLY_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+async function computeRankingSnapshots(): Promise<number> {
+  await prisma.rankingSnapshot.deleteMany({
+    where: { createdAt: { lt: new Date(clock.now().getTime() - RANKING_STALE_MS) } }
+  });
+
+  const activeProjects = await prisma.project.findMany({
+    where: { status: 'ACTIVE', deletedAt: null },
+    select: { id: true }
+  });
+
+  if (activeProjects.length === 0) return 0;
+
+  const timeSlice = clock.now().toISOString().slice(0, 16);
+  const freshReplyCutoff = new Date(clock.now().getTime() - FRESH_REPLY_WINDOW_MS);
+  let enqueued = 0;
+
+  for (const project of activeProjects) {
+    const leads = await prisma.lead.findMany({
+      where: {
+        projectId: project.id,
+        expertId: { not: null },
+        deletedAt: null,
+        status: { notIn: ['DISQUALIFIED'] }
+      },
+      select: { expertId: true }
+    });
+
+    const expertIds = [...new Set(leads.map((l) => l.expertId).filter(Boolean))] as string[];
+    if (expertIds.length === 0) continue;
+
+    const phoneContacts = await prisma.expertContact.findMany({
+      where: { expertId: { in: expertIds }, type: 'PHONE', deletedAt: null },
+      select: { expertId: true },
+      distinct: ['expertId']
+    });
+    const callableExpertIds = new Set(phoneContacts.map((c) => c.expertId));
+    if (callableExpertIds.size === 0) continue;
+
+    const freshReplies = await prisma.outreachThread.findMany({
+      where: {
+        projectId: project.id,
+        expertId: { in: [...callableExpertIds] },
+        replied: true,
+        updatedAt: { gte: freshReplyCutoff }
+      },
+      select: { expertId: true },
+      distinct: ['expertId']
+    });
+    const freshReplyExpertIds = new Set(freshReplies.map((t) => t.expertId));
+
+    const freshScreenings = await prisma.screeningResponse.findMany({
+      where: {
+        projectId: project.id,
+        expertId: { in: [...callableExpertIds] },
+        updatedAt: { gte: freshReplyCutoff }
+      },
+      select: { expertId: true },
+      distinct: ['expertId']
+    });
+    for (const sr of freshScreenings) {
+      if (sr.expertId) freshReplyExpertIds.add(sr.expertId);
+    }
+
+    const signupChases = await prisma.callTask.findMany({
+      where: {
+        projectId: project.id,
+        expertId: { in: [...callableExpertIds] },
+        status: 'COMPLETED',
+        callOutcome: 'INTERESTED_SIGNUP_LINK_SENT'
+      },
+      select: { expertId: true },
+      distinct: ['expertId']
+    });
+    const signupChaseExpertIds = new Set(signupChases.map((t) => t.expertId));
+
+    const rejections = await prisma.callTask.findMany({
+      where: {
+        projectId: project.id,
+        expertId: { in: [...callableExpertIds] },
+        status: 'COMPLETED',
+        callOutcome: 'RETRYABLE_REJECTION'
+      },
+      select: { expertId: true },
+      distinct: ['expertId']
+    });
+    const rejectionExpertIds = new Set(rejections.map((t) => t.expertId));
+
+    for (const expertId of callableExpertIds) {
+      await getQueues().rankingQueue.add(
+        'ranking.compute',
+        {
+          correlationId: 'scheduler',
+          data: {
+            projectId: project.id,
+            expertId,
+            freshReplyBoost: freshReplyExpertIds.has(expertId),
+            signupChaseBoost: signupChaseExpertIds.has(expertId),
+            highValueRejectionBoost: rejectionExpertIds.has(expertId)
+          }
+        },
+        {
+          jobId: buildJobId('ranking', project.id, expertId, timeSlice)
+        }
+      );
+      enqueued += 1;
+    }
+  }
+
+  return enqueued;
 }
 
 async function runAutoSourcingLoop(): Promise<void> {

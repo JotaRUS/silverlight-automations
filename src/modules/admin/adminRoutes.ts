@@ -498,25 +498,57 @@ adminRoutes.get('/call-board', async (_request, response, next) => {
 adminRoutes.get('/ranking/latest', async (request, response, next) => {
   try {
     const projectId = typeof request.query.projectId === 'string' ? request.query.projectId : undefined;
-    const ranking = await prisma.rankingSnapshot.findMany({
-      where: {
-        projectId
-      },
-      include: {
-        expert: true,
-        project: true
-      },
-      orderBy: [
-        {
-          createdAt: 'desc'
+    const recentCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
+
+    const [snapshots, projectSummaries] = await Promise.all([
+      prisma.rankingSnapshot.findMany({
+        where: {
+          ...(projectId ? { projectId } : {}),
+          createdAt: { gte: recentCutoff }
         },
-        {
-          rank: 'asc'
-        }
-      ],
-      take: 200
-    });
-    response.status(200).json(ranking);
+        include: {
+          expert: {
+            include: {
+              contacts: {
+                where: { deletedAt: null },
+                orderBy: { isPrimary: 'desc' }
+              }
+            }
+          },
+          project: {
+            select: {
+              id: true,
+              name: true,
+              targetThreshold: true,
+              signedUpCount: true,
+              completionPercentage: true
+            }
+          }
+        },
+        orderBy: [
+          { score: 'desc' },
+          { rank: 'asc' }
+        ],
+        take: 200
+      }),
+      prisma.project.findMany({
+        where: {
+          status: 'ACTIVE',
+          deletedAt: null,
+          ...(projectId ? { id: projectId } : {})
+        },
+        select: {
+          id: true,
+          name: true,
+          targetThreshold: true,
+          signedUpCount: true,
+          completionPercentage: true
+        },
+        orderBy: { priority: 'desc' }
+      })
+    ]);
+
+    response.status(200).json({ snapshots, projectSummaries });
   } catch (error) {
     next(error);
   }

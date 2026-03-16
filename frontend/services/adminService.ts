@@ -212,9 +212,56 @@ export async function requeueCallTask(taskId: string, reason?: string): Promise<
   });
 }
 
-export async function fetchRanking(projectId?: string): Promise<Record<string, unknown>[]> {
+export interface RankingExpertContact {
+  id: string;
+  type: 'EMAIL' | 'PHONE' | 'LINKEDIN';
+  value: string;
+  isPrimary: boolean;
+}
+
+export interface RankingExpert {
+  id: string;
+  fullName: string;
+  countryIso?: string | null;
+  timezone?: string | null;
+  contacts: RankingExpertContact[];
+}
+
+export interface RankingProjectSummary {
+  id: string;
+  name: string;
+  targetThreshold: number;
+  signedUpCount: number;
+  completionPercentage: number | string;
+}
+
+export interface RankingSnapshot {
+  id: string;
+  projectId: string | null;
+  expertId: string | null;
+  score: number | string;
+  rank: number;
+  reason: string;
+  metadata: {
+    freshReplyBoost?: boolean;
+    signupChaseBoost?: boolean;
+    highValueRejectionBoost?: boolean;
+    completionPenalty?: number;
+    createdAt?: string;
+  } | null;
+  createdAt: string;
+  expert: RankingExpert | null;
+  project: RankingProjectSummary | null;
+}
+
+export interface RankingResponse {
+  snapshots: RankingSnapshot[];
+  projectSummaries: RankingProjectSummary[];
+}
+
+export async function fetchRanking(projectId?: string): Promise<RankingResponse> {
   const suffix = projectId ? `?projectId=${projectId}` : '';
-  return apiRequest<Record<string, unknown>[]>(`/api/v1/admin/ranking/latest${suffix}`);
+  return apiRequest<RankingResponse>(`/api/v1/admin/ranking/latest${suffix}`);
 }
 
 export async function fetchDlq(): Promise<Record<string, unknown>[]> {

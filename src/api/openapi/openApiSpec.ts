@@ -263,6 +263,28 @@ export const openApiSpec = {
         summary: 'Operator requeues a task for reassignment'
       }
     },
+    '/api/v1/admin/ranking/latest': {
+      get: {
+        summary: 'Get latest expert ranking snapshots',
+        description:
+          'Returns priority-ranked experts for call allocation. Snapshots are computed every 60 seconds by the scheduler. Includes expert contacts, project completion summaries, and boost metadata.',
+        parameters: [
+          {
+            name: 'projectId',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', format: 'uuid' },
+            description: 'Filter snapshots to a specific project'
+          }
+        ],
+        responses: {
+          '200': {
+            description:
+              'Object with `snapshots` (ranked expert list with score, boost metadata, expert contacts) and `projectSummaries` (active projects with completion data)'
+          }
+        }
+      }
+    },
     '/webhooks/yay/{providerAccountId}': {
       post: {
         summary: 'Ingest Yay webhook events'

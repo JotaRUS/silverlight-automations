@@ -1076,13 +1076,72 @@ API Request
   ├─► documentation
   │
   └─► (webhook) yay-call-events ──► call-validation ──► performance
-                                                           │
-                                                           └──► call-allocation
+                                                          │
+                                                          └──► call-allocation
+
+Scheduler (60s cycle)
+  │
+  ├─► performance (recalculate per caller)
+  ├─► call-allocation (assign tasks per caller)
+  ├─► screening (follow-up stale responses)
+  ├─► ranking (compute expert priority scores per project)
+  └─► auto-sourcing (enrichment, outreach, Apollo)
 
 All queues ──(on failure)──► dead-letter ──► PostgreSQL (dead_letter_jobs)
 ```
 
 Jobs that exceed all retry attempts are captured in the **dead letter queue** and persisted to the `dead_letter_jobs` table. The scheduler archives records older than 30 days.
+
+---
+
+## 6b. Expert Ranking System
+
+The ranking system determines which experts should be called first. The scheduler computes rankings every 60 seconds and persists them as `RankingSnapshot` rows.
+
+### Scoring formula
+
+```text
+score = completionDeficit + freshReplyBoost + signupChaseBoost + highValueRejectionBoost
+
+completionDeficit = (1 - signedUpCount / targetThreshold) × 100
+freshReplyBoost   = +1000  (expert replied on any channel in last 48 hours)
+signupChaseBoost  = +750   (expert said they would sign up but hasn't yet)
+highValueRejectionBoost = +500 (expert rejected but has a good profile, should be chased)
+```
+
+### Priority tiers (highest to lowest)
+
+| Tier | Boost | Description |
+|------|-------|-------------|
+| 1 — Fresh replies | +1000 | Expert replied via email, SMS, WhatsApp, screening, etc. on a high-priority project |
+| 2 — Signup chase | +750 | Expert expressed interest (`INTERESTED_SIGNUP_LINK_SENT`) but has not completed signup |
+| 3 — Callback chase | +500 | Expert rejected (`RETRYABLE_REJECTION`) but profile warrants another attempt by a different caller |
+| 4 — Base pool | 0 | Remaining callable experts, ordered by project completion deficit |
+
+### Project completion deficit
+
+Experts on projects with lower completion percentages are ranked higher. For example:
+- Project A: 3/20 signed up (15%) → deficit score = 85
+- Project B: 3/10 signed up (30%) → deficit score = 70
+- An expert on Project A with a fresh reply scores 1085 vs 1070 on Project B
+
+### Scheduler cycle
+
+Every 60 seconds, the scheduler:
+1. Deletes stale snapshots (older than 1 hour)
+2. Queries all active projects
+3. For each project, finds experts with phone contacts (callable experts)
+4. Determines boost flags per expert from outreach threads, screening responses, and call task outcomes
+5. Enqueues `ranking.compute` jobs to the `ranking` queue
+6. The ranking worker computes scores and persists `RankingSnapshot` rows
+7. A `ranking.updated` WebSocket event notifies the admin frontend
+
+### Admin page
+
+The `/admin/ranking` page displays the live ranking table with:
+- Project filter dropdown
+- Project completion summary cards with progress bars
+- Ranked expert table with score, boost badges, phone numbers, and human-readable reasons
 
 ---
 
