@@ -5,13 +5,7 @@ import { useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { useSocket } from '@/hooks/useSocket';
-import { fetchCallBoard, fetchDashboardStats, type DashboardStats } from '@/services/adminService';
-
-interface CallBoardResponse {
-  tasks: Record<string, unknown>[];
-  callers: Record<string, unknown>[];
-  metrics: Record<string, unknown>[];
-}
+import { fetchCallBoard, fetchDashboardStats, type CallBoardResponse, type DashboardStats } from '@/services/adminService';
 
 function StatCard({
   title,
@@ -290,7 +284,7 @@ export default function AdminDashboardPage(): JSX.Element {
   const stats = dashboardQuery.data;
   const tasks = callBoardQuery.data?.tasks ?? [];
   const activeTasks = tasks.filter(
-    (t) => t.status === 'ASSIGNED' || t.status === 'DIALING' || t.status === 'ACTIVE'
+    (t) => t.status === 'ASSIGNED' || t.status === 'DIALING'
   );
   const pendingTasks = tasks.filter((t) => t.status === 'PENDING');
   const allTasks = [...activeTasks, ...pendingTasks].slice(0, 5);
@@ -377,21 +371,21 @@ export default function AdminDashboardPage(): JSX.Element {
                     </tr>
                   )}
                   {allTasks.map((task) => (
-                    <tr key={String(task.id)} className="hover:bg-slate-50 transition-colors">
+                    <tr key={task.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-5 py-4">
                         <div>
-                          <p className="text-sm font-semibold">Task #{String(task.id).slice(0, 8)}</p>
-                          <p className="text-xs text-slate-500">{String(task.expertId ?? 'Unassigned')}</p>
+                          <p className="text-sm font-semibold">{task.expert.fullName}</p>
+                          <p className="text-xs text-slate-500">{task.project.name}</p>
                         </div>
                       </td>
-                      <td className="px-5 py-4 text-sm font-mono text-slate-600">
-                        {String(task.callerId ?? '—')}
+                      <td className="px-5 py-4 text-sm text-slate-600">
+                        {task.caller?.name ?? '—'}
                       </td>
                       <td className="px-5 py-4 text-sm">
                         {String(task.priorityScore ?? '—')}
                       </td>
                       <td className="px-5 py-4">
-                        <StatusBadge status={String(task.status)} />
+                        <StatusBadge status={task.status} />
                       </td>
                       <td className="px-5 py-4 text-right">
                         <button className="text-primary hover:text-primary/80">

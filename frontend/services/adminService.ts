@@ -136,16 +136,80 @@ export async function dispatchScreening(data: {
   });
 }
 
-export async function fetchCallBoard(): Promise<{
-  tasks: Record<string, unknown>[];
-  callers: Record<string, unknown>[];
-  metrics: Record<string, unknown>[];
-}> {
-  return apiRequest<{
-    tasks: Record<string, unknown>[];
-    callers: Record<string, unknown>[];
-    metrics: Record<string, unknown>[];
-  }>('/api/v1/admin/call-board');
+export interface CallBoardExpertContact {
+  id: string;
+  type: 'EMAIL' | 'PHONE' | 'LINKEDIN';
+  value: string;
+  valueNormalized?: string | null;
+  isPrimary: boolean;
+}
+
+export interface CallBoardExpert {
+  id: string;
+  fullName: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  currentRole?: string | null;
+  currentCompany?: string | null;
+  countryIso?: string | null;
+  timezone?: string | null;
+  languageCodes: string[];
+  contacts: CallBoardExpertContact[];
+}
+
+export interface CallBoardCaller {
+  id: string;
+  name: string;
+  email: string;
+  timezone: string;
+  allocationStatus: string;
+  fraudStatus: string;
+  regionIsoCodes: string[];
+  languageCodes: string[];
+}
+
+export interface CallBoardTask {
+  id: string;
+  status: 'PENDING' | 'ASSIGNED' | 'DIALING';
+  priorityScore: number | string;
+  callerId?: string | null;
+  expertId: string;
+  projectId: string;
+  assignedAt?: string | null;
+  executionWindowStartsAt?: string | null;
+  executionWindowEndsAt?: string | null;
+  attemptedDialCount: number;
+  createdAt: string;
+  expert: CallBoardExpert;
+  caller?: CallBoardCaller | null;
+  project: { name: string };
+}
+
+export interface CallBoardMetric {
+  id: string;
+  callerId: string;
+  rolling60MinuteDials: number;
+  rolling60MinuteConnections: number;
+  graceModeActive: boolean;
+  allocationStatus: string;
+  snapshotAt: string;
+}
+
+export interface CallBoardResponse {
+  tasks: CallBoardTask[];
+  callers: CallBoardCaller[];
+  metrics: CallBoardMetric[];
+}
+
+export async function fetchCallBoard(): Promise<CallBoardResponse> {
+  return apiRequest<CallBoardResponse>('/api/v1/admin/call-board');
+}
+
+export async function requeueCallTask(taskId: string, reason?: string): Promise<{ accepted: boolean }> {
+  return apiRequest<{ accepted: boolean }>(`/api/v1/call-tasks/operator/tasks/${taskId}/requeue`, {
+    method: 'POST',
+    body: reason ? { reason } : {}
+  });
 }
 
 export async function fetchRanking(projectId?: string): Promise<Record<string, unknown>[]> {

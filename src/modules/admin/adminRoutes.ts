@@ -453,8 +453,16 @@ adminRoutes.get('/call-board', async (_request, response, next) => {
           }
         },
         include: {
-          expert: true,
-          caller: true
+          expert: {
+            include: {
+              contacts: {
+                where: { deletedAt: null },
+                orderBy: { isPrimary: 'desc' }
+              }
+            }
+          },
+          caller: true,
+          project: { select: { name: true } }
         },
         orderBy: {
           priorityScore: 'desc'
