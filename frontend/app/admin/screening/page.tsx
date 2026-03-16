@@ -429,7 +429,19 @@ function DispatchForm({
       if (data.sent === 0) {
         setError('No questions dispatched. Ensure the project has screening questions and the expert exists.');
       } else {
-        setSuccessMsg(`Dispatched ${data.sent} screening question${data.sent > 1 ? 's' : ''} via ${availableChannels.find((c) => c.channel === channel)?.label ?? channel}. Lead status updated to Screening.`);
+        const channelLabel = availableChannels.find((c) => c.channel === channel)?.label ?? channel;
+        let msg = `Created ${data.sent} screening response${data.sent > 1 ? 's' : ''}. Lead status updated to Screening.`;
+        if (data.delivered > 0) {
+          msg += ` ${String(data.delivered)} delivered via ${channelLabel}.`;
+        }
+        if (data.deliveryErrors > 0) {
+          msg += ` ${String(data.deliveryErrors)} failed to deliver (provider error) — responses are tracked and can be retried.`;
+        }
+        if (data.delivered === 0 && data.deliveryErrors > 0) {
+          setError(msg);
+        } else {
+          setSuccessMsg(msg);
+        }
         setProjectId('');
         setExpertId('');
         setChannel('');

@@ -129,8 +129,8 @@ export async function dispatchScreening(data: {
   projectId: string;
   expertId: string;
   channel: string;
-}): Promise<{ sent: number }> {
-  return apiRequest<{ sent: number }>('/api/v1/screening/dispatch', {
+}): Promise<{ sent: number; delivered: number; deliveryErrors: number }> {
+  return apiRequest<{ sent: number; delivered: number; deliveryErrors: number }>('/api/v1/screening/dispatch', {
     method: 'POST',
     body: data
   });

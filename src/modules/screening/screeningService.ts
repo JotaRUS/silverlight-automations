@@ -1,6 +1,7 @@
 import type { Channel, PrismaClient } from '@prisma/client';
 
 import { getRequestContext } from '../../core/http/requestContext';
+import { logger } from '../../core/logging/logger';
 import { publishRealtimeEvent } from '../../core/realtime/realtimePubSub';
 import { clock } from '../../core/time/clock';
 import { OutreachService } from '../outreach/outreachService';
@@ -28,7 +29,7 @@ export class ScreeningService {
     this.projectCompletionService = new ProjectCompletionService(prismaClient);
   }
 
-  public async dispatchScreening(input: DispatchScreeningInput): Promise<number> {
+  public async dispatchScreening(input: DispatchScreeningInput): Promise<{ sent: number; delivered: number; deliveryErrors: number }> {
     const { channel } = input;
 
     const [questions, expert] = await Promise.all([
@@ -42,7 +43,7 @@ export class ScreeningService {
     ]);
 
     if (!expert || questions.length === 0) {
-      return 0;
+      return { sent: 0, delivered: 0, deliveryErrors: 0 };
     }
 
     const contactType = channel === 'EMAIL' ? 'EMAIL' : 'PHONE';
@@ -52,6 +53,9 @@ export class ScreeningService {
     });
 
     let sentCount = 0;
+    let deliveredCount = 0;
+    let deliveryErrorCount = 0;
+
     for (const question of questions) {
       const existingResponse = await this.prismaClient.screeningResponse.findFirst({
         where: {
@@ -75,14 +79,29 @@ export class ScreeningService {
       }
 
       if (recipientContact) {
-        await this.outreachService.sendMessage({
-          projectId: input.projectId,
-          expertId: input.expertId,
-          channel,
-          recipient: recipientContact.value,
-          body: `Screening question ${String(question.displayOrder)}: ${question.prompt}`,
-          overrideCooldown: true
-        });
+        try {
+          await this.outreachService.sendMessage({
+            projectId: input.projectId,
+            expertId: input.expertId,
+            channel,
+            recipient: recipientContact.value,
+            body: `Screening question ${String(question.displayOrder)}: ${question.prompt}`,
+            overrideCooldown: true
+          });
+          deliveredCount += 1;
+        } catch (error) {
+          deliveryErrorCount += 1;
+          logger.warn(
+            {
+              projectId: input.projectId,
+              expertId: input.expertId,
+              channel,
+              questionId: question.id,
+              err: error instanceof Error ? error.message : 'unknown'
+            },
+            'screening-question-delivery-failed'
+          );
+        }
       }
     }
 
@@ -104,14 +123,16 @@ export class ScreeningService {
           projectId: input.projectId,
           expertId: input.expertId,
           channel,
-          questionCount: sentCount
+          questionCount: sentCount,
+          deliveredCount,
+          deliveryErrorCount
         }
       });
 
       await this.projectCompletionService.recalculate(input.projectId);
     }
 
-    return sentCount;
+    return { sent: sentCount, delivered: deliveredCount, deliveryErrors: deliveryErrorCount };
   }
 
   public async recordResponse(input: RecordScreeningResponseInput): Promise<void> {

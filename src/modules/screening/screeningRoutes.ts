@@ -32,8 +32,8 @@ screeningRoutes.post('/dispatch', async (request, response, next) => {
     if (!parsed.success) {
       throw new AppError('Invalid payload', 400, 'invalid_payload', parsed.error.flatten());
     }
-    const sent = await screeningService.dispatchScreening(parsed.data);
-    response.status(200).json({ sent });
+    const result = await screeningService.dispatchScreening(parsed.data);
+    response.status(200).json(result);
   } catch (error) {
     next(error);
   }

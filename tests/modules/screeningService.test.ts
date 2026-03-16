@@ -67,12 +67,14 @@ describe('ScreeningService', () => {
       sendMessage: vi.fn().mockResolvedValue(undefined)
     };
 
-    const sentCount = await service.dispatchScreening({
+    const result = await service.dispatchScreening({
       projectId: 'project-1',
       expertId: 'expert-1',
       channel: 'EMAIL'
     });
-    expect(sentCount).toBe(2);
+    expect(result.sent).toBe(2);
+    expect(result.delivered).toBe(2);
+    expect(result.deliveryErrors).toBe(0);
     expect(screeningResponseCreateMock).toHaveBeenCalledTimes(2);
   });
 
