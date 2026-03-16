@@ -272,9 +272,96 @@ async function seedRankingDemoData(): Promise<void> {
   console.log(`  Scores: ${scores.sort((a, b) => b - a).join(', ')}`);
 }
 
+async function seedObservabilityDemoData(): Promise<void> {
+  const now = Date.now();
+  const ago = (h: number) => new Date(now - h * 3600000);
+
+  const categories: Array<'SYSTEM' | 'JOB' | 'WEBHOOK' | 'ENFORCEMENT' | 'FRAUD' | 'ALLOCATION'> = [
+    'SYSTEM', 'JOB', 'WEBHOOK', 'ENFORCEMENT', 'FRAUD', 'ALLOCATION'
+  ];
+
+  const systemEventData: Array<{ category: typeof categories[number]; entityType: string; entityId?: string; message: string; payload?: Record<string, unknown>; hoursAgo: number }> = [
+    { category: 'SYSTEM', entityType: 'scheduler', message: 'Scheduled maintenance cycle completed', payload: { duration: 1230, tasksProcessed: 14 }, hoursAgo: 0.5 },
+    { category: 'SYSTEM', entityType: 'database', message: 'Connection pool recovered after timeout', payload: { pool: 'primary', reconnectMs: 450 }, hoursAgo: 3 },
+    { category: 'JOB', entityType: 'enrichment', entityId: 'enrich-batch-42', message: 'Enrichment batch completed for 25 leads', payload: { batchSize: 25, matched: 18, enrichedFields: ['phone', 'email'] }, hoursAgo: 1 },
+    { category: 'JOB', entityType: 'outreach', entityId: 'outreach-7f3a', message: 'Outreach campaign sent 12 messages', payload: { channel: 'linkedin', sent: 12, failed: 1 }, hoursAgo: 2 },
+    { category: 'JOB', entityType: 'ranking', entityId: 'rank-cycle-99', message: 'Ranking computation completed for 3 projects', payload: { projects: 3, snapshotsCreated: 26 }, hoursAgo: 4 },
+    { category: 'WEBHOOK', entityType: 'yay_inbound', entityId: 'wh-evt-a1b2', message: 'Yay webhook processed: expert callback confirmed', payload: { expertId: 'expert-001', event: 'call_completed' }, hoursAgo: 1.5 },
+    { category: 'WEBHOOK', entityType: 'sales_nav', entityId: 'wh-evt-c3d4', message: 'Sales Nav webhook: new lead ingested', payload: { leadName: 'Jane Doe', source: 'sales_navigator' }, hoursAgo: 5 },
+    { category: 'ENFORCEMENT', entityType: 'caller', entityId: 'caller-001', message: 'Caller exceeded maximum idle time — task reassigned', payload: { idleMinutes: 12, taskId: 'task-xyz' }, hoursAgo: 6 },
+    { category: 'ENFORCEMENT', entityType: 'call_task', entityId: 'task-abc', message: 'Call task auto-cancelled after execution window expired', payload: { windowMinutes: 15, expertId: 'expert-002' }, hoursAgo: 8 },
+    { category: 'FRAUD', entityType: 'call_log', entityId: 'call-fraud-1', message: 'Suspicious call duration detected — flagged for review', payload: { callerId: 'caller-bad', duration: 3, threshold: 10 }, hoursAgo: 2 },
+    { category: 'FRAUD', entityType: 'call_log', entityId: 'call-fraud-2', message: 'Caller marked 5 calls as completed in under 2 minutes', payload: { callerId: 'caller-bad2', count: 5, windowSeconds: 120 }, hoursAgo: 10 },
+    { category: 'ALLOCATION', entityType: 'call_task', entityId: 'alloc-task-1', message: 'High-priority task allocated to next available caller', payload: { expertId: 'expert-003', score: 95 }, hoursAgo: 0.3 },
+    { category: 'ALLOCATION', entityType: 'call_task', entityId: 'alloc-task-2', message: 'No available callers — task queued for retry', payload: { retryInSeconds: 60 }, hoursAgo: 7 },
+    { category: 'SYSTEM', entityType: 'health', message: 'Redis connection restored after brief disconnection', payload: { downtime: '8s' }, hoursAgo: 12 },
+    { category: 'JOB', entityType: 'google_sheets_sync', entityId: 'gs-sync-14', message: 'Google Sheets sync exported 42 rows', payload: { sheet: 'Expert Pipeline', rows: 42 }, hoursAgo: 0.8 }
+  ];
+
+  for (const ev of systemEventData) {
+    await prisma.systemEvent.create({
+      data: {
+        category: ev.category,
+        entityType: ev.entityType,
+        entityId: ev.entityId ?? null,
+        message: ev.message,
+        payload: ev.payload ? (ev.payload as unknown as import('@prisma/client').Prisma.InputJsonValue) : undefined,
+        createdAt: ago(ev.hoursAgo)
+      }
+    });
+  }
+
+  const dlqData = [
+    { queueName: 'enrichment', jobId: 'enrich-fail-1', errorMessage: 'Apollo API rate limit exceeded — 429 Too Many Requests', stackTrace: 'Error: 429\n    at ApolloClient.fetch (/app/src/integrations/apollo.ts:45:11)', hoursAgo: 1 },
+    { queueName: 'outreach', jobId: 'outreach-fail-2', errorMessage: 'LinkedIn session expired — authentication required', stackTrace: 'Error: SessionExpired\n    at LinkedInProvider.send (/app/src/integrations/linkedin.ts:72:8)', hoursAgo: 3 },
+    { queueName: 'call-allocation', jobId: 'alloc-fail-3', errorMessage: 'Expert has no valid phone contacts — cannot create call task', stackTrace: null, hoursAgo: 5 },
+    { queueName: 'supabase-sync', jobId: 'sync-fail-4', errorMessage: 'Supabase upsert conflict on unique constraint leads_pkey', stackTrace: 'Error: PostgresError\n    at SupabaseClient.upsert (/app/src/modules/supabase-sync/supabaseSyncService.ts:118:5)', hoursAgo: 8 }
+  ];
+
+  for (const d of dlqData) {
+    await prisma.deadLetterJob.create({
+      data: {
+        queueName: d.queueName,
+        jobId: d.jobId,
+        payload: { jobId: d.jobId, queue: d.queueName } as unknown as import('@prisma/client').Prisma.InputJsonValue,
+        errorMessage: d.errorMessage,
+        stackTrace: d.stackTrace,
+        failedAt: ago(d.hoursAgo),
+        correlationId: `corr-${d.jobId}`
+      }
+    });
+  }
+
+  const webhookData = [
+    { eventId: 'yay-evt-001', hash: 'a1b2c3d4e5f6', status: 'processed', hoursAgo: 0.5 },
+    { eventId: 'yay-evt-002', hash: 'b2c3d4e5f6a1', status: 'processed', hoursAgo: 2 },
+    { eventId: 'snav-evt-003', hash: 'c3d4e5f6a1b2', status: 'processed', hoursAgo: 4 },
+    { eventId: 'snav-evt-004', hash: 'd4e5f6a1b2c3', status: 'duplicate', hoursAgo: 4.1 },
+    { eventId: 'yay-evt-005', hash: 'e5f6a1b2c3d4', status: 'processed', hoursAgo: 6 },
+    { eventId: 'snav-evt-006', hash: 'f6a1b2c3d4e5', status: 'failed', hoursAgo: 9 }
+  ];
+
+  for (const w of webhookData) {
+    await prisma.processedWebhookEvent.create({
+      data: {
+        eventId: w.eventId,
+        hash: w.hash,
+        status: w.status,
+        processedAt: ago(w.hoursAgo)
+      }
+    });
+  }
+
+  console.log('Seeded observability demo data:');
+  console.log(`  SystemEvents: ${systemEventData.length}`);
+  console.log(`  DLQ entries: ${dlqData.length}`);
+  console.log(`  Webhook events: ${webhookData.length}`);
+}
+
 async function main(): Promise<void> {
   await seedAdmin();
   await seedRankingDemoData();
+  await seedObservabilityDemoData();
 }
 
 main()

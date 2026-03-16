@@ -1912,6 +1912,119 @@
       ],
       "id": "c0d1e2f3-a4b5-6789-0abc-def123456789",
       "description": "Expert priority ranking for call allocation. Experts are scored based on project completion deficit and boost tiers (fresh reply, signup chase, callback chase)."
+    },
+    {
+      "name": "Observability",
+      "item": [
+        {
+          "name": "Summary (24h counts)",
+          "id": "obs-sum-0001-0001-0001-000000000001",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/observability/summary",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "observability", "summary"]
+            },
+            "description": "Returns 24-hour counts for DLQ items, system events, fraud flags, and processed webhooks."
+          },
+          "response": []
+        },
+        {
+          "name": "System Events (all categories)",
+          "id": "obs-evt-0001-0001-0001-000000000002",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/observability/system-events?limit=50&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "observability", "system-events"],
+              "query": [
+                { "key": "category", "value": "", "description": "SYSTEM, JOB, WEBHOOK, ENFORCEMENT, FRAUD, or ALLOCATION", "disabled": true },
+                { "key": "entityType", "value": "", "description": "Filter by entity type string", "disabled": true },
+                { "key": "search", "value": "", "description": "Full-text search on message", "disabled": true },
+                { "key": "since", "value": "", "description": "ISO date-time start", "disabled": true },
+                { "key": "until", "value": "", "description": "ISO date-time end", "disabled": true },
+                { "key": "limit", "value": "50" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "Paginated list of all system events. Enable query params to filter by category, entity type, message text, or date range."
+          },
+          "response": []
+        },
+        {
+          "name": "Dead Letter Queue",
+          "id": "obs-dlq-0001-0001-0001-000000000003",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/observability/dlq?limit=50&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "observability", "dlq"],
+              "query": [
+                { "key": "queueName", "value": "", "description": "Filter by queue name", "disabled": true },
+                { "key": "search", "value": "", "description": "Search error messages", "disabled": true },
+                { "key": "since", "value": "", "disabled": true },
+                { "key": "until", "value": "", "disabled": true },
+                { "key": "limit", "value": "50" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "Paginated list of dead-letter queue entries. Enable query params to filter by queue name, error text, or date range."
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook Events",
+          "id": "obs-wh-0001-0001-0001-0000000000004",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/observability/webhooks?limit=50&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "observability", "webhooks"],
+              "query": [
+                { "key": "status", "value": "", "description": "Filter by status (processed, duplicate, failed)", "disabled": true },
+                { "key": "search", "value": "", "description": "Search event IDs", "disabled": true },
+                { "key": "since", "value": "", "disabled": true },
+                { "key": "until", "value": "", "disabled": true },
+                { "key": "limit", "value": "50" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "Paginated list of processed webhook events. Enable query params to filter by status, event ID, or date range."
+          },
+          "response": []
+        },
+        {
+          "name": "Fraud & Violations",
+          "id": "obs-fr-0001-0001-0001-0000000000005",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/observability/fraud?limit=50&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "observability", "fraud"],
+              "query": [
+                { "key": "since", "value": "", "disabled": true },
+                { "key": "until", "value": "", "disabled": true },
+                { "key": "limit", "value": "50" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "Fraud-flagged call logs and FRAUD/ENFORCEMENT system events. Supports date range filtering and pagination."
+          },
+          "response": []
+        }
+      ],
+      "id": "obs-fold-0001-0001-0001-000000000000",
+      "description": "System observability endpoints — unified activity feed, dead-letter queue, webhook log, and fraud/enforcement monitoring."
     }
   ],
   "variable": [

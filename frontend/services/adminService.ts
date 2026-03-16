@@ -268,24 +268,86 @@ export async function fetchRanking(projectId?: string): Promise<RankingResponse>
   return apiRequest<RankingResponse>(`/api/v1/admin/ranking/latest${suffix}`);
 }
 
-export async function fetchDlq(): Promise<Record<string, unknown>[]> {
-  return apiRequest<Record<string, unknown>[]>('/api/v1/admin/observability/dlq');
+export interface ObservabilitySummary {
+  dlqCount: number;
+  recentEventCount: number;
+  fraudFlagCount: number;
+  webhookCount: number;
 }
 
-export async function fetchWebhookEvents(): Promise<Record<string, unknown>[]> {
-  return apiRequest<Record<string, unknown>[]>('/api/v1/admin/observability/webhooks');
+export interface SystemEventRecord {
+  id: string;
+  category: string;
+  entityType: string;
+  entityId: string | null;
+  correlationId: string | null;
+  message: string;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
 }
 
-export async function fetchProviderRateLimitEvents(): Promise<Record<string, unknown>[]> {
-  return apiRequest<Record<string, unknown>[]>('/api/v1/admin/observability/provider-limits');
+export interface DlqJobRecord {
+  id: string;
+  queueName: string;
+  jobId: string;
+  payload: Record<string, unknown>;
+  errorMessage: string;
+  stackTrace: string | null;
+  failedAt: string;
+  correlationId: string | null;
 }
 
-export async function fetchFraudEvents(): Promise<Record<string, unknown>> {
-  return apiRequest<Record<string, unknown>>('/api/v1/admin/observability/fraud');
+export interface WebhookEventRecord {
+  id: string;
+  eventId: string;
+  hash: string;
+  status: string;
+  processedAt: string;
 }
 
-export async function fetchStateViolations(): Promise<Record<string, unknown>[]> {
-  return apiRequest<Record<string, unknown>[]>('/api/v1/admin/observability/state-violations');
+export interface FraudCallLog {
+  id: string;
+  callId: string | null;
+  callerId: string | null;
+  duration: number | null;
+  fraudFlag: boolean;
+  createdAt: string;
+}
+
+export interface ObsFilterParams {
+  since?: string;
+  until?: string;
+  limit?: number;
+  offset?: number;
+  search?: string;
+  [key: string]: string | number | undefined;
+}
+
+function buildObsQuery(base: string, params?: ObsFilterParams): string {
+  if (!params) return base;
+  const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== '');
+  if (entries.length === 0) return base;
+  return `${base}?${entries.map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&')}`;
+}
+
+export async function fetchObsSummary(): Promise<ObservabilitySummary> {
+  return apiRequest<ObservabilitySummary>('/api/v1/admin/observability/summary');
+}
+
+export async function fetchSystemEvents(params?: ObsFilterParams & { category?: string; entityType?: string }): Promise<{ events: SystemEventRecord[]; total: number }> {
+  return apiRequest<{ events: SystemEventRecord[]; total: number }>(buildObsQuery('/api/v1/admin/observability/system-events', params));
+}
+
+export async function fetchDlq(params?: ObsFilterParams & { queueName?: string }): Promise<{ jobs: DlqJobRecord[]; total: number }> {
+  return apiRequest<{ jobs: DlqJobRecord[]; total: number }>(buildObsQuery('/api/v1/admin/observability/dlq', params));
+}
+
+export async function fetchWebhookEvents(params?: ObsFilterParams & { status?: string }): Promise<{ events: WebhookEventRecord[]; total: number }> {
+  return apiRequest<{ events: WebhookEventRecord[]; total: number }>(buildObsQuery('/api/v1/admin/observability/webhooks', params));
+}
+
+export async function fetchFraudEvents(params?: ObsFilterParams): Promise<{ callLogs: FraudCallLog[]; events: SystemEventRecord[]; totalLogs: number; totalEvents: number }> {
+  return apiRequest<{ callLogs: FraudCallLog[]; events: SystemEventRecord[]; totalLogs: number; totalEvents: number }>(buildObsQuery('/api/v1/admin/observability/fraud', params));
 }
 
 export interface QueueStat {

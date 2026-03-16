@@ -2,6 +2,7 @@ import type { Job } from 'bullmq';
 
 import { clock } from '../../core/time/clock';
 import { logger } from '../../core/logging/logger';
+import { publishRealtimeEvent } from '../../core/realtime/realtimePubSub';
 import { emitNotification } from '../../modules/notifications/emitNotification';
 import {
   DEAD_LETTER_CAPTURE_JOB_NAME,
@@ -124,6 +125,12 @@ async function routeFailedJobToDeadLetter<TData>(
     title: `Job failed: ${queueName}`,
     message: error.message.slice(0, 300),
     metadata: { queueName, jobId: job.id, correlationId }
+  });
+
+  await publishRealtimeEvent({
+    namespace: 'admin',
+    event: 'observability.updated',
+    data: { source: 'dlq', queueName, jobId: job.id }
   });
 }
 

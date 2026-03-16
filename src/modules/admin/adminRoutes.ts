@@ -554,94 +554,151 @@ adminRoutes.get('/ranking/latest', async (request, response, next) => {
   }
 });
 
-adminRoutes.get('/observability/dlq', async (_request, response, next) => {
+function parseObsQuery(query: Record<string, unknown>): {
+  since?: Date; until?: Date; limit: number; offset: number;
+} {
+  const limit = Math.min(Number(query.limit) || 100, 500);
+  const offset = Math.max(Number(query.offset) || 0, 0);
+  const since = typeof query.since === 'string' ? new Date(query.since) : undefined;
+  const until = typeof query.until === 'string' ? new Date(query.until) : undefined;
+  return { since, until, limit, offset };
+}
+
+adminRoutes.get('/observability/summary', async (_request, response, next) => {
   try {
-    const jobs = await prisma.deadLetterJob.findMany({
-      orderBy: {
-        failedAt: 'desc'
-      },
-      take: 200
-    });
-    response.status(200).json(jobs);
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [dlqCount, recentEventCount, fraudFlagCount, webhookCount] = await Promise.all([
+      prisma.deadLetterJob.count({ where: { failedAt: { gte: dayAgo } } }),
+      prisma.systemEvent.count({ where: { createdAt: { gte: dayAgo } } }),
+      prisma.systemEvent.count({ where: { category: 'FRAUD', createdAt: { gte: dayAgo } } }),
+      prisma.processedWebhookEvent.count({ where: { processedAt: { gte: dayAgo } } })
+    ]);
+    response.status(200).json({ dlqCount, recentEventCount, fraudFlagCount, webhookCount });
   } catch (error) {
     next(error);
   }
 });
 
-adminRoutes.get('/observability/webhooks', async (_request, response, next) => {
+adminRoutes.get('/observability/system-events', async (request, response, next) => {
   try {
-    const events = await prisma.processedWebhookEvent.findMany({
-      orderBy: {
-        processedAt: 'desc'
-      },
-      take: 200
-    });
-    response.status(200).json(events);
+    const { since, until, limit, offset } = parseObsQuery(request.query as Record<string, unknown>);
+    const category = typeof request.query.category === 'string' ? request.query.category : undefined;
+    const entityType = typeof request.query.entityType === 'string' ? request.query.entityType : undefined;
+    const search = typeof request.query.search === 'string' ? request.query.search : undefined;
+
+    const where: Record<string, unknown> = {};
+    if (category) where.category = category;
+    if (entityType) where.entityType = entityType;
+    if (search) where.message = { contains: search, mode: 'insensitive' };
+    const dateFilter: Record<string, Date> = {};
+    if (since) dateFilter.gte = since;
+    if (until) dateFilter.lte = until;
+    if (Object.keys(dateFilter).length > 0) where.createdAt = dateFilter;
+
+    const [events, total] = await Promise.all([
+      prisma.systemEvent.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset
+      }),
+      prisma.systemEvent.count({ where })
+    ]);
+    response.status(200).json({ events, total });
   } catch (error) {
     next(error);
   }
 });
 
-adminRoutes.get('/observability/provider-limits', async (_request, response, next) => {
+adminRoutes.get('/observability/dlq', async (request, response, next) => {
   try {
-    const events = await prisma.systemEvent.findMany({
-      where: {
-        entityType: 'provider_account'
-      },
-      orderBy: {
-        createdAt: 'desc'
-      },
-      take: 200
-    });
-    response.status(200).json(events);
+    const { since, until, limit, offset } = parseObsQuery(request.query as Record<string, unknown>);
+    const queueName = typeof request.query.queueName === 'string' ? request.query.queueName : undefined;
+    const search = typeof request.query.search === 'string' ? request.query.search : undefined;
+
+    const where: Record<string, unknown> = {};
+    if (queueName) where.queueName = queueName;
+    if (search) where.errorMessage = { contains: search, mode: 'insensitive' };
+    const dateFilter: Record<string, Date> = {};
+    if (since) dateFilter.gte = since;
+    if (until) dateFilter.lte = until;
+    if (Object.keys(dateFilter).length > 0) where.failedAt = dateFilter;
+
+    const [jobs, total] = await Promise.all([
+      prisma.deadLetterJob.findMany({
+        where,
+        orderBy: { failedAt: 'desc' },
+        take: limit,
+        skip: offset
+      }),
+      prisma.deadLetterJob.count({ where })
+    ]);
+    response.status(200).json({ jobs, total });
   } catch (error) {
     next(error);
   }
 });
 
-adminRoutes.get('/observability/fraud', async (_request, response, next) => {
+adminRoutes.get('/observability/webhooks', async (request, response, next) => {
   try {
-    const [callLogs, fraudEvents] = await Promise.all([
+    const { since, until, limit, offset } = parseObsQuery(request.query as Record<string, unknown>);
+    const status = typeof request.query.status === 'string' ? request.query.status : undefined;
+    const search = typeof request.query.search === 'string' ? request.query.search : undefined;
+
+    const where: Record<string, unknown> = {};
+    if (status) where.status = status;
+    if (search) where.eventId = { contains: search, mode: 'insensitive' };
+    const dateFilter: Record<string, Date> = {};
+    if (since) dateFilter.gte = since;
+    if (until) dateFilter.lte = until;
+    if (Object.keys(dateFilter).length > 0) where.processedAt = dateFilter;
+
+    const [events, total] = await Promise.all([
+      prisma.processedWebhookEvent.findMany({
+        where,
+        orderBy: { processedAt: 'desc' },
+        take: limit,
+        skip: offset
+      }),
+      prisma.processedWebhookEvent.count({ where })
+    ]);
+    response.status(200).json({ events, total });
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRoutes.get('/observability/fraud', async (request, response, next) => {
+  try {
+    const { since, until, limit, offset } = parseObsQuery(request.query as Record<string, unknown>);
+    const dateFilter: Record<string, Date> = {};
+    if (since) dateFilter.gte = since;
+    if (until) dateFilter.lte = until;
+
+    const logWhere: Record<string, unknown> = { fraudFlag: true };
+    const eventWhere: Record<string, unknown> = { category: { in: ['FRAUD', 'ENFORCEMENT'] } };
+    if (Object.keys(dateFilter).length > 0) {
+      logWhere.createdAt = dateFilter;
+      eventWhere.createdAt = dateFilter;
+    }
+
+    const [callLogs, events, totalLogs, totalEvents] = await Promise.all([
       prisma.callLog.findMany({
-        where: {
-          fraudFlag: true
-        },
-        orderBy: {
-          createdAt: 'desc'
-        },
-        take: 200
+        where: logWhere,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset
       }),
       prisma.systemEvent.findMany({
-        where: {
-          category: 'FRAUD'
-        },
-        orderBy: {
-          createdAt: 'desc'
-        },
-        take: 200
-      })
+        where: eventWhere,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset
+      }),
+      prisma.callLog.count({ where: logWhere }),
+      prisma.systemEvent.count({ where: eventWhere })
     ]);
-    response.status(200).json({
-      callLogs,
-      events: fraudEvents
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-adminRoutes.get('/observability/state-violations', async (_request, response, next) => {
-  try {
-    const events = await prisma.systemEvent.findMany({
-      where: {
-        category: 'ENFORCEMENT'
-      },
-      orderBy: {
-        createdAt: 'desc'
-      },
-      take: 200
-    });
-    response.status(200).json(events);
+    response.status(200).json({ callLogs, events, totalLogs, totalEvents });
   } catch (error) {
     next(error);
   }

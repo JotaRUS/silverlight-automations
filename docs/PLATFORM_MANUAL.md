@@ -1155,6 +1155,45 @@ The `/admin/ranking` page displays the live ranking table with:
 
 ---
 
+## 6c. Observability Dashboard
+
+The `/admin/observability` page provides a unified view into every system activity, background job failure, webhook event, and fraud/enforcement flag. It is designed for operators who need to search, filter, and drill into any action the platform has taken.
+
+### Tabs
+
+| Tab | Data source | Purpose |
+|---|---|---|
+| **Activity Feed** | `SystemEvent` (all categories) | Unified timeline of every system event — scheduler runs, job completions, allocations, enforcement actions, fraud flags |
+| **Dead Letter Queue** | `DeadLetterJob` | Failed background jobs that exhausted all retries. Shows error messages, stack traces, and the original job payload |
+| **Webhook Log** | `ProcessedWebhookEvent` | Inbound webhook deduplication records — useful for verifying that Yay and Sales Nav payloads were received and processed |
+| **Fraud & Violations** | `CallLog` (fraud-flagged) + `SystemEvent` (FRAUD, ENFORCEMENT) | Suspicious call patterns and enforcement actions such as auto-cancelled tasks or idle-caller reassignments |
+
+### Filtering and search
+
+Every tab supports:
+
+- **Time range**: Last 1 hour, 6 hours, 24 hours, 7 days, or all time
+- **Full-text search**: Matches on message text, error messages, event IDs, or correlation IDs depending on the tab
+- **Category/status filters**: Activity Feed has a category dropdown (SYSTEM, JOB, WEBHOOK, ENFORCEMENT, FRAUD, ALLOCATION); DLQ has a queue name filter; Webhook Log has a status filter
+- **Pagination**: 50 rows per page with previous/next controls
+
+### Summary stats
+
+The top stats bar shows 24-hour counts for system events, DLQ items, fraud flags, and webhooks. These counts update in real time via WebSocket events (`observability.updated`) and 30-second polling.
+
+### SystemEvent categories
+
+| Category | Examples |
+|---|---|
+| SYSTEM | Scheduler cycles, connection pool events, health checks |
+| JOB | Enrichment batches, outreach campaigns, ranking computations, Google Sheets syncs |
+| WEBHOOK | Inbound Yay and Sales Nav webhook processing |
+| ENFORCEMENT | Task auto-cancellations, caller idle timeouts, reassignments |
+| FRAUD | Suspicious call durations, rapid call completion patterns |
+| ALLOCATION | High-priority task assignments, retry queuing |
+
+---
+
 ## 7. Data Model
 
 ### Core entities and relationships

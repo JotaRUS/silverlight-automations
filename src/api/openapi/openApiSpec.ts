@@ -285,6 +285,84 @@ export const openApiSpec = {
         }
       }
     },
+    '/api/v1/admin/observability/summary': {
+      get: {
+        summary: 'Observability summary counts (24h)',
+        description: 'Returns 24-hour counts for DLQ items, system events, fraud flags, and processed webhooks. Used by the stats bar on the observability dashboard.',
+        responses: {
+          '200': {
+            description: 'Object with `dlqCount`, `recentEventCount`, `fraudFlagCount`, `webhookCount`'
+          }
+        }
+      }
+    },
+    '/api/v1/admin/observability/system-events': {
+      get: {
+        summary: 'List system events with filtering',
+        description: 'Returns paginated system events across all 6 categories (SYSTEM, JOB, WEBHOOK, ENFORCEMENT, FRAUD, ALLOCATION). Supports category filter, entity type filter, full-text search on message, and date range.',
+        parameters: [
+          { name: 'category', in: 'query', required: false, schema: { type: 'string', enum: ['SYSTEM', 'JOB', 'WEBHOOK', 'ENFORCEMENT', 'FRAUD', 'ALLOCATION'] }, description: 'Filter by event category' },
+          { name: 'entityType', in: 'query', required: false, schema: { type: 'string' }, description: 'Filter by entity type' },
+          { name: 'search', in: 'query', required: false, schema: { type: 'string' }, description: 'Full-text search on event message (case-insensitive)' },
+          { name: 'since', in: 'query', required: false, schema: { type: 'string', format: 'date-time' }, description: 'Start of date range (ISO 8601)' },
+          { name: 'until', in: 'query', required: false, schema: { type: 'string', format: 'date-time' }, description: 'End of date range (ISO 8601)' },
+          { name: 'limit', in: 'query', required: false, schema: { type: 'integer', default: 100, maximum: 500 }, description: 'Page size' },
+          { name: 'offset', in: 'query', required: false, schema: { type: 'integer', default: 0 }, description: 'Pagination offset' }
+        ],
+        responses: {
+          '200': { description: 'Object with `events` (SystemEvent array) and `total` (count for pagination)' }
+        }
+      }
+    },
+    '/api/v1/admin/observability/dlq': {
+      get: {
+        summary: 'List dead-letter queue entries',
+        description: 'Returns paginated DLQ entries for failed background jobs. Supports queue name filter, error message search, and date range.',
+        parameters: [
+          { name: 'queueName', in: 'query', required: false, schema: { type: 'string' }, description: 'Filter by queue name' },
+          { name: 'search', in: 'query', required: false, schema: { type: 'string' }, description: 'Search error messages (case-insensitive)' },
+          { name: 'since', in: 'query', required: false, schema: { type: 'string', format: 'date-time' }, description: 'Start of date range' },
+          { name: 'until', in: 'query', required: false, schema: { type: 'string', format: 'date-time' }, description: 'End of date range' },
+          { name: 'limit', in: 'query', required: false, schema: { type: 'integer', default: 100, maximum: 500 }, description: 'Page size' },
+          { name: 'offset', in: 'query', required: false, schema: { type: 'integer', default: 0 }, description: 'Pagination offset' }
+        ],
+        responses: {
+          '200': { description: 'Object with `jobs` (DeadLetterJob array) and `total`' }
+        }
+      }
+    },
+    '/api/v1/admin/observability/webhooks': {
+      get: {
+        summary: 'List processed webhook events',
+        description: 'Returns paginated webhook deduplication records. Supports status filter, event ID search, and date range.',
+        parameters: [
+          { name: 'status', in: 'query', required: false, schema: { type: 'string' }, description: 'Filter by processing status' },
+          { name: 'search', in: 'query', required: false, schema: { type: 'string' }, description: 'Search event IDs (case-insensitive)' },
+          { name: 'since', in: 'query', required: false, schema: { type: 'string', format: 'date-time' }, description: 'Start of date range' },
+          { name: 'until', in: 'query', required: false, schema: { type: 'string', format: 'date-time' }, description: 'End of date range' },
+          { name: 'limit', in: 'query', required: false, schema: { type: 'integer', default: 100, maximum: 500 }, description: 'Page size' },
+          { name: 'offset', in: 'query', required: false, schema: { type: 'integer', default: 0 }, description: 'Pagination offset' }
+        ],
+        responses: {
+          '200': { description: 'Object with `events` (ProcessedWebhookEvent array) and `total`' }
+        }
+      }
+    },
+    '/api/v1/admin/observability/fraud': {
+      get: {
+        summary: 'List fraud flags and enforcement events',
+        description: 'Returns paginated fraud-flagged call logs and FRAUD/ENFORCEMENT system events. Supports date range filtering.',
+        parameters: [
+          { name: 'since', in: 'query', required: false, schema: { type: 'string', format: 'date-time' }, description: 'Start of date range' },
+          { name: 'until', in: 'query', required: false, schema: { type: 'string', format: 'date-time' }, description: 'End of date range' },
+          { name: 'limit', in: 'query', required: false, schema: { type: 'integer', default: 100, maximum: 500 }, description: 'Page size' },
+          { name: 'offset', in: 'query', required: false, schema: { type: 'integer', default: 0 }, description: 'Pagination offset' }
+        ],
+        responses: {
+          '200': { description: 'Object with `callLogs`, `events`, `totalLogs`, `totalEvents`' }
+        }
+      }
+    },
     '/webhooks/yay/{providerAccountId}': {
       post: {
         summary: 'Ingest Yay webhook events'

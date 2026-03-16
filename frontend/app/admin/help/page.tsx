@@ -276,7 +276,7 @@ export default function HelpPage(): JSX.Element {
             },
             {
               icon: 'sensors', name: 'Observability',
-              desc: 'System health monitoring. View the dead-letter queue for failed background jobs, webhook processing logs, fraud detection flags, and system events.'
+              desc: 'Unified system activity dashboard with four tabs: Activity Feed (all system events across 6 categories — SYSTEM, JOB, WEBHOOK, ENFORCEMENT, FRAUD, ALLOCATION), Dead Letter Queue (failed background jobs with stack traces and payloads), Webhook Log (inbound webhook deduplication records), and Fraud & Violations (flagged calls and enforcement actions). Every tab supports time-range filtering, full-text search, category/status filters, expandable row details, and pagination. Summary stats at the top show 24-hour counts with live updates via WebSocket.'
             },
             {
               icon: 'precision_manufacturing', name: 'Workers',
