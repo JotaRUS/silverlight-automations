@@ -384,6 +384,10 @@ export class ProjectsService {
     });
   }
 
+  public async deleteScreeningQuestion(questionId: string): Promise<void> {
+    await this.prismaClient.screeningQuestion.delete({ where: { id: questionId } });
+  }
+
   public async listScreeningQuestions(projectId: string): Promise<ScreeningQuestion[]> {
     return this.prismaClient.screeningQuestion.findMany({
       where: { projectId },

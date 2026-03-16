@@ -192,6 +192,16 @@ projectsRoutes.patch('/:projectId/screening-questions/:questionId', async (reque
   }
 });
 
+projectsRoutes.delete('/:projectId/screening-questions/:questionId', async (request, response, next) => {
+  try {
+    const params = parseOrThrow(screeningQuestionPathParamsSchema, request.params);
+    await projectsService.deleteScreeningQuestion(params.questionId);
+    response.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
 projectsRoutes.post('/:projectId/kick', async (request, response, next) => {
   try {
     const params = parseOrThrow(pathParamsSchema, request.params);

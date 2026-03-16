@@ -638,6 +638,35 @@
             "description": "Partial update of a screening question."
           },
           "response": []
+        },
+        {
+          "name": "Delete Screening Question",
+          "id": "d1e2f3a4-b5c6-7890-abcd-ef1234567890",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/screening-questions/{{questionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "screening-questions",
+                "{{questionId}}"
+              ]
+            },
+            "description": "Permanently delete a screening question and all associated responses (cascade).\n\n**Response:** 204 No Content"
+          },
+          "response": []
         }
       ],
       "id": "6b71bca8-4e38-47c8-b373-c012bdb27e4c",
@@ -1401,10 +1430,145 @@
             "description": "Record an expert's answer to a screening question.\n\n**Response:** `{\"accepted\": true}`"
           },
           "response": []
+        },
+        {
+          "name": "List Screening Responses (Admin)",
+          "id": "a1b2c3d4-5678-9abc-def0-123456789abc",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/screening/responses?projectId={{projectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "screening",
+                "responses"
+              ],
+              "query": [
+                {
+                  "key": "projectId",
+                  "value": "{{projectId}}",
+                  "description": "Filter by project (optional)"
+                },
+                {
+                  "key": "status",
+                  "value": "PENDING,IN_PROGRESS",
+                  "description": "Comma-separated statuses (optional)",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List screening responses with related question and expert data. Supports filtering by projectId and comma-separated status values. Returns up to 300 results."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Screening Response (Admin)",
+          "id": "b2c3d4e5-6789-abcd-ef01-23456789abcd",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"COMPLETE\",\n  \"responseText\": \"Updated response text\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/screening/{{responseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "screening",
+                "{{responseId}}"
+              ]
+            },
+            "description": "Update a screening response's status and/or response text."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Follow-Up Reminder (Admin)",
+          "id": "c3d4e5f6-789a-bcde-f012-3456789abcde",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/screening/{{responseId}}/follow-up",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "screening",
+                "{{responseId}}",
+                "follow-up"
+              ]
+            },
+            "description": "Send a follow-up reminder to the expert for pending screening questions in the same project."
+          },
+          "response": []
+        },
+        {
+          "name": "Escalate to Phone Call (Admin)",
+          "id": "d4e5f6a7-89ab-cdef-0123-456789abcdef",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/screening/{{responseId}}/escalate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "screening",
+                "{{responseId}}",
+                "escalate"
+              ]
+            },
+            "description": "Sets the response status to ESCALATED and creates a PENDING call task for a caller to follow up by phone."
+          },
+          "response": []
         }
       ],
       "id": "c3231d69-a5ba-461b-9b52-5bb6f1feed71",
-      "description": "Dispatch screening questions to experts and record their responses.\n\n**Auth:** admin or ops."
+      "description": "Dispatch screening questions to experts, record responses, and manage screening workflows.\n\n**Auth:** admin or ops."
     },
     {
       "name": "Providers",
@@ -1720,6 +1884,12 @@
     {
       "id": "75b0a257-1da4-4e7d-ab4f-9bdfd94ec720",
       "key": "taskId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "id": "e5f6a7b8-c9d0-1234-5678-9abcdef01234",
+      "key": "responseId",
       "value": "",
       "type": "string"
     }

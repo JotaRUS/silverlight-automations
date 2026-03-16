@@ -82,3 +82,45 @@ export async function addProjectJobTitles(
     body: { jobTitles }
   });
 }
+
+export interface ScreeningQuestionRecord {
+  id: string;
+  projectId: string;
+  prompt: string;
+  displayOrder: number;
+  required: boolean;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function listScreeningQuestions(projectId: string): Promise<ScreeningQuestionRecord[]> {
+  return apiRequest<ScreeningQuestionRecord[]>(`/api/v1/projects/${projectId}/screening-questions`);
+}
+
+export async function createScreeningQuestion(
+  projectId: string,
+  data: { prompt: string; displayOrder: number; required?: boolean }
+): Promise<ScreeningQuestionRecord> {
+  return apiRequest<ScreeningQuestionRecord>(`/api/v1/projects/${projectId}/screening-questions`, {
+    method: 'POST',
+    body: data
+  });
+}
+
+export async function updateScreeningQuestion(
+  projectId: string,
+  questionId: string,
+  data: { prompt?: string; displayOrder?: number; required?: boolean }
+): Promise<ScreeningQuestionRecord> {
+  return apiRequest<ScreeningQuestionRecord>(`/api/v1/projects/${projectId}/screening-questions/${questionId}`, {
+    method: 'PATCH',
+    body: data
+  });
+}
+
+export async function deleteScreeningQuestion(projectId: string, questionId: string): Promise<void> {
+  await apiRequest(`/api/v1/projects/${projectId}/screening-questions/${questionId}`, {
+    method: 'DELETE'
+  });
+}

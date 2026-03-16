@@ -254,7 +254,7 @@ export default function HelpPage(): JSX.Element {
             },
             {
               icon: 'fact_check', name: 'Screening',
-              desc: 'Review screening question responses from experts. Track who has completed screening, score responses, and mark experts as qualified.'
+              desc: 'Create and manage screening questions for each project, dispatch them to experts, and review responses. Track completion status, score answers, send follow-up reminders, or escalate to phone calls.'
             },
             {
               icon: 'podium', name: 'Calls',
@@ -984,6 +984,18 @@ export default function HelpPage(): JSX.Element {
           <li>To export leads to Supabase, select a project (or leave &quot;All projects&quot;) and click <strong>Export not-exported leads</strong>. The button queues Supabase sync jobs for all ENRICHED leads not yet exported.</li>
           <li>To queue outreach, click <strong>Outreach enriched leads</strong>. This finds ENRICHED leads without existing outreach threads and queues messages through available channels.</li>
           <li>After clicking either action, watch the live feed to confirm jobs are being processed.</li>
+        </ol>
+
+        <SubHeading>Set up and manage screening questions</SubHeading>
+        <ol className="list-decimal list-inside space-y-2 text-sm text-slate-600">
+          <li>Go to <strong>Screening</strong> from the sidebar.</li>
+          <li>Select a project from the filter dropdown. The <strong>Screening Questions</strong> panel appears below the filters.</li>
+          <li>Click <strong>Add Question</strong> to create a new question. Enter the prompt text, toggle &quot;Required&quot; if needed, and click <strong>Add Question</strong>.</li>
+          <li>Questions are numbered automatically by display order. Hover over a question to reveal edit and delete buttons.</li>
+          <li>To dispatch questions to an expert, click <strong>Dispatch Screening</strong> in the header, select a project and a lead (filtered to those with &quot;Replied&quot; status), and click <strong>Dispatch Questions</strong>.</li>
+          <li>Dispatched questions are sent via the expert&apos;s preferred channel. Responses appear in the table below with status tracking (Pending, In Progress, Complete, Escalated).</li>
+          <li>If a response is incomplete after 15 minutes, the system automatically sends a follow-up reminder. You can also trigger one manually from the response actions menu.</li>
+          <li>Use <strong>Escalate to Call</strong> on a response to create a phone call task for a caller to follow up directly.</li>
         </ol>
 
         <SubHeading>Manage users and roles</SubHeading>

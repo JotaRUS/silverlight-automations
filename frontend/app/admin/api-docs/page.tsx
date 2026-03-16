@@ -371,6 +371,34 @@ const groups: EndpointGroup[] = [
         responses: [
           { status: 201, label: 'Created', body: '{ "id": "uuid", "prompt": "...", "displayOrder": 2 }' }
         ]
+      },
+      {
+        method: 'PATCH',
+        path: '/api/v1/projects/{projectId}/screening-questions/{questionId}',
+        summary: 'Update a screening question',
+        auth: 'Session + CSRF (admin/ops)',
+        pathParams: [
+          { name: 'projectId', type: 'UUID', required: true, description: 'Project ID' },
+          { name: 'questionId', type: 'UUID', required: true, description: 'Question ID' }
+        ],
+        bodyExample: '{ "prompt": "Updated question text", "required": false }',
+        responses: [
+          { status: 200, label: 'Updated', body: '{ "id": "uuid", "prompt": "Updated question text", ... }' }
+        ]
+      },
+      {
+        method: 'DELETE',
+        path: '/api/v1/projects/{projectId}/screening-questions/{questionId}',
+        summary: 'Delete a screening question',
+        description: 'Permanently removes the question and all associated responses (cascade).',
+        auth: 'Session + CSRF (admin/ops)',
+        pathParams: [
+          { name: 'projectId', type: 'UUID', required: true, description: 'Project ID' },
+          { name: 'questionId', type: 'UUID', required: true, description: 'Question ID' }
+        ],
+        responses: [
+          { status: 204, label: 'Deleted', body: '' }
+        ]
       }
     ]
   },
@@ -745,10 +773,43 @@ const groups: EndpointGroup[] = [
         auth: 'Session (admin/ops)',
         queryParams: [
           { name: 'projectId', type: 'UUID', description: 'Filter by project' },
-          { name: 'status', type: 'string', description: 'Comma-separated statuses' }
+          { name: 'status', type: 'string', description: 'Comma-separated statuses (PENDING, IN_PROGRESS, COMPLETE, ESCALATED)' }
         ],
         responses: [
-          { status: 200, label: 'Responses', body: '[ { "id": "uuid", "responseText": "...", "status": "PENDING", ... } ]' }
+          { status: 200, label: 'Responses', body: '[ { "id": "uuid", "responseText": "...", "status": "PENDING", "question": {...}, "expert": {...} } ]' }
+        ]
+      },
+      {
+        method: 'PATCH',
+        path: '/api/v1/admin/screening/{responseId}',
+        summary: 'Update a screening response',
+        auth: 'Session + CSRF (admin/ops)',
+        pathParams: [{ name: 'responseId', type: 'UUID', required: true, description: 'Response ID' }],
+        bodyExample: '{ "status": "COMPLETE", "responseText": "Updated text" }',
+        responses: [
+          { status: 200, label: 'Updated', body: '{ "id": "uuid", "status": "COMPLETE", ... }' }
+        ]
+      },
+      {
+        method: 'POST',
+        path: '/api/v1/admin/screening/{responseId}/follow-up',
+        summary: 'Send a follow-up reminder',
+        description: 'Sends a reminder message to the expert for pending screening questions in the same project.',
+        auth: 'Session + CSRF (admin/ops)',
+        pathParams: [{ name: 'responseId', type: 'UUID', required: true, description: 'Response ID' }],
+        responses: [
+          { status: 200, label: 'Sent', body: '{ "ok": true }' }
+        ]
+      },
+      {
+        method: 'POST',
+        path: '/api/v1/admin/screening/{responseId}/escalate',
+        summary: 'Escalate to phone call',
+        description: 'Sets the response to ESCALATED and creates a PENDING call task for a caller to follow up.',
+        auth: 'Session + CSRF (admin/ops)',
+        pathParams: [{ name: 'responseId', type: 'UUID', required: true, description: 'Response ID' }],
+        responses: [
+          { status: 200, label: 'Escalated', body: '{ "ok": true }' }
         ]
       }
     ]

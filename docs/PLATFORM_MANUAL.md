@@ -531,6 +531,15 @@ curl -X PATCH http://localhost:3000/api/v1/projects/<projectId>/screening-questi
   -d '{"prompt": "Updated question text"}'
 ```
 
+**Delete a question:**
+
+```bash
+curl -X DELETE http://localhost:3000/api/v1/projects/<projectId>/screening-questions/<questionId> \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Returns 204 No Content. Deleting a question also removes all associated screening responses (cascade).
+
 ---
 
 ### 4.4 Callers
@@ -752,6 +761,42 @@ curl -X POST http://localhost:3000/api/v1/screening/response \
     "responseText": "I have 8 years of experience in fintech."
   }'
 ```
+
+#### List screening responses (admin)
+
+```bash
+curl "http://localhost:3000/api/v1/admin/screening/responses?projectId=<projectId>&status=PENDING,IN_PROGRESS" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Returns up to 300 responses. Each response includes the related `question` and `expert` objects. Filter by `projectId` and/or comma-separated `status` values.
+
+#### Update a screening response (admin)
+
+```bash
+curl -X PATCH http://localhost:3000/api/v1/admin/screening/<responseId> \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"status": "COMPLETE", "responseText": "Updated response text"}'
+```
+
+#### Trigger a follow-up reminder (admin)
+
+```bash
+curl -X POST http://localhost:3000/api/v1/admin/screening/<responseId>/follow-up \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Sends a follow-up message to the expert via their preferred channel for any pending screening questions in the same project.
+
+#### Escalate to phone call (admin)
+
+```bash
+curl -X POST http://localhost:3000/api/v1/admin/screening/<responseId>/escalate \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Sets the response status to `ESCALATED` and creates a `PENDING` call task for a caller to follow up by phone.
 
 ---
 
@@ -1408,6 +1453,16 @@ When no projects exist, an empty state directs the user to create one.
 Manual outreach has been removed from the frontend. The outreach page now only shows **thread history** — delivery status, channel used, and inbound reply content. Reply events update the view in real time via the `outreach.reply.received` event.
 
 Outreach is configured in the project wizard (Step 4) and sent automatically after enrichment. See [Auto-outreach behavior](#auto-outreach-behavior) above.
+
+### Screening page
+
+Manages screening questions and expert responses. The page has three sections:
+
+**Screening Questions** — Appears when a project is selected. Lets you create, edit, and delete screening questions for the project. Each question has a prompt text, display order, and required flag. Questions are ordered by display order and shown as an editable list with inline add/edit forms.
+
+**Dispatch Screening** — Select a project and a lead (searchable dropdown filtered to REPLIED leads) to send screening questions via the expert's preferred channel. The system creates pending response records and delivers the questions through the outreach infrastructure.
+
+**Screening Responses** — Filterable table showing all responses with status (Pending, In Progress, Complete, Escalated), response text, score, and channel. Each response supports actions: edit response text/status, send a follow-up reminder, or escalate to a phone call.
 
 ### Caller execution interface
 
