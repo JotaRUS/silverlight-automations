@@ -272,7 +272,7 @@ export default function HelpPage(): JSX.Element {
             },
             {
               icon: 'bar_chart', name: 'Ranking',
-              desc: 'Live expert priority ranking for call allocation. Experts are ranked across 4 tiers: (1) Fresh replies on any channel (+1000), (2) Signup chase for experts who expressed interest but haven\'t signed up (+750), (3) Callback chase for good-profile experts who initially rejected (+500), (4) Base pool ordered by project completion deficit -- experts on projects further from their target are ranked higher. Rankings recompute every 60 seconds.'
+              desc: 'Live expert priority ranking for call allocation. All scores are 0-100, divided into 4 tiers: (1) Fresh replies on any channel (75-100), (2) Signup chase for experts who expressed interest but haven\'t signed up (50-75), (3) Callback chase for good-profile experts who initially rejected (25-50), (4) Base pool ordered by project completion deficit (0-25). Within each tier, experts on projects further from their target are ranked higher. Rankings recompute every 60 seconds.'
             },
             {
               icon: 'sensors', name: 'Observability',

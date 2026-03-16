@@ -246,7 +246,9 @@ export interface RankingSnapshot {
     freshReplyBoost?: boolean;
     signupChaseBoost?: boolean;
     highValueRejectionBoost?: boolean;
+    completionDeficit?: number;
     completionPenalty?: number;
+    tierBase?: number;
     createdAt?: string;
   } | null;
   createdAt: string;

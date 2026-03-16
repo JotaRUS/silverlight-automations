@@ -183,49 +183,49 @@ async function seedRankingDemoData(): Promise<void> {
     });
   }
 
-  const hrCompletionPenalty = (1 - 3 / 20) * 100;
-  const techCompletionPenalty = (1 - 3 / 10) * 100;
+  const hrDeficit = (1 - 3 / 20) * 100;
+  const techDeficit = (1 - 3 / 10) * 100;
 
   const rankingData = [
     {
       projectId: hrProject.id,
       expertId: experts[0].id,
-      score: hrCompletionPenalty + 1000,
+      score: Math.round((75 + (hrDeficit / 100) * 25) * 100) / 100,
       rank: 1,
       reason: 'weighted_priority_formula',
-      metadata: { freshReplyBoost: true, signupChaseBoost: false, highValueRejectionBoost: false, completionPenalty: hrCompletionPenalty }
+      metadata: { freshReplyBoost: true, signupChaseBoost: false, highValueRejectionBoost: false, completionDeficit: hrDeficit, tierBase: 75 }
     },
     {
       projectId: hrProject.id,
       expertId: experts[1].id,
-      score: hrCompletionPenalty + 750,
+      score: Math.round((50 + (hrDeficit / 100) * 25) * 100) / 100,
       rank: 2,
       reason: 'weighted_priority_formula',
-      metadata: { freshReplyBoost: false, signupChaseBoost: true, highValueRejectionBoost: false, completionPenalty: hrCompletionPenalty }
+      metadata: { freshReplyBoost: false, signupChaseBoost: true, highValueRejectionBoost: false, completionDeficit: hrDeficit, tierBase: 50 }
     },
     {
       projectId: hrProject.id,
       expertId: experts[2].id,
-      score: hrCompletionPenalty + 500,
+      score: Math.round((25 + (hrDeficit / 100) * 25) * 100) / 100,
       rank: 3,
       reason: 'weighted_priority_formula',
-      metadata: { freshReplyBoost: false, signupChaseBoost: false, highValueRejectionBoost: true, completionPenalty: hrCompletionPenalty }
+      metadata: { freshReplyBoost: false, signupChaseBoost: false, highValueRejectionBoost: true, completionDeficit: hrDeficit, tierBase: 25 }
     },
     {
       projectId: techProject.id,
       expertId: experts[3].id,
-      score: techCompletionPenalty,
+      score: Math.round(((techDeficit / 100) * 25) * 100) / 100,
       rank: 4,
       reason: 'weighted_priority_formula',
-      metadata: { freshReplyBoost: false, signupChaseBoost: false, highValueRejectionBoost: false, completionPenalty: techCompletionPenalty }
+      metadata: { freshReplyBoost: false, signupChaseBoost: false, highValueRejectionBoost: false, completionDeficit: techDeficit, tierBase: 0 }
     },
     {
       projectId: techProject.id,
       expertId: experts[4].id,
-      score: techCompletionPenalty,
+      score: Math.round(((techDeficit / 100) * 25) * 100) / 100,
       rank: 5,
       reason: 'weighted_priority_formula',
-      metadata: { freshReplyBoost: false, signupChaseBoost: false, highValueRejectionBoost: false, completionPenalty: techCompletionPenalty }
+      metadata: { freshReplyBoost: false, signupChaseBoost: false, highValueRejectionBoost: false, completionDeficit: techDeficit, tierBase: 0 }
     }
   ];
 

@@ -25,18 +25,16 @@ export class RankingService {
   }
 
   public async computeAndPersist(input: RankingInput): Promise<number> {
-    const completionPenalty = await this.getProjectCompletionPenalty(input.projectId);
+    const completionDeficit = await this.getProjectCompletionPenalty(input.projectId);
 
-    let score = completionPenalty;
-    if (input.freshReplyBoost) {
-      score += 1000;
-    }
-    if (input.signupChaseBoost) {
-      score += 750;
-    }
-    if (input.highValueRejectionBoost) {
-      score += 500;
-    }
+    const tierBase = input.freshReplyBoost
+      ? 75
+      : input.signupChaseBoost
+        ? 50
+        : input.highValueRejectionBoost
+          ? 25
+          : 0;
+    const score = Math.round((tierBase + (completionDeficit / 100) * 25) * 100) / 100;
 
     const latestRank = await this.prismaClient.rankingSnapshot.findFirst({
       orderBy: { rank: 'desc' }
@@ -54,7 +52,8 @@ export class RankingService {
           freshReplyBoost: input.freshReplyBoost,
           signupChaseBoost: input.signupChaseBoost,
           highValueRejectionBoost: input.highValueRejectionBoost,
-          completionPenalty,
+          completionDeficit,
+          tierBase,
           createdAt: clock.now().toISOString()
         }
       }

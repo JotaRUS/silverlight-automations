@@ -267,7 +267,7 @@ export const openApiSpec = {
       get: {
         summary: 'Get latest expert ranking snapshots',
         description:
-          'Returns priority-ranked experts for call allocation. Snapshots are computed every 60 seconds by the scheduler. Includes expert contacts, project completion summaries, and boost metadata.',
+          'Returns priority-ranked experts for call allocation. All scores are 0-100, split into four 25-point tiers: fresh reply (75-100), signup chase (50-75), callback chase (25-50), base pool (0-25). Snapshots are computed every 60 seconds by the scheduler. Includes expert contacts, project completion summaries, and boost metadata.',
         parameters: [
           {
             name: 'projectId',
@@ -280,7 +280,7 @@ export const openApiSpec = {
         responses: {
           '200': {
             description:
-              'Object with `snapshots` (ranked expert list with score, boost metadata, expert contacts) and `projectSummaries` (active projects with completion data)'
+              'Object with `snapshots` (ranked expert list with score 0-100, boost tier metadata, expert contacts) and `projectSummaries` (active projects with completion data)'
           }
         }
       }

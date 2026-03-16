@@ -1100,30 +1100,29 @@ The ranking system determines which experts should be called first. The schedule
 
 ### Scoring formula
 
-```text
-score = completionDeficit + freshReplyBoost + signupChaseBoost + highValueRejectionBoost
+All scores are **0-100**. The range is divided into four 25-point tiers. Within each tier, the project completion deficit determines the exact position.
 
-completionDeficit = (1 - signedUpCount / targetThreshold) × 100
-freshReplyBoost   = +1000  (expert replied on any channel in last 48 hours)
-signupChaseBoost  = +750   (expert said they would sign up but hasn't yet)
-highValueRejectionBoost = +500 (expert rejected but has a good profile, should be chased)
+```text
+completionDeficit = (1 - signedUpCount / targetThreshold) × 100   (0-100)
+tierBase          = 75 (fresh reply) | 50 (signup chase) | 25 (callback chase) | 0 (base)
+score             = tierBase + (completionDeficit / 100) × 25      (0-100)
 ```
 
 ### Priority tiers (highest to lowest)
 
-| Tier | Boost | Description |
-|------|-------|-------------|
-| 1 — Fresh replies | +1000 | Expert replied via email, SMS, WhatsApp, screening, etc. on a high-priority project |
-| 2 — Signup chase | +750 | Expert expressed interest (`INTERESTED_SIGNUP_LINK_SENT`) but has not completed signup |
-| 3 — Callback chase | +500 | Expert rejected (`RETRYABLE_REJECTION`) but profile warrants another attempt by a different caller |
-| 4 — Base pool | 0 | Remaining callable experts, ordered by project completion deficit |
+| Tier | Score range | Description |
+|------|-------------|-------------|
+| 1 — Fresh replies | 75-100 | Expert replied via email, SMS, WhatsApp, screening, etc. on a high-priority project |
+| 2 — Signup chase | 50-75 | Expert expressed interest (`INTERESTED_SIGNUP_LINK_SENT`) but has not completed signup |
+| 3 — Callback chase | 25-50 | Expert rejected (`RETRYABLE_REJECTION`) but profile warrants another attempt by a different caller |
+| 4 — Base pool | 0-25 | Remaining callable experts, ordered by project completion deficit |
 
 ### Project completion deficit
 
-Experts on projects with lower completion percentages are ranked higher. For example:
-- Project A: 3/20 signed up (15%) → deficit score = 85
-- Project B: 3/10 signed up (30%) → deficit score = 70
-- An expert on Project A with a fresh reply scores 1085 vs 1070 on Project B
+Experts on projects with lower completion percentages are ranked higher within their tier. For example:
+- Project A: 3/20 signed up (15%) → deficit = 85 → contributes 21.25 within tier
+- Project B: 3/10 signed up (30%) → deficit = 70 → contributes 17.50 within tier
+- An expert on Project A with a fresh reply scores 96.25 vs 92.50 on Project B
 
 ### Scheduler cycle
 

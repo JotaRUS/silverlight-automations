@@ -31,13 +31,14 @@ function boostBadges(meta: RankingSnapshot['metadata']): JSX.Element[] {
 function humanReason(meta: RankingSnapshot['metadata']): string {
   if (!meta) return '—';
   const parts: string[] = [];
-  if (meta.freshReplyBoost) parts.push('Fresh reply (+1000)');
-  if (meta.signupChaseBoost) parts.push('Signup chase (+750)');
-  if (meta.highValueRejectionBoost) parts.push('Callback chase (+500)');
-  if (typeof meta.completionPenalty === 'number' && meta.completionPenalty > 0) {
-    parts.push(`Completion deficit (+${meta.completionPenalty.toFixed(0)})`);
+  if (meta.freshReplyBoost) parts.push('Fresh reply (75-100)');
+  if (meta.signupChaseBoost) parts.push('Signup chase (50-75)');
+  if (meta.highValueRejectionBoost) parts.push('Callback chase (25-50)');
+  const deficit = typeof meta.completionDeficit === 'number' ? meta.completionDeficit : meta.completionPenalty;
+  if (typeof deficit === 'number' && deficit > 0) {
+    parts.push(`Deficit ${deficit.toFixed(0)}%`);
   }
-  return parts.length > 0 ? parts.join(' · ') : 'Base score';
+  return parts.length > 0 ? parts.join(' · ') : 'Base (0-25)';
 }
 
 function primaryPhone(snapshot: RankingSnapshot): string | null {
