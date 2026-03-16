@@ -1,3 +1,4 @@
+import { Channel } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -8,7 +9,8 @@ import { ScreeningService } from './screeningService';
 
 const dispatchSchema = z.object({
   projectId: z.string().uuid(),
-  expertId: z.string().uuid()
+  expertId: z.string().uuid(),
+  channel: z.nativeEnum(Channel)
 });
 
 const responseSchema = z.object({

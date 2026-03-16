@@ -295,7 +295,7 @@ Implemented schema (Prisma) includes:
 | `companies` | Company entities linked to experts |
 | `job_titles` | Normalized job title reference data |
 | `sales_nav_searches` | Sales Navigator search configurations per project |
-| `leads` | Lead pipeline: `NEW` → `ENRICHING` → `ENRICHED` → `OUTREACH_PENDING` → `REPLIED` |
+| `leads` | Lead pipeline: `NEW` → `ENRICHING` → `ENRICHED` → `OUTREACH_PENDING` → `REPLIED` → `SCREENING` → `CONVERTED` |
 | `experts` | Deduplicated expert profiles with `preferredChannel` |
 | `expert_contacts` | Multi-type contact records (email, phone, social) with verification status |
 | `enrichment_attempts` | Per-lead, per-provider enrichment audit trail |

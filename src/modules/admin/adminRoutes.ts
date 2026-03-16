@@ -641,7 +641,7 @@ adminRoutes.post('/workers/export-leads', async (request, response, next) => {
     const { projectId } = bulkProjectSchema.parse(request.body);
 
     const exportableStatuses: LeadStatus[] = [
-      'ENRICHED', 'OUTREACH_PENDING', 'CONTACTED', 'REPLIED', 'CONVERTED'
+      'ENRICHED', 'OUTREACH_PENDING', 'CONTACTED', 'REPLIED', 'SCREENING', 'CONVERTED'
     ];
     const where: Record<string, unknown> = {
       status: { in: exportableStatuses },

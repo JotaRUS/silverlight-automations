@@ -848,7 +848,7 @@ Several entities follow strict state machines. The frontend should enforce these
 Render as a horizontal stepper or pipeline:
 
 ```
-[NEW] → [ENRICHING] → [ENRICHED] → [OUTREACH_PENDING] → [CONTACTED] → [REPLIED] → [CONVERTED]
+[NEW] → [ENRICHING] → [ENRICHED] → [OUTREACH_PENDING] → [CONTACTED] → [REPLIED] → [SCREENING] → [CONVERTED]
                                            ↓
                                      [DISQUALIFIED]
 ```

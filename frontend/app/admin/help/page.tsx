@@ -213,6 +213,11 @@ export default function HelpPage(): JSX.Element {
               icon: 'webhook',
               title: 'Inbound message webhooks',
               desc: 'All messaging providers (Twilio, SendGrid, 2Chat, Respond.io, Telegram, LINE, Viber, KakaoTalk, WeChat) now have inbound webhook endpoints. Expert replies are automatically captured, outreach threads updated, and screening responses matched.'
+            },
+            {
+              icon: 'quiz',
+              title: 'Screening channel selection & SCREENING status',
+              desc: 'When dispatching screening questions you now choose which outreach channel to use (populated from active project bindings). Leads automatically transition from REPLIED to SCREENING status on dispatch and appear in a new pipeline stage.'
             }
           ].map((item) => (
             <div key={item.title} className="flex gap-3 items-start">
@@ -259,7 +264,7 @@ export default function HelpPage(): JSX.Element {
             },
             {
               icon: 'fact_check', name: 'Screening',
-              desc: 'Create and manage screening questions for each project, dispatch them to experts, and review responses. Track completion status, score answers, send follow-up reminders, or escalate to phone calls.'
+              desc: 'Create and manage screening questions for each project, dispatch them to experts via a channel of your choice, and review responses. Leads move to SCREENING status automatically. Track completion status, score answers, send follow-up reminders, or escalate to phone calls.'
             },
             {
               icon: 'podium', name: 'Calls',
@@ -997,8 +1002,8 @@ export default function HelpPage(): JSX.Element {
           <li>Select a project from the filter dropdown. The <strong>Screening Questions</strong> panel appears below the filters.</li>
           <li>Click <strong>Add Question</strong> to create a new question. Enter the prompt text, toggle &quot;Required&quot; if needed, and click <strong>Add Question</strong>.</li>
           <li>Questions are numbered automatically by display order. Hover over a question to reveal edit and delete buttons.</li>
-          <li>To dispatch questions to an expert, click <strong>Dispatch Screening</strong> in the header, select a project and a lead (filtered to those with &quot;Replied&quot; status), and click <strong>Dispatch Questions</strong>.</li>
-          <li>Dispatched questions are sent via the expert&apos;s preferred channel. Responses appear in the table below with status tracking (Pending, In Progress, Complete, Escalated).</li>
+          <li>To dispatch questions to an expert, click <strong>Dispatch Screening</strong> in the header, select a project, a lead (filtered to those with &quot;Replied&quot; status), and the outreach channel (populated from active providers bound to the project). Then click <strong>Dispatch Questions</strong>.</li>
+          <li>On dispatch, the lead&apos;s status transitions from REPLIED to SCREENING. Responses appear in the table below with status tracking (Pending, In Progress, Complete, Escalated).</li>
           <li>If a response is incomplete after 15 minutes, the system automatically sends a follow-up reminder. You can also trigger one manually from the response actions menu.</li>
           <li>Use <strong>Escalate to Call</strong> on a response to create a phone call task for a caller to follow up directly.</li>
         </ol>

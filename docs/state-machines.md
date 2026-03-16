@@ -3,7 +3,7 @@
 ## Lead status
 
 ```text
-NEW -> ENRICHING -> ENRICHED -> OUTREACH_PENDING -> CONTACTED -> REPLIED -> CONVERTED
+NEW -> ENRICHING -> ENRICHED -> OUTREACH_PENDING -> CONTACTED -> REPLIED -> SCREENING -> CONVERTED
                                            \-> DISQUALIFIED
 ```
 

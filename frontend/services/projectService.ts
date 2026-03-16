@@ -124,3 +124,12 @@ export async function deleteScreeningQuestion(projectId: string, questionId: str
     method: 'DELETE'
   });
 }
+
+export interface AvailableChannel {
+  channel: string;
+  label: string;
+}
+
+export async function listAvailableChannels(projectId: string): Promise<AvailableChannel[]> {
+  return apiRequest<AvailableChannel[]>(`/api/v1/projects/${projectId}/available-channels`);
+}

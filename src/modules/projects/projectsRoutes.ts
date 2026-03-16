@@ -1,3 +1,4 @@
+import type { Channel as PrismaChannel } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -375,6 +376,53 @@ projectsRoutes.post('/:projectId/apollo-search', async (request, response, next)
     );
 
     response.status(202).json({ message: 'Apollo search queued', jobId });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const OUTREACH_CHANNEL_BINDINGS: { channel: PrismaChannel; bindingField: string; label: string }[] = [
+  { channel: 'EMAIL', bindingField: 'emailProviderAccountId', label: 'Email' },
+  { channel: 'WHATSAPP', bindingField: 'whatsapp2chatProviderAccountId', label: 'WhatsApp' },
+  { channel: 'SMS', bindingField: 'twilioProviderAccountId', label: 'SMS' },
+  { channel: 'LINKEDIN', bindingField: 'salesNavWebhookProviderAccountId', label: 'LinkedIn' },
+  { channel: 'RESPONDIO', bindingField: 'respondioProviderAccountId', label: 'Respond.io' },
+  { channel: 'LINE', bindingField: 'lineProviderAccountId', label: 'LINE' },
+  { channel: 'WECHAT', bindingField: 'wechatProviderAccountId', label: 'WeChat' },
+  { channel: 'VIBER', bindingField: 'viberProviderAccountId', label: 'Viber' },
+  { channel: 'TELEGRAM', bindingField: 'telegramProviderAccountId', label: 'Telegram' },
+  { channel: 'KAKAOTALK', bindingField: 'kakaotalkProviderAccountId', label: 'KakaoTalk' },
+  { channel: 'PHONE', bindingField: 'yayProviderAccountId', label: 'Phone' },
+  { channel: 'VOICEMAIL', bindingField: 'voicemailDropProviderAccountId', label: 'Voicemail' }
+];
+
+projectsRoutes.get('/:projectId/available-channels', async (request, response, next) => {
+  try {
+    const params = parseOrThrow(pathParamsSchema, request.params);
+    const project = await prisma.project.findUnique({
+      where: { id: params.projectId }
+    });
+    if (!project) {
+      throw new AppError('Project not found', 404, 'project_not_found');
+    }
+
+    const projectRecord = project as unknown as Record<string, unknown>;
+    const available: { channel: PrismaChannel; label: string }[] = [];
+
+    for (const binding of OUTREACH_CHANNEL_BINDINGS) {
+      const accountId = projectRecord[binding.bindingField];
+      if (typeof accountId === 'string' && accountId) {
+        const activeAccount = await prisma.providerAccount.findFirst({
+          where: { id: accountId, isActive: true },
+          select: { id: true }
+        });
+        if (activeAccount) {
+          available.push({ channel: binding.channel, label: binding.label });
+        }
+      }
+    }
+
+    response.json(available);
   } catch (error) {
     next(error);
   }

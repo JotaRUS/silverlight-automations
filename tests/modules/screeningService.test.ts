@@ -20,6 +20,14 @@ function createPrismaMock(): PrismaClient {
     expertContact: {
       findFirst: vi.fn()
     },
+    lead: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findMany: vi.fn().mockResolvedValue([])
+    },
+    project: {
+      findUnique: vi.fn().mockResolvedValue({ id: 'project-1', targetThreshold: 10 }),
+      update: vi.fn().mockResolvedValue({})
+    },
     systemEvent: {
       create: vi.fn()
     }
@@ -61,7 +69,8 @@ describe('ScreeningService', () => {
 
     const sentCount = await service.dispatchScreening({
       projectId: 'project-1',
-      expertId: 'expert-1'
+      expertId: 'expert-1',
+      channel: 'EMAIL'
     });
     expect(sentCount).toBe(2);
     expect(screeningResponseCreateMock).toHaveBeenCalledTimes(2);

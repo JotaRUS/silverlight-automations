@@ -525,6 +525,34 @@
           "response": []
         },
         {
+          "name": "List Available Channels",
+          "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/available-channels",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "available-channels"
+              ]
+            },
+            "description": "List active outreach channels bound to a project. Returns array of { channel, label } objects."
+          },
+          "response": []
+        },
+        {
           "name": "List Screening Questions",
           "id": "d96df2dc-5cd5-4463-b765-ef61026af3fe",
           "request": {
@@ -1378,7 +1406,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"projectId\": \"{{projectId}}\",\n  \"expertId\": \"{{expertId}}\"\n}"
+              "raw": "{\n  \"projectId\": \"{{projectId}}\",\n  \"expertId\": \"{{expertId}}\",\n  \"channel\": \"EMAIL\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/screening/dispatch",

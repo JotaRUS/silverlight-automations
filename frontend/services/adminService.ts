@@ -128,6 +128,7 @@ export async function updateScreeningResponse(
 export async function dispatchScreening(data: {
   projectId: string;
   expertId: string;
+  channel: string;
 }): Promise<{ sent: number }> {
   return apiRequest<{ sent: number }>('/api/v1/screening/dispatch', {
     method: 'POST',

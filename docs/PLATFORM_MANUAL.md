@@ -734,6 +734,15 @@ When an inbound reply is received (via webhook or manual recording through `hand
 
 Auth: `admin` or `ops`.
 
+#### List available outreach channels for a project
+
+```bash
+curl "http://localhost:3000/api/v1/projects/<projectId>/available-channels" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Returns an array of `{ channel, label }` objects for every outreach channel that has an active provider account bound to the project. Used by the frontend to populate the channel selector when dispatching screening questions.
+
 #### Dispatch screening questions to an expert
 
 ```bash
@@ -742,11 +751,12 @@ curl -X POST http://localhost:3000/api/v1/screening/dispatch \
   -H "Content-Type: application/json" \
   -d '{
     "projectId": "<projectId>",
-    "expertId": "<expertId>"
+    "expertId": "<expertId>",
+    "channel": "WHATSAPP"
   }'
 ```
 
-Sends the project's screening questions to the expert via their preferred channel.
+Sends the project's screening questions to the expert via the specified `channel`. The `channel` field is **required** and must be one of the Prisma `Channel` enum values (e.g. `EMAIL`, `WHATSAPP`, `SMS`, `TELEGRAM`, etc.). On success the lead's status is automatically updated from `REPLIED` to `SCREENING`.
 
 #### Record a screening response
 
@@ -1131,9 +1141,11 @@ Caller ──► CallTask
 ### Lead status
 
 ```text
-NEW → ENRICHING → ENRICHED → OUTREACH_PENDING → CONTACTED → REPLIED → CONVERTED
+NEW → ENRICHING → ENRICHED → OUTREACH_PENDING → CONTACTED → REPLIED → SCREENING → CONVERTED
                                         \→ DISQUALIFIED
 ```
+
+- **SCREENING** — The lead has been dispatched screening questions and is awaiting responses.
 
 ### Outreach thread status
 
@@ -1378,7 +1390,7 @@ curl -X POST http://localhost:3000/api/v1/call-tasks/$TASK_ID/outcome \
 curl -X POST http://localhost:3000/api/v1/screening/dispatch \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"projectId": "'$PROJECT_ID'", "expertId": "'$EXPERT_ID'"}'
+  -d '{"projectId": "'$PROJECT_ID'", "expertId": "'$EXPERT_ID'", "channel": "EMAIL"}'
 ```
 
 ### Monitor caller performance
@@ -1534,7 +1546,7 @@ Five-step guided flow for creating and configuring projects:
 
 Project selection is mandatory — there is no "All projects" option. The first project is auto-selected when the page loads.
 
-Displays leads for the selected project with real-time status updates via live polling and socket events. Leads are grouped by pipeline stage (`NEW` → `ENRICHING` → `ENRICHED` → `OUTREACH_PENDING` → `CONTACTED` → `REPLIED` → `CONVERTED`). Supports filtering, search, and bulk actions.
+Displays leads for the selected project with real-time status updates via live polling and socket events. Leads are grouped by pipeline stage (`NEW` → `ENRICHING` → `ENRICHED` → `OUTREACH_PENDING` → `CONTACTED` → `REPLIED` → `SCREENING` → `CONVERTED`). Supports filtering, search, and bulk actions.
 
 The table columns include **First Name**, **Last Name**, **Job Title**, **Current Company**, and **Country**. A **column visibility toggle** at the top of the table lets you show or hide columns. **Pagination** is shown both above and below the table, with a page size selector (25, 50, 100, 200).
 
@@ -1554,7 +1566,7 @@ Manages screening questions and expert responses. The page has three sections:
 
 **Screening Questions** — Appears when a project is selected. Lets you create, edit, and delete screening questions for the project. Each question has a prompt text, display order, and required flag. Questions are ordered by display order and shown as an editable list with inline add/edit forms.
 
-**Dispatch Screening** — Select a project and a lead (searchable dropdown filtered to REPLIED leads) to send screening questions via the expert's preferred channel. The system creates pending response records and delivers the questions through the outreach infrastructure.
+**Dispatch Screening** — Select a project, a lead (searchable dropdown filtered to REPLIED leads), and an outreach channel from the channels bound to the project. The channel selector dynamically loads available channels via `GET /projects/:id/available-channels`. On dispatch the system creates pending response records, delivers the questions, and automatically transitions the lead from REPLIED to SCREENING status.
 
 **Screening Responses** — Filterable table showing all responses with status (Pending, In Progress, Complete, Escalated), response text, score, and channel. Each response supports actions: edit response text/status, send a follow-up reminder, or escalate to a phone call.
 

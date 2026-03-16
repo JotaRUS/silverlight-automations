@@ -747,13 +747,23 @@ const groups: EndpointGroup[] = [
     description: 'Dispatch screening questions to experts and manage responses.',
     endpoints: [
       {
+        method: 'GET',
+        path: '/api/v1/projects/:projectId/available-channels',
+        summary: 'List outreach channels available for a project',
+        auth: 'Session (admin/ops)',
+        bodyExample: '',
+        responses: [
+          { status: 200, label: 'Channels', body: '[{ "channel": "EMAIL", "label": "Email" }, { "channel": "WHATSAPP", "label": "WhatsApp" }]' }
+        ]
+      },
+      {
         method: 'POST',
         path: '/api/v1/screening/dispatch',
-        summary: 'Dispatch screening to an expert',
+        summary: 'Dispatch screening to an expert via chosen channel. Transitions lead to SCREENING status.',
         auth: 'Session + CSRF (admin/ops)',
-        bodyExample: '{ "projectId": "uuid", "expertId": "uuid" }',
+        bodyExample: '{ "projectId": "uuid", "expertId": "uuid", "channel": "WHATSAPP" }',
         responses: [
-          { status: 200, label: 'Sent', body: '{ "sent": true }' }
+          { status: 200, label: 'Sent', body: '{ "sent": 4 }' }
         ]
       },
       {

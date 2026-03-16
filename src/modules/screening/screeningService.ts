@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Channel, PrismaClient } from '@prisma/client';
 
 import { getRequestContext } from '../../core/http/requestContext';
 import { publishRealtimeEvent } from '../../core/realtime/realtimePubSub';
@@ -9,6 +9,7 @@ import { ProjectCompletionService } from '../projects/projectCompletionService';
 export interface DispatchScreeningInput {
   projectId: string;
   expertId: string;
+  channel: Channel;
 }
 
 export interface RecordScreeningResponseInput {
@@ -28,11 +29,11 @@ export class ScreeningService {
   }
 
   public async dispatchScreening(input: DispatchScreeningInput): Promise<number> {
+    const { channel } = input;
+
     const [questions, expert] = await Promise.all([
       this.prismaClient.screeningQuestion.findMany({
-        where: {
-          projectId: input.projectId
-        },
+        where: { projectId: input.projectId },
         orderBy: { displayOrder: 'asc' }
       }),
       this.prismaClient.expert.findUnique({
@@ -44,7 +45,11 @@ export class ScreeningService {
       return 0;
     }
 
-    const channel = expert.preferredChannel ?? 'EMAIL';
+    const contactType = channel === 'EMAIL' ? 'EMAIL' : 'PHONE';
+    const recipientContact = await this.prismaClient.expertContact.findFirst({
+      where: { expertId: input.expertId, deletedAt: null, type: contactType },
+      orderBy: { isPrimary: 'desc' }
+    });
 
     let sentCount = 0;
     for (const question of questions) {
@@ -69,26 +74,41 @@ export class ScreeningService {
         sentCount += 1;
       }
 
-      const recipientContact = await this.prismaClient.expertContact.findFirst({
-        where: {
+      if (recipientContact) {
+        await this.outreachService.sendMessage({
+          projectId: input.projectId,
           expertId: input.expertId,
-          deletedAt: null,
-          type: channel === 'EMAIL' ? 'EMAIL' : 'PHONE'
-        },
-        orderBy: { isPrimary: 'desc' }
-      });
-      if (!recipientContact) {
-        continue;
+          channel,
+          recipient: recipientContact.value,
+          body: `Screening question ${String(question.displayOrder)}: ${question.prompt}`,
+          overrideCooldown: true
+        });
       }
+    }
 
-      await this.outreachService.sendMessage({
-        projectId: input.projectId,
-        expertId: input.expertId,
-        channel,
-        recipient: recipientContact.value,
-        body: `Screening question ${String(question.displayOrder)}: ${question.prompt}`,
-        overrideCooldown: true
+    if (sentCount > 0) {
+      await this.prismaClient.lead.updateMany({
+        where: {
+          projectId: input.projectId,
+          expertId: input.expertId,
+          status: 'REPLIED',
+          deletedAt: null
+        },
+        data: { status: 'SCREENING' }
       });
+
+      await publishRealtimeEvent({
+        namespace: 'admin',
+        event: 'screening.dispatched',
+        data: {
+          projectId: input.projectId,
+          expertId: input.expertId,
+          channel,
+          questionCount: sentCount
+        }
+      });
+
+      await this.projectCompletionService.recalculate(input.projectId);
     }
 
     return sentCount;

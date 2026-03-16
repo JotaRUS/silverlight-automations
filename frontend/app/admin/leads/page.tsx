@@ -10,7 +10,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { deleteLead, fetchLeadExplorer, updateLead, type LeadExplorerResponse } from '@/services/adminService';
 import { listProjects } from '@/services/projectService';
 
-type LeadStatus = 'NEW' | 'ENRICHING' | 'ENRICHED' | 'OUTREACH_PENDING' | 'CONTACTED' | 'REPLIED' | 'DISQUALIFIED' | 'CONVERTED';
+type LeadStatus = 'NEW' | 'ENRICHING' | 'ENRICHED' | 'OUTREACH_PENDING' | 'CONTACTED' | 'REPLIED' | 'SCREENING' | 'DISQUALIFIED' | 'CONVERTED';
 
 const PIPELINE_STAGES: { status: LeadStatus; label: string; icon: string; color: string; bg: string }[] = [
   { status: 'NEW', label: 'New', icon: 'person_add', color: 'text-slate-600', bg: 'bg-slate-100' },
@@ -19,6 +19,7 @@ const PIPELINE_STAGES: { status: LeadStatus; label: string; icon: string; color:
   { status: 'OUTREACH_PENDING', label: 'Outreach Pending', icon: 'schedule_send', color: 'text-indigo-600', bg: 'bg-indigo-50' },
   { status: 'CONTACTED', label: 'Contacted', icon: 'send', color: 'text-purple-600', bg: 'bg-purple-50' },
   { status: 'REPLIED', label: 'Replied', icon: 'reply', color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  { status: 'SCREENING', label: 'Screening', icon: 'quiz', color: 'text-cyan-600', bg: 'bg-cyan-50' },
   { status: 'CONVERTED', label: 'Converted', icon: 'check_circle', color: 'text-green-700', bg: 'bg-green-50' },
   { status: 'DISQUALIFIED', label: 'Disqualified', icon: 'block', color: 'text-red-600', bg: 'bg-red-50' }
 ];

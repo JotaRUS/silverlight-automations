@@ -13,6 +13,7 @@ import {
   triggerScreeningFollowUp,
   updateScreeningResponse
 } from '@/services/adminService';
+import { listAvailableChannels } from '@/services/projectService';
 import {
   createScreeningQuestion,
   deleteScreeningQuestion,
@@ -392,21 +393,46 @@ function DispatchForm({
 }): JSX.Element {
   const [projectId, setProjectId] = useState('');
   const [expertId, setExpertId] = useState('');
+  const [channel, setChannel] = useState('');
   const [error, setError] = useState('');
-
   const [successMsg, setSuccessMsg] = useState('');
 
+  const channelsQuery = useQuery({
+    queryKey: ['project-available-channels', projectId],
+    queryFn: () => listAvailableChannels(projectId),
+    enabled: !!projectId
+  });
+  const availableChannels = channelsQuery.data ?? [];
+
+  const questionsPreview = useQuery({
+    queryKey: ['dispatch-questions-preview', projectId],
+    queryFn: () => listScreeningQuestions(projectId),
+    enabled: !!projectId
+  });
+  const previewQuestions = questionsPreview.data ?? [];
+
+  useEffect(() => {
+    setChannel('');
+  }, [projectId]);
+
+  useEffect(() => {
+    if (availableChannels.length === 1 && !channel) {
+      setChannel(availableChannels[0].channel);
+    }
+  }, [availableChannels, channel]);
+
   const mutation = useMutation({
-    mutationFn: () => dispatchScreening({ projectId, expertId }),
+    mutationFn: () => dispatchScreening({ projectId, expertId, channel }),
     onSuccess: (data) => {
       setError('');
       setSuccessMsg('');
       if (data.sent === 0) {
         setError('No questions dispatched. Ensure the project has screening questions and the expert exists.');
       } else {
-        setSuccessMsg(`Dispatched ${data.sent} screening question${data.sent > 1 ? 's' : ''}. Responses are now tracked below.`);
+        setSuccessMsg(`Dispatched ${data.sent} screening question${data.sent > 1 ? 's' : ''} via ${availableChannels.find((c) => c.channel === channel)?.label ?? channel}. Lead status updated to Screening.`);
         setProjectId('');
         setExpertId('');
+        setChannel('');
         onDispatched();
       }
     },
@@ -425,9 +451,9 @@ function DispatchForm({
         </button>
       </div>
       <p className="text-sm text-slate-500">
-        Send all screening questions for a project to an expert via their preferred channel.
+        Send all screening questions for a project to an expert. Choose the outreach channel from those bound to the project.
       </p>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">Project</label>
           <select
@@ -449,16 +475,71 @@ function DispatchForm({
             onChange={(eid) => setExpertId(eid)}
           />
         </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">Channel</label>
+          {channelsQuery.isLoading ? (
+            <div className="flex h-[38px] items-center text-xs text-slate-400">Loading channels...</div>
+          ) : availableChannels.length === 0 && projectId ? (
+            <div className="flex h-[38px] items-center text-xs text-red-500">No outreach channels bound to this project</div>
+          ) : (
+            <select
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+              value={channel}
+              onChange={(e) => setChannel(e.target.value)}
+              disabled={!projectId || availableChannels.length === 0}
+            >
+              {availableChannels.length !== 1 && <option value="">Select a channel</option>}
+              {availableChannels.map((ch) => (
+                <option key={ch.channel} value={ch.channel}>{ch.label}</option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
+
+      {projectId && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50/50">
+          <div className="flex items-center gap-1.5 px-3 py-2 border-b border-slate-200">
+            <span className="material-symbols-outlined text-sm text-slate-500">list</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Questions to dispatch ({previewQuestions.length})
+            </span>
+          </div>
+          {questionsPreview.isLoading && (
+            <div className="flex justify-center py-3">
+              <div className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          )}
+          {!questionsPreview.isLoading && previewQuestions.length === 0 && (
+            <div className="px-3 py-3 text-xs text-slate-400 text-center">
+              No screening questions configured for this project. Add questions first.
+            </div>
+          )}
+          {previewQuestions.length > 0 && (
+            <ol className="divide-y divide-slate-100">
+              {previewQuestions.map((q) => (
+                <li key={q.id} className="flex items-start gap-2.5 px-3 py-2">
+                  <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[9px] font-bold text-primary">
+                    {q.displayOrder}
+                  </span>
+                  <span className="text-sm text-slate-700">{q.prompt}</span>
+                  {q.required && <span className="mt-0.5 shrink-0 text-[9px] font-medium text-amber-600 bg-amber-50 rounded px-1 py-0.5">Required</span>}
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
+
       {error && <p className="text-sm text-red-600">{error}</p>}
       {successMsg && <p className="text-sm text-emerald-600">{successMsg}</p>}
       <div className="flex justify-end gap-2">
         <Button onClick={onCancel} className="bg-slate-100 text-slate-700 hover:bg-slate-200">Cancel</Button>
         <Button
           onClick={() => { setError(''); setSuccessMsg(''); mutation.mutate(); }}
-          disabled={!projectId || !expertId || mutation.isPending}
+          disabled={!projectId || !expertId || !channel || mutation.isPending || previewQuestions.length === 0}
         >
-          {mutation.isPending ? 'Dispatching...' : 'Dispatch Questions'}
+          {mutation.isPending ? 'Dispatching...' : `Dispatch ${previewQuestions.length} Question${previewQuestions.length !== 1 ? 's' : ''}`}
         </Button>
       </div>
     </Card>

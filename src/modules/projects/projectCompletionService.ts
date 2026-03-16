@@ -7,9 +7,10 @@ const PIPELINE_STAGE_WEIGHTS: Record<string, number> = {
   OUTREACH_PENDING: 4,
   CONTACTED: 5,
   REPLIED: 6,
-  CONVERTED: 7
+  SCREENING: 7,
+  CONVERTED: 8
 };
-const MAX_STAGE_WEIGHT = 7;
+const MAX_STAGE_WEIGHT = 8;
 
 export class ProjectCompletionService {
   public constructor(private readonly prismaClient: PrismaClient) {}
