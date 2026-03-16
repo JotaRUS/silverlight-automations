@@ -249,6 +249,8 @@ export interface RankingSnapshot {
     completionDeficit?: number;
     completionPenalty?: number;
     tierBase?: number;
+    verifiedContactCount?: number;
+    callAttemptCount?: number;
     createdAt?: string;
   } | null;
   createdAt: string;

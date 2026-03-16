@@ -1103,26 +1103,37 @@ The ranking system determines which experts should be called first. The schedule
 All scores are **0-100**. The range is divided into four 25-point tiers. Within each tier, the project completion deficit determines the exact position.
 
 ```text
-completionDeficit = (1 - signedUpCount / targetThreshold) × 100   (0-100)
-tierBase          = 75 (fresh reply) | 50 (signup chase) | 25 (callback chase) | 0 (base)
-score             = tierBase + (completionDeficit / 100) × 25      (0-100)
+completionDeficit   = (1 - signedUpCount / targetThreshold) × 100   (0-100)
+tierBase            = 75 (fresh reply) | 50 (signup chase) | 25 (callback chase) | 0 (base)
+deficitPoints       = (completionDeficit / 100) × 17                (0-17)
+contactBonus        = min(verifiedContacts, 4) / 4 × 5              (0-5)
+attemptPenalty      = min(callAttempts, 6) / 6 × 3                  (0-3)
+score               = tierBase + deficitPoints + max(0, contactBonus - attemptPenalty)   (0-100)
 ```
+
+Three factors determine the score within each 25-point tier: project completion deficit (0-17 pts), number of verified contacts (0-5 pts bonus), and prior call attempts (0-3 pts penalty). This ensures experts on the same project still get distinct scores.
 
 ### Priority tiers (highest to lowest)
 
 | Tier | Score range | Description |
 |------|-------------|-------------|
-| 1 — Fresh replies | 75-100 | Expert replied via email, SMS, WhatsApp, screening, etc. on a high-priority project |
-| 2 — Signup chase | 50-75 | Expert expressed interest (`INTERESTED_SIGNUP_LINK_SENT`) but has not completed signup |
-| 3 — Callback chase | 25-50 | Expert rejected (`RETRYABLE_REJECTION`) but profile warrants another attempt by a different caller |
-| 4 — Base pool | 0-25 | Remaining callable experts, ordered by project completion deficit |
+| 1 — Fresh replies | 75-97 | Expert replied via email, SMS, WhatsApp, screening, etc. on a high-priority project |
+| 2 — Signup chase | 50-72 | Expert expressed interest (`INTERESTED_SIGNUP_LINK_SENT`) but has not completed signup |
+| 3 — Callback chase | 25-47 | Expert rejected (`RETRYABLE_REJECTION`) but profile warrants another attempt by a different caller |
+| 4 — Base pool | 0-22 | Remaining callable experts, ordered by project completion deficit |
 
-### Project completion deficit
+### Within-tier scoring
 
-Experts on projects with lower completion percentages are ranked higher within their tier. For example:
-- Project A: 3/20 signed up (15%) → deficit = 85 → contributes 21.25 within tier
-- Project B: 3/10 signed up (30%) → deficit = 70 → contributes 17.50 within tier
-- An expert on Project A with a fresh reply scores 96.25 vs 92.50 on Project B
+Three factors spread scores within each tier:
+- **Project completion deficit** (0-17 pts): projects further from their target push experts higher
+- **Verified contacts** (0-5 pts): experts with more verified contact channels rank higher (more reachable)
+- **Call attempts** (0-3 pts penalty): experts already called multiple times without success are slightly deprioritised
+
+Example for "Senior HR Latam" (3/20 = 15% complete, deficit = 85):
+- Fresh reply, 3 verified contacts, 0 attempts: 75 + 14.45 + 3.75 = **93.2**
+- Fresh reply, 1 contact, 2 attempts: 75 + 14.45 + 0.25 = **89.7**
+- Base, 2 contacts, 0 attempts: 0 + 14.45 + 2.5 = **16.95**
+- Base, 0 contacts, 5 attempts: 0 + 14.45 + 0 = **14.45**
 
 ### Scheduler cycle
 

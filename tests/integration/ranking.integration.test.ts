@@ -33,7 +33,9 @@ describe('ranking integration', () => {
       expertId: expert.id,
       freshReplyBoost: true,
       signupChaseBoost: true,
-      highValueRejectionBoost: false
+      highValueRejectionBoost: false,
+      verifiedContactCount: 2,
+      callAttemptCount: 0
     });
 
     expect(score).toBeGreaterThan(0);

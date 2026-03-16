@@ -8,12 +8,14 @@ export interface RankingInput {
   freshReplyBoost: boolean;
   signupChaseBoost: boolean;
   highValueRejectionBoost: boolean;
+  verifiedContactCount: number;
+  callAttemptCount: number;
 }
 
 export class RankingService {
   public constructor(private readonly prismaClient: PrismaClient) {}
 
-  private async getProjectCompletionPenalty(projectId: string): Promise<number> {
+  private async getProjectCompletionDeficit(projectId: string): Promise<number> {
     const project = await this.prismaClient.project.findUnique({
       where: { id: projectId }
     });
@@ -25,7 +27,7 @@ export class RankingService {
   }
 
   public async computeAndPersist(input: RankingInput): Promise<number> {
-    const completionDeficit = await this.getProjectCompletionPenalty(input.projectId);
+    const completionDeficit = await this.getProjectCompletionDeficit(input.projectId);
 
     const tierBase = input.freshReplyBoost
       ? 75
@@ -34,7 +36,14 @@ export class RankingService {
         : input.highValueRejectionBoost
           ? 25
           : 0;
-    const score = Math.round((tierBase + (completionDeficit / 100) * 25) * 100) / 100;
+
+    const deficitPoints = (completionDeficit / 100) * 17;
+    const contactBonus = Math.min(input.verifiedContactCount, 4) / 4 * 5;
+    const attemptPenalty = Math.min(input.callAttemptCount, 6) / 6 * 3;
+    const microAdjust = contactBonus - attemptPenalty;
+
+    const raw = tierBase + deficitPoints + Math.max(0, microAdjust);
+    const score = Math.round(Math.min(100, Math.max(0, raw)) * 100) / 100;
 
     const latestRank = await this.prismaClient.rankingSnapshot.findFirst({
       orderBy: { rank: 'desc' }
@@ -54,6 +63,8 @@ export class RankingService {
           highValueRejectionBoost: input.highValueRejectionBoost,
           completionDeficit,
           tierBase,
+          verifiedContactCount: input.verifiedContactCount,
+          callAttemptCount: input.callAttemptCount,
           createdAt: clock.now().toISOString()
         }
       }

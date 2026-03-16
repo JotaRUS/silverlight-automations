@@ -15,6 +15,8 @@ interface RankingJobPayload {
   freshReplyBoost: boolean;
   signupChaseBoost: boolean;
   highValueRejectionBoost: boolean;
+  verifiedContactCount: number;
+  callAttemptCount: number;
 }
 
 const rankingService = new RankingService(prisma);

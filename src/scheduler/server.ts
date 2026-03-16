@@ -289,6 +289,20 @@ async function computeRankingSnapshots(): Promise<number> {
     });
     const rejectionExpertIds = new Set(rejections.map((t) => t.expertId));
 
+    const verifiedContacts = await prisma.expertContact.groupBy({
+      by: ['expertId'],
+      where: { expertId: { in: [...callableExpertIds] }, deletedAt: null, verificationStatus: 'VERIFIED' },
+      _count: { id: true }
+    });
+    const contactCountMap = new Map(verifiedContacts.map((c) => [c.expertId, c._count.id]));
+
+    const callAttempts = await prisma.callTask.groupBy({
+      by: ['expertId'],
+      where: { expertId: { in: [...callableExpertIds] }, projectId: project.id },
+      _count: { id: true }
+    });
+    const callCountMap = new Map(callAttempts.map((c) => [c.expertId, c._count.id]));
+
     for (const expertId of callableExpertIds) {
       await getQueues().rankingQueue.add(
         'ranking.compute',
@@ -299,7 +313,9 @@ async function computeRankingSnapshots(): Promise<number> {
             expertId,
             freshReplyBoost: freshReplyExpertIds.has(expertId),
             signupChaseBoost: signupChaseExpertIds.has(expertId),
-            highValueRejectionBoost: rejectionExpertIds.has(expertId)
+            highValueRejectionBoost: rejectionExpertIds.has(expertId),
+            verifiedContactCount: contactCountMap.get(expertId) ?? 0,
+            callAttemptCount: callCountMap.get(expertId) ?? 0
           }
         },
         {
