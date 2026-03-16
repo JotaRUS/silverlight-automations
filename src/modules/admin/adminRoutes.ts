@@ -2,12 +2,18 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { LeadStatus, ThreadStatus, ScreeningStatus } from '@prisma/client';
 
+import type { Channel as PrismaChannel } from '@prisma/client';
+
 import { authenticate, authorize } from '../../core/auth/authMiddleware';
+import { isoCodeToLocationName } from '../../config/constants';
 import { AppError } from '../../core/errors/appError';
 import { publishRealtimeEvent } from '../../core/realtime/realtimePubSub';
 import { prisma } from '../../db/client';
 import { getQueues } from '../../queues';
+import { buildJobId } from '../../queues/jobId';
 import { redisConnection } from '../../queues/redis';
+import { isChannelAvailableForProject } from '../outreach/channelSelection';
+import { resolveTemplate, type TemplateContext } from '../outreach/outreachService';
 import { ProjectCompletionService } from '../projects/projectCompletionService';
 import { ScreeningService } from '../screening/screeningService';
 
@@ -619,6 +625,186 @@ adminRoutes.get('/workers/queue-stats', async (_request, response, next) => {
     );
 
     response.status(200).json({ queues: stats });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const bulkProjectSchema = z.object({
+  projectId: z.string().uuid().optional()
+});
+
+adminRoutes.post('/workers/export-leads', async (request, response, next) => {
+  try {
+    const { projectId } = bulkProjectSchema.parse(request.body);
+
+    const exportableStatuses: LeadStatus[] = [
+      'ENRICHED', 'OUTREACH_PENDING', 'CONTACTED', 'REPLIED', 'CONVERTED'
+    ];
+    const where: Record<string, unknown> = {
+      status: { in: exportableStatuses },
+      deletedAt: null,
+      supabaseExportedAt: null,
+      project: { supabaseProviderAccountId: { not: null } }
+    };
+    if (projectId) where.projectId = projectId;
+
+    const leads = await prisma.lead.findMany({
+      where: where as never,
+      select: { id: true, projectId: true }
+    });
+
+    if (leads.length === 0) {
+      response.status(200).json({ queued: 0 });
+      return;
+    }
+
+    const batchTs = Date.now();
+    const correlationId = `bulk-export-${batchTs}`;
+    const queues = getQueues();
+
+    for (const lead of leads) {
+      await queues.supabaseSyncQueue.add(
+        'supabase-sync.enriched-lead',
+        { correlationId, data: { projectId: lead.projectId, leadId: lead.id } },
+        { jobId: buildJobId('supabase-sync', lead.projectId, lead.id, batchTs) }
+      );
+    }
+
+    response.status(200).json({ queued: leads.length });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const OUTREACH_CHANNELS: PrismaChannel[] = [
+  'EMAIL', 'SMS', 'VOICEMAIL', 'WHATSAPP', 'RESPONDIO',
+  'LINE', 'WECHAT', 'VIBER', 'TELEGRAM', 'KAKAOTALK'
+];
+
+adminRoutes.post('/workers/outreach-leads', async (request, response, next) => {
+  try {
+    const { projectId: filterProjectId } = bulkProjectSchema.parse(request.body);
+
+    const projectWhere: Record<string, unknown> = {
+      deletedAt: null,
+      status: 'ACTIVE'
+    };
+    if (filterProjectId) projectWhere.id = filterProjectId;
+
+    const projects = await prisma.project.findMany({
+      where: projectWhere as never,
+      select: { id: true, name: true, outreachMessageTemplate: true }
+    });
+
+    const batchTs = Date.now();
+    const correlationId = `bulk-outreach-${batchTs}`;
+    const queues = getQueues();
+    let totalQueued = 0;
+
+    for (const project of projects) {
+      const template = project.outreachMessageTemplate;
+      if (typeof template !== 'string' || !template.trim()) continue;
+
+      const availableChannels: PrismaChannel[] = [];
+      for (const ch of OUTREACH_CHANNELS) {
+        if (await isChannelAvailableForProject(prisma, project.id, ch)) {
+          availableChannels.push(ch);
+        }
+      }
+      if (availableChannels.length === 0) continue;
+
+      const leads = await prisma.lead.findMany({
+        where: {
+          projectId: project.id,
+          status: 'ENRICHED',
+          expertId: { not: null },
+          deletedAt: null
+        },
+        select: {
+          id: true, expertId: true, firstName: true, lastName: true,
+          jobTitle: true, countryIso: true, metadata: true
+        }
+      });
+
+      for (const lead of leads) {
+        if (!lead.expertId) continue;
+
+        const existingThread = await prisma.outreachThread.findFirst({
+          where: { projectId: project.id, expertId: lead.expertId },
+          select: { id: true }
+        });
+        if (existingThread) continue;
+
+        const expert = await prisma.expert.findUnique({
+          where: { id: lead.expertId },
+          select: { currentCompany: true, countryIso: true }
+        });
+
+        const meta = (lead.metadata as Record<string, unknown> | null) ?? {};
+        const countryIso = lead.countryIso ?? expert?.countryIso;
+        const countryName = countryIso
+          ? isoCodeToLocationName(countryIso)
+          : (meta.country as string | undefined) ?? null;
+
+        const context: TemplateContext = {
+          firstName: lead.firstName,
+          lastName: lead.lastName,
+          country: countryName || null,
+          jobTitle: lead.jobTitle,
+          currentCompany: expert?.currentCompany ?? (meta.companyName as string | undefined) ?? null
+        };
+
+        const body = resolveTemplate(template, context);
+        if (!body) continue;
+
+        const contacts = await prisma.expertContact.findMany({
+          where: { expertId: lead.expertId, deletedAt: null },
+          select: { type: true, value: true }
+        });
+
+        let didQueue = false;
+        for (const channel of availableChannels) {
+          let recipient: string | undefined;
+          if (channel === 'EMAIL') {
+            recipient = contacts.find((c) => c.type === 'EMAIL')?.value;
+          } else if (channel === 'SMS' || channel === 'VOICEMAIL' || channel === 'WHATSAPP') {
+            recipient = contacts.find((c) => c.type === 'PHONE')?.value;
+          } else {
+            recipient = contacts.find((c) => c.type === 'PHONE')?.value
+              ?? contacts.find((c) => c.type === 'EMAIL')?.value;
+          }
+          if (!recipient) continue;
+
+          await queues.outreachQueue.add(
+            'outreach.auto-send',
+            {
+              correlationId,
+              data: {
+                projectId: project.id,
+                expertId: lead.expertId,
+                channel,
+                recipient,
+                body,
+                overrideCooldown: false
+              }
+            },
+            { jobId: buildJobId('outreach', project.id, lead.expertId, channel, batchTs) }
+          );
+          didQueue = true;
+        }
+
+        if (didQueue) {
+          await prisma.lead.update({
+            where: { id: lead.id },
+            data: { status: 'OUTREACH_PENDING' }
+          });
+          totalQueued++;
+        }
+      }
+    }
+
+    response.status(200).json({ queued: totalQueued });
   } catch (error) {
     next(error);
   }

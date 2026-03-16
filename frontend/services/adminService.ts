@@ -184,3 +184,17 @@ export interface QueueStat {
 export async function fetchQueueStats(): Promise<{ queues: QueueStat[] }> {
   return apiRequest<{ queues: QueueStat[] }>('/api/v1/admin/workers/queue-stats');
 }
+
+export async function bulkExportLeads(projectId?: string): Promise<{ queued: number }> {
+  return apiRequest<{ queued: number }>('/api/v1/admin/workers/export-leads', {
+    method: 'POST',
+    body: projectId ? { projectId } : {}
+  });
+}
+
+export async function bulkOutreachLeads(projectId?: string): Promise<{ queued: number }> {
+  return apiRequest<{ queued: number }>('/api/v1/admin/workers/outreach-leads', {
+    method: 'POST',
+    body: projectId ? { projectId } : {}
+  });
+}

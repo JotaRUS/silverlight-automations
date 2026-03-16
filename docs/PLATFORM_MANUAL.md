@@ -18,9 +18,10 @@ This manual covers operating the platform via its REST API, background processes
    - [Job Title Discovery](#46-job-title-discovery)
    - [Outreach](#47-outreach)
    - [Screening](#48-screening)
-   - [Documentation Generator](#49-documentation-generator)
-   - [Webhooks](#410-webhooks)
-   - [OpenAPI Spec](#411-openapi-spec)
+   - [Worker Actions](#49-worker-actions)
+   - [Documentation Generator](#410-documentation-generator)
+   - [Webhooks](#411-webhooks)
+   - [OpenAPI Spec](#412-openapi-spec)
 5. [Background Processes](#5-background-processes)
    - [Worker Process](#51-worker-process)
    - [Scheduler Process](#52-scheduler-process)
@@ -754,7 +755,50 @@ curl -X POST http://localhost:3000/api/v1/screening/response \
 
 ---
 
-### 4.9 Documentation Generator
+### 4.9 Worker Actions
+
+Auth: `admin` or `ops`.
+
+Bulk operations that queue background jobs for leads. Results appear in real time on the Workers page.
+
+#### Export not-exported leads to Supabase
+
+```bash
+curl -X POST http://localhost:3000/api/v1/admin/workers/export-leads \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"projectId": "<optional-projectId>"}'
+```
+
+Finds all leads past the enrichment stage (ENRICHED, OUTREACH_PENDING, CONTACTED, REPLIED, CONVERTED) that have not yet been exported (`supabaseExportedAt` is null) in projects with a Supabase provider bound. Queues a `supabase-sync` job for each. If `projectId` is provided, only that project's leads are exported.
+
+Response: `{"queued": 22}`
+
+#### Outreach enriched leads not yet contacted
+
+```bash
+curl -X POST http://localhost:3000/api/v1/admin/workers/outreach-leads \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"projectId": "<optional-projectId>"}'
+```
+
+Finds all ENRICHED leads (with no existing outreach thread) in ACTIVE projects that have an outreach template and at least one outreach channel configured. Resolves the message template, finds contact recipients, queues outreach jobs per available channel, and sets matching leads to `OUTREACH_PENDING`. If `projectId` is provided, only that project is processed.
+
+Response: `{"queued": 15}`
+
+#### Get queue statistics
+
+```bash
+curl http://localhost:3000/api/v1/admin/workers/queue-stats \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Returns current BullMQ job counts (waiting, active, completed, failed, delayed) for every queue.
+
+---
+
+### 4.10 Documentation Generator
 
 Auth: `admin` or `ops`.
 
@@ -769,7 +813,7 @@ Response: `{"accepted": true, "jobId": "..."}` (202).
 
 ---
 
-### 4.10 Webhooks
+### 4.11 Webhooks
 
 Webhook endpoints do not use JWT auth; they have their own verification mechanisms.
 
@@ -804,7 +848,7 @@ Credentials are obtained from the [LinkedIn Developer Portal](https://www.linked
 
 ---
 
-### 4.11 OpenAPI Spec
+### 4.12 OpenAPI Spec
 
 ```bash
 curl http://localhost:3000/api/v1/openapi.json
@@ -818,7 +862,7 @@ Returns the full OpenAPI 3.1.0 specification. Import this into Postman or any AP
 
 ### 5.1 Worker Process
 
-Start with `npm run dev:worker`. Runs 14 concurrent workers:
+Start with `npm run dev:worker`. Runs 16 concurrent workers. Each worker emits real-time events (`worker.job.update`) via Redis pub/sub, which are forwarded to the frontend over Socket.io so the Workers page can display a live activity feed.
 
 | Worker                  | Queue                  | Concurrency | Purpose                                     |
 |-------------------------|------------------------|-------------|----------------------------------------------|
@@ -834,6 +878,7 @@ Start with `npm run dev:worker`. Runs 14 concurrent workers:
 | Performance             | `performance`          | 5           | Recalculate caller performance metrics       |
 | Job Title Discovery     | `job-title-discovery`  | 5           | Apollo + OpenAI title discovery              |
 | Google Sheets Sync      | `google-sheets-sync`   | 4           | Sync data to Google Sheets                   |
+| Supabase Sync           | `supabase-sync`        | 4           | Export enriched leads to Supabase            |
 | Documentation           | `documentation`        | 2           | Generate documentation artifacts             |
 | Dead Letter             | `dead-letter`          | 2           | Persist failed jobs for analysis             |
 
@@ -1381,6 +1426,21 @@ Real-time operational dashboard with:
 - Lead pipeline distribution across stages.
 - Caller performance summaries and allocation statuses.
 - Queue depths and processing rates.
+
+### Workers page
+
+Real-time operations dashboard for monitoring background job processing. Accessible from the sidebar under "Workers" (`/admin/workers`).
+
+**Queue Statistics** — Displays live job counts (waiting, active, completed, failed, delayed) for every BullMQ queue. Active queues are shown as cards with stat pills; idle queues appear as compact badges. Stats refresh automatically every 5 seconds.
+
+**Live Event Feed** — A scrollable table showing worker job events as they happen. Each event shows queue name, job ID, status (active / completed / failed), duration, and timestamp. Failed jobs show an expandable error message. The feed can be filtered by queue, paused/resumed, and cleared.
+
+**Bulk Actions** — Two action buttons for common batch operations:
+
+1. **Export not-exported leads** — Queues `supabase-sync` jobs for all ENRICHED leads that have not been exported to Supabase yet. Optionally filter by project.
+2. **Outreach enriched leads** — Queues outreach jobs for all ENRICHED leads (without an existing outreach thread) in ACTIVE projects with a configured message template and available channels. Optionally filter by project.
+
+Both buttons show a loading state while processing and report the number of jobs queued. Results appear immediately in the live event feed above.
 
 ### Provider management
 

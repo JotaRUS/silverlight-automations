@@ -203,6 +203,11 @@ export default function HelpPage(): JSX.Element {
               icon: 'key',
               title: 'Provider setup expanded',
               desc: 'Provider management now includes Sales Navigator OAuth credentials, health checks, activation toggles, and credential rotation from account cards.'
+            },
+            {
+              icon: 'precision_manufacturing',
+              title: 'Workers dashboard',
+              desc: 'A new Workers page shows live BullMQ queue statistics, a real-time event feed of job activity, and bulk action buttons to export leads to Supabase or queue outreach for enriched leads.'
             }
           ].map((item) => (
             <div key={item.title} className="flex gap-3 items-start">
@@ -262,6 +267,10 @@ export default function HelpPage(): JSX.Element {
             {
               icon: 'sensors', name: 'Observability',
               desc: 'System health monitoring. View the dead-letter queue for failed background jobs, webhook processing logs, fraud detection flags, and system events.'
+            },
+            {
+              icon: 'precision_manufacturing', name: 'Workers',
+              desc: 'Live worker activity dashboard. Monitor BullMQ queue statistics, watch job events in real time, and trigger bulk actions like exporting leads to Supabase or queuing outreach for enriched leads.'
             },
             {
               icon: 'group', name: 'Users',
@@ -964,6 +973,17 @@ export default function HelpPage(): JSX.Element {
           <li>Use the filters to narrow by project, channel, or thread status (Open, Closed, Archived).</li>
           <li>Click on a thread to see the full conversation history, including sent messages and any replies.</li>
           <li>Check the Dashboard activity feed for a real-time view of outreach events across all projects.</li>
+        </ol>
+
+        <SubHeading>Use the Workers dashboard</SubHeading>
+        <ol className="list-decimal list-inside space-y-2 text-sm text-slate-600">
+          <li>Open <strong>Workers</strong> from the sidebar to see live queue statistics and job activity.</li>
+          <li><strong>Queue Statistics</strong> refresh every 5 seconds. Active queues show counts for waiting, active, completed, failed, and delayed jobs.</li>
+          <li>The <strong>Live Event Feed</strong> streams worker events in real time. Use the queue filter dropdown to focus on a specific queue, or pause the feed to inspect entries.</li>
+          <li>Failed jobs display an expandable error message — click the error badge to see the full details.</li>
+          <li>To export leads to Supabase, select a project (or leave &quot;All projects&quot;) and click <strong>Export not-exported leads</strong>. The button queues Supabase sync jobs for all ENRICHED leads not yet exported.</li>
+          <li>To queue outreach, click <strong>Outreach enriched leads</strong>. This finds ENRICHED leads without existing outreach threads and queues messages through available channels.</li>
+          <li>After clicking either action, watch the live feed to confirm jobs are being processed.</li>
         </ol>
 
         <SubHeading>Manage users and roles</SubHeading>

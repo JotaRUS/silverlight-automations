@@ -7,7 +7,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useSocket } from '@/hooks/useSocket';
-import { fetchQueueStats, type QueueStat } from '@/services/adminService';
+import {
+  bulkExportLeads,
+  bulkOutreachLeads,
+  fetchQueueStats,
+  type QueueStat
+} from '@/services/adminService';
+import { listProjects } from '@/services/projectService';
 
 interface WorkerJobEvent {
   queueName: string;
@@ -55,6 +61,9 @@ export default function WorkersPage(): JSX.Element {
   const [paused, setPaused] = useState(false);
   const [queueFilter, setQueueFilter] = useState<string>('all');
   const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
+  const [actionProjectId, setActionProjectId] = useState<string>('');
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionResult, setActionResult] = useState<string | null>(null);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
 
@@ -63,6 +72,26 @@ export default function WorkersPage(): JSX.Element {
     queryFn: fetchQueueStats,
     refetchInterval: 5000
   });
+
+  const projectsQuery = useQuery({
+    queryKey: ['projects-list'],
+    queryFn: listProjects
+  });
+
+  const runAction = async (action: 'export' | 'outreach') => {
+    setActionLoading(action);
+    setActionResult(null);
+    try {
+      const pid = actionProjectId || undefined;
+      const result =
+        action === 'export' ? await bulkExportLeads(pid) : await bulkOutreachLeads(pid);
+      setActionResult(`Queued ${result.queued} job(s)`);
+    } catch (err) {
+      setActionResult(err instanceof Error ? err.message : 'Action failed');
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const onWorkerEvent = useCallback((event: WorkerJobEvent) => {
     if (pausedRef.current) return;
@@ -100,6 +129,44 @@ export default function WorkersPage(): JSX.Element {
           {statsQuery.isFetching ? 'Refreshing...' : `${queues.length} queues`}
         </span>
       </div>
+
+      {/* Actions */}
+      <Card>
+        <h2 className="mb-3 text-sm font-medium text-slate-600">Actions</h2>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="mb-1 block text-xs text-slate-500">Project</label>
+            <select
+              value={actionProjectId}
+              onChange={(e) => setActionProjectId(e.target.value)}
+              className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+            >
+              <option value="">All projects</option>
+              {(projectsQuery.data ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button
+            onClick={() => void runAction('export')}
+            disabled={actionLoading !== null}
+          >
+            {actionLoading === 'export' ? 'Queuing...' : 'Export not-exported leads'}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => void runAction('outreach')}
+            disabled={actionLoading !== null}
+          >
+            {actionLoading === 'outreach' ? 'Queuing...' : 'Outreach enriched leads'}
+          </Button>
+          {actionResult && (
+            <span className="text-sm text-slate-600">{actionResult}</span>
+          )}
+        </div>
+      </Card>
 
       {/* Queue Stats */}
       <section>
