@@ -209,12 +209,15 @@ providerAccountRoutes.get(
         }
       }
 
-      response.status(200).json({
-        status,
-        accessTokenExpiresAt: expiresAt,
-        refreshTokenExpiresAt: refreshExpiresAt,
-        scope: typeof credentials.oauthScope === 'string' ? credentials.oauthScope : null
-      });
+      response
+        .setHeader('Cache-Control', 'no-store')
+        .status(200)
+        .json({
+          status,
+          accessTokenExpiresAt: expiresAt,
+          refreshTokenExpiresAt: refreshExpiresAt,
+          scope: typeof credentials.oauthScope === 'string' ? credentials.oauthScope : null
+        });
     } catch (error) {
       next(error);
     }
@@ -462,9 +465,12 @@ linkedInOAuthCallbackRoutes.get(
         data: { credentialsJson: encrypted as unknown as Prisma.InputJsonValue }
       });
 
-      response.status(200).send(
-        `<html><body><h2>LinkedIn Authorization Successful</h2><p>Your LinkedIn account has been connected. You may close this window and return to the admin panel.</p><script>window.opener?.postMessage({type:'linkedin-oauth-success',providerAccountId:'${providerAccountId}'},'*');setTimeout(()=>window.close(),2000);</script></body></html>`
-      );
+      response
+        .setHeader('Content-Security-Policy', "default-src 'self'; script-src 'unsafe-inline'")
+        .status(200)
+        .send(
+          `<html><body><h2>LinkedIn Authorization Successful</h2><p>Your LinkedIn account has been connected. You may close this window and return to the admin panel.</p><script>try{window.opener&&window.opener.postMessage({type:'linkedin-oauth-success',providerAccountId:'${providerAccountId}'},'*')}catch(e){}setTimeout(function(){window.close()},3000);</script></body></html>`
+        );
     } catch (err) {
       next(err);
     }

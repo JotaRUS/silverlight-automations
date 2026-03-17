@@ -257,7 +257,7 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
   const statusQuery = useQuery({
     queryKey: ['linkedin-oauth-status', accountId],
     queryFn: () => getLinkedInOAuthStatus(accountId),
-    refetchInterval: 30_000
+    refetchInterval: authorizing ? 3_000 : 30_000
   });
 
   const oauthStatus: LinkedInOAuthStatus | null = statusQuery.data ?? null;
@@ -270,6 +270,7 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
         (event.data as { type?: string }).type === 'linkedin-oauth-success' &&
         (event.data as { providerAccountId?: string }).providerAccountId === accountId
       ) {
+        setAuthorizing(false);
         void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', accountId] });
         void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
       }
@@ -277,6 +278,13 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
   }, [accountId, queryClient]);
+
+  useEffect(() => {
+    if (authorizing && oauthStatus?.status === 'connected') {
+      setAuthorizing(false);
+      void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
+    }
+  }, [authorizing, oauthStatus?.status, queryClient]);
 
   const handleAuthorize = async (): Promise<void> => {
     setAuthorizing(true);
