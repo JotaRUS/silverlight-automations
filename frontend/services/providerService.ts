@@ -69,6 +69,33 @@ export async function bindProviderToProject(providerAccountId: string, projectId
 }
 
 // ---------------------------------------------------------------------------
+// LinkedIn OAuth
+// ---------------------------------------------------------------------------
+
+export interface LinkedInOAuthStatus {
+  status: 'not_connected' | 'connected' | 'expired';
+  accessTokenExpiresAt: string | null;
+  refreshTokenExpiresAt: string | null;
+  scope: string | null;
+}
+
+export async function getLinkedInOAuthStatus(
+  providerAccountId: string
+): Promise<LinkedInOAuthStatus> {
+  return apiRequest<LinkedInOAuthStatus>(
+    `/api/v1/providers/${providerAccountId}/linkedin/oauth/status`
+  );
+}
+
+export async function getLinkedInOAuthAuthorizeUrl(
+  providerAccountId: string
+): Promise<{ authorizationUrl: string; state: string }> {
+  return apiRequest<{ authorizationUrl: string; state: string }>(
+    `/api/v1/providers/${providerAccountId}/linkedin/oauth/authorize`
+  );
+}
+
+// ---------------------------------------------------------------------------
 // LinkedIn Lead Sync
 // ---------------------------------------------------------------------------
 

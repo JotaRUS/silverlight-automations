@@ -107,7 +107,7 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
     providerType: 'SALES_NAV_WEBHOOK',
     name: 'LinkedIn Sales Navigator',
     category: 'Lead Sourcing',
-    summary: 'LinkedIn Sales Navigator ingestion using OAuth client credentials and webhook delivery.',
+    summary: 'LinkedIn Sales Navigator Lead Sync API using 3-legged OAuth (Authorization Code Flow) and webhook delivery.',
     credentials: [
       {
         key: 'clientId',
@@ -120,22 +120,33 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
         label: 'Client Secret',
         required: true,
         description: 'LinkedIn Developer application Client Secret from the Auth tab.'
+      },
+      {
+        key: 'organizationId',
+        label: 'Organization ID',
+        required: true,
+        description: 'LinkedIn Organization ID (numeric) for the company associated with your LinkedIn Developer app.'
       }
     ],
     prerequisites: [
       'LinkedIn Developer app with Sales Navigator/partner access approved.',
+      'OAuth redirect URI registered in LinkedIn Developer Portal (App → Auth tab → Authorized redirect URLs).',
       'Ability to configure outbound webhooks from your Sales Navigator data source.'
     ],
     credentialSteps: [
       'Open LinkedIn Developer Portal (My Apps) and create/select your app.',
       'Open Auth tab and copy Client ID + Client Secret.',
-      'Test OAuth token exchange against https://www.linkedin.com/oauth/v2/accessToken using grant_type=client_credentials.',
-      'Store both values in this provider account.'
+      'Add the OAuth redirect URI to "Authorized redirect URLs" in the Auth tab: for production use https://silverlight-automations.siblingssoftware.com.ar/api/v1/providers/linkedin/oauth/callback, for local dev use http://localhost:3000/api/v1/providers/linkedin/oauth/callback.',
+      'Note your Organization ID (found in LinkedIn company page URL or admin settings).',
+      'Store Client ID, Client Secret, and Organization ID in this provider account.'
     ],
     platformConfiguration: [
       ...sharedPlatformSteps,
-      'For OAuth 2.0 authorization code flow, use redirect URI: https://silverlight-automations.siblingssoftware.com.ar/api/v1/auth/linkedin/callback',
-      'Generate authorization links via GET /api/v1/auth/linkedin/authorize?providerAccountId=<providerAccountId>.',
+      'After creating the provider account, click "Authorize with LinkedIn" to initiate the 3-legged OAuth flow.',
+      'You will be redirected to LinkedIn to sign in and grant member-level access permissions.',
+      'Upon successful authorization, you will be redirected back to the admin UI with tokens stored automatically.',
+      'Check OAuth status via GET /api/v1/providers/:providerAccountId/linkedin/oauth/status — it should show "connected".',
+      'Access tokens last 60 days and refresh tokens last 365 days. Tokens are auto-refreshed on API calls.',
       'Configure your upstream Sales Navigator webhook sender to POST JSON payloads to /webhooks/sales-nav/{providerAccountId}.',
       'Payload must include projectId, sourceUrl, normalizedUrl, and leads array in the expected schema.'
     ],
@@ -146,30 +157,45 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
       notes: [
         'This platform accepts either a bearer auth header or x-sales-nav-client-id validation.',
         'Use the provider account UUID in the webhook path; route rejects wrong provider type or inactive account.',
-        'Token exchange health check uses LinkedIn client credentials flow.'
+        'Token exchange health check uses 3-legged OAuth tokens obtained via the Authorization Code Flow.',
+        'Access tokens last 60 days and are auto-refreshed using the refresh token (365-day lifetime).',
+        'If both tokens expire, re-authorize via "Authorize with LinkedIn" on the provider page.'
       ]
     },
     validationChecklist: [
-      'Test Connection succeeds (OAuth token exchange works).',
+      'Provider account created with Client ID, Client Secret, and Organization ID.',
+      'OAuth authorization completed — status shows "connected".',
+      'Test Connection succeeds (validates OAuth tokens are valid).',
       'Webhook call returns HTTP 202 accepted with valid payload.'
     ],
     commonPitfalls: [
+      {
+        issue: 'OAuth status shows "not_connected".',
+        resolution: 'Click "Authorize with LinkedIn" on the provider card to complete the 3-legged OAuth flow.'
+      },
+      {
+        issue: 'OAuth status shows "expired".',
+        resolution: 'Both access and refresh tokens have expired. Re-authorize by clicking "Authorize with LinkedIn".'
+      },
+      {
+        issue: 'OAuth callback fails with "redirect_uri mismatch".',
+        resolution: 'Ensure the redirect URI in the LinkedIn Developer Portal Auth tab exactly matches the one configured in LINKEDIN_OAUTH_REDIRECT_URI (or the default based on EXTERNAL_APP_BASE_URL).'
+      },
       {
         issue: '401 from webhook endpoint.',
         resolution: 'Verify client ID in x-sales-nav-client-id or provide valid Bearer auth header.'
       },
       {
         issue: 'Health check fails despite valid app.',
-        resolution: 'Confirm LinkedIn app has proper partner permissions and client credentials are current.'
+        resolution: 'Confirm LinkedIn app has proper partner permissions and that OAuth authorization has been completed.'
       }
     ],
     officialLinks: [
       { label: 'LinkedIn Developer Apps', url: 'https://www.linkedin.com/developers/apps' },
-      { label: 'LinkedIn Client Credentials Flow', url: 'https://learn.microsoft.com/en-us/linkedin/shared/authentication/client-credentials-flow' },
       { label: 'LinkedIn Authorization Code Flow', url: 'https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow?tabs=HTTPS1' },
       { label: 'LinkedIn FAQ (Client ID Location)', url: 'https://developer.linkedin.com/support/faq' }
     ],
-    lastReviewed: '2026-02-28'
+    lastReviewed: '2026-03-17'
   },
   {
     slug: 'leadmagic',

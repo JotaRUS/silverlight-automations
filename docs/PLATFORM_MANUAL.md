@@ -343,34 +343,78 @@ Auth cookie required. Returns a CSRF token for mutating authenticated requests:
 
 Auth: any role. Returns the authenticated user's `userId` and `role`.
 
-#### LinkedIn OAuth 2.0 Authorization Code Flow
+#### LinkedIn OAuth 2.0 Authorization Code Flow (3-Legged OAuth)
 
-##### `GET /api/v1/auth/linkedin/authorize`
+The LinkedIn Sales Navigator (SALES_NAV_WEBHOOK) provider uses 3-legged OAuth (Authorization Code Flow) to obtain member-level access tokens for the Lead Sync API. After creating a provider account with Client ID, Client Secret, and Organization ID, an admin must complete the OAuth authorization flow to grant member-level access.
+
+**Token lifetimes:** Access tokens last 60 days, refresh tokens last 365 days. Tokens are automatically refreshed when API calls are made.
+
+##### `GET /api/v1/providers/:providerAccountId/linkedin/oauth/authorize`
 
 Auth: `admin` or `ops`.
 
-Builds a LinkedIn authorization URL for a specific provider account:
+Initiates the LinkedIn 3-legged OAuth flow by returning an authorization URL that the admin must visit in a browser:
 
 ```bash
-curl "http://localhost:3000/api/v1/auth/linkedin/authorize?providerAccountId=<providerAccountId>&responseMode=json"
+curl "http://localhost:3000/api/v1/providers/<providerAccountId>/linkedin/oauth/authorize" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-Response includes:
-- `authorizeUrl`
-- `redirectUri`
-- `state`
-- `scopes`
-- `expiresAt`
+Response:
 
-##### `GET /api/v1/auth/linkedin/callback`
+```json
+{
+  "authorizationUrl": "https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=...&redirect_uri=...&state=...&scope=...",
+  "state": "random-state-value"
+}
+```
 
-LinkedIn redirect target for OAuth code exchange.
+The admin opens `authorizationUrl` in their browser, logs in to LinkedIn, and grants the requested permissions. LinkedIn then redirects to the callback endpoint below.
+
+##### `GET /api/v1/providers/linkedin/oauth/callback`
+
+**No auth required** (browser redirect from LinkedIn).
+
+LinkedIn redirects the user to this endpoint after authorization:
+
+```
+GET /api/v1/providers/linkedin/oauth/callback?code=<authorization_code>&state=<state>
+```
+
+The callback exchanges the authorization `code` for access and refresh tokens, stores them as encrypted provider credentials, and redirects the user back to the admin UI.
 
 Production redirect URI:
 
-`https://silverlight-automations.siblingssoftware.com.ar/api/v1/auth/linkedin/callback`
+`https://silverlight-automations.siblingssoftware.com.ar/api/v1/providers/linkedin/oauth/callback`
 
-The callback exchanges authorization `code` for tokens and stores them in provider credentials.
+This redirect URI must be registered in the LinkedIn Developer Portal under the app's **Auth** tab → **Authorized redirect URLs**.
+
+##### `GET /api/v1/providers/:providerAccountId/linkedin/oauth/status`
+
+Auth: `admin` or `ops`.
+
+Check the current OAuth connection status for a LinkedIn provider account:
+
+```bash
+curl "http://localhost:3000/api/v1/providers/<providerAccountId>/linkedin/oauth/status" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Response:
+
+```json
+{
+  "status": "connected",
+  "accessTokenExpiresAt": "2026-05-16T12:00:00.000Z",
+  "refreshTokenExpiresAt": "2027-03-17T12:00:00.000Z",
+  "scope": "r_sales_nav_analytics r_organization_leads"
+}
+```
+
+**Status values:**
+- `not_connected` — OAuth flow has not been completed yet
+- `connected` — Valid access token (may be auto-refreshed)
+- `expired` — Both access and refresh tokens have expired; re-authorization required
 
 #### `GET /api/v1/admin/ping`
 
@@ -893,11 +937,11 @@ Events are deduplicated, persisted as raw call logs, and enqueued to the `yay-ca
 POST /webhooks/sales-nav
 ```
 
-**Verification:** OAuth 2.0 Client Credentials flow. Credentials (Client ID + Client Secret) are stored as encrypted provider credentials in the provider account bound to the project. The webhook endpoint accepts either:
-- `Authorization: Bearer <access_token>` — access token obtained via OAuth 2.0 Client Credentials from LinkedIn's token endpoint
+**Verification:** The Sales Navigator provider uses 3-legged OAuth (Authorization Code Flow) for API access. Credentials (Client ID, Client Secret, and Organization ID) are stored as encrypted provider credentials. After creating the provider account, an admin must complete the OAuth authorization flow (see [LinkedIn OAuth 2.0 Authorization Code Flow](#linkedin-oauth-20-authorization-code-flow-3-legged-oauth) in the Auth section) to obtain member-level access tokens. The webhook endpoint accepts either:
+- `Authorization: Bearer <access_token>` — access token obtained via 3-legged OAuth Authorization Code Flow
 - `x-sales-nav-client-id` — Client ID header (used to look up the bound provider account and validate the request)
 
-Credentials are obtained from the [LinkedIn Developer Portal](https://www.linkedin.com/developers/) (App → Auth tab). The platform uses the OAuth 2.0 Client Credentials flow to obtain access tokens for webhook verification.
+Credentials are obtained from the [LinkedIn Developer Portal](https://www.linkedin.com/developers/) (App → Auth tab). Access tokens last 60 days and refresh tokens last 365 days; tokens are automatically refreshed when API calls are made. The OAuth redirect URI must be registered in the LinkedIn Developer Portal under the app's Auth tab.
 
 **Payload:** Contains a `projectId`, search URL, and an array of `leads` (name, company, title, LinkedIn URL, contact info). Leads are enqueued individually for ingestion and enrichment.
 
@@ -1335,7 +1379,7 @@ The outreach system supports 13 messaging channels:
 |-------------|----------------|----------------------------|
 | Phone       | `phone`        | `TWILIO_API_KEY`           |
 | Email       | `email`        | `EMAIL_PROVIDER_API_KEY`   |
-| LinkedIn    | `linkedin`     | LinkedIn Sales Navigator provider credentials (`clientId`, `clientSecret`) |
+| LinkedIn    | `linkedin`     | LinkedIn Sales Navigator provider credentials (`clientId`, `clientSecret`, `organizationId`) + 3-legged OAuth tokens |
 | WhatsApp    | `whatsapp`     | `WHATSAPP_2CHAT_API_KEY`   |
 | Respond.io  | `respondio`    | `RESPONDIO_API_KEY`        |
 | SMS         | `sms`          | `TWILIO_API_KEY`           |
@@ -1361,6 +1405,7 @@ Channel names are normalized automatically (e.g., `kakao`, `kaokao` → `kakaota
 | `PORT`      | no       | `3000`        | HTTP server port        |
 | `LOG_LEVEL` | no       | `info`        | Pino log level          |
 | `EXTERNAL_APP_BASE_URL` | no | `http://localhost:3000` | Base URL used to build OAuth callback redirect URIs |
+| `LINKEDIN_OAUTH_REDIRECT_URI` | no | `http://localhost:3000/api/v1/providers/linkedin/oauth/callback` | Override the LinkedIn OAuth callback redirect URI. Must match the redirect URL registered in the LinkedIn Developer Portal (App → Auth tab). |
 
 ### Data stores
 
@@ -1392,7 +1437,7 @@ Channel names are normalized automatically (e.g., `kakao`, `kaokao` → `kakaota
 | Variable                   | Required | Description                           |
 |----------------------------|----------|---------------------------------------|
 | `APOLLO_API_KEY`           | no       | Apollo.io API key                     |
-| Sales Nav (OAuth)          | no       | Client ID + Client Secret stored as encrypted provider credentials (see Provider management). OAuth 2.0 Client Credentials flow to LinkedIn's token endpoint. Configure via Admin → Providers. |
+| Sales Nav (OAuth)          | no       | Client ID, Client Secret, and Organization ID stored as encrypted provider credentials (see Provider management). Uses 3-legged OAuth (Authorization Code Flow) — after creating the provider, an admin must complete the "Authorize with LinkedIn" flow to grant member-level access. Access tokens last 60 days and are auto-refreshed. Configure via Admin → Providers. |
 
 ### Enrichment providers
 
@@ -1406,7 +1451,7 @@ All optional. Configure only the channels you intend to use:
 
 `EMAIL_PROVIDER_API_KEY`, `TWILIO_API_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `WHATSAPP_2CHAT_API_KEY`, `RESPONDIO_API_KEY`, `LINE_API_KEY`, `WECHAT_API_KEY`, `VIBER_API_KEY`, `TELEGRAM_BOT_TOKEN`, `KAKAOTALK_API_KEY`, `VOICEMAIL_DROP_API_KEY`
 
-LinkedIn channel operations use the LinkedIn Sales Navigator provider credentials (Client ID + Client Secret) configured in provider accounts.
+LinkedIn channel operations use the LinkedIn Sales Navigator provider credentials (Client ID, Client Secret, Organization ID) and 3-legged OAuth tokens configured in provider accounts.
 
 ### Integrations
 
@@ -1612,9 +1657,11 @@ docker compose logs redis
 - Events older than 5 minutes are rejected; check clock sync
 
 **Sales Nav webhooks:**
-- Verify the project has a Sales Nav provider account bound with valid Client ID + Client Secret
-- Ensure credentials are configured in the LinkedIn Developer Portal (App → Auth tab)
-- The webhook accepts `Authorization: Bearer <token>` or `x-sales-nav-client-id` header; tokens are obtained via OAuth 2.0 Client Credentials flow
+- Verify the project has a Sales Nav provider account bound with valid Client ID, Client Secret, and Organization ID
+- Ensure the admin has completed the "Authorize with LinkedIn" OAuth flow for the provider account (check status via `GET /api/v1/providers/:providerAccountId/linkedin/oauth/status`)
+- If OAuth status shows `expired`, the admin must re-authorize by clicking "Authorize with LinkedIn" on the provider page
+- Ensure the OAuth redirect URI is registered in the LinkedIn Developer Portal (App → Auth tab → Authorized redirect URLs)
+- The webhook accepts `Authorization: Bearer <token>` or `x-sales-nav-client-id` header; tokens are obtained via 3-legged OAuth Authorization Code Flow and auto-refreshed (access tokens last 60 days, refresh tokens 365 days)
 
 ### Jobs stuck in queues
 
@@ -1714,6 +1761,8 @@ Both buttons show a loading state while processing and report the number of jobs
 ### Provider management
 
 Lists all configured provider accounts with connection health checks. Supports adding new provider accounts, testing connectivity, and viewing usage metrics. Supabase can be bound as a destination provider so enriched leads are exported automatically into a configured table.
+
+For LinkedIn Sales Navigator (SALES_NAV_WEBHOOK) providers, after creating the provider with Client ID, Client Secret, and Organization ID, an "Authorize with LinkedIn" button initiates the 3-legged OAuth flow. The admin is redirected to LinkedIn to grant member-level access, and upon return the tokens are stored automatically. The provider card shows the current OAuth status (`not_connected`, `connected`, or `expired`) and token expiration dates.
 
 #### Supabase column mapping
 

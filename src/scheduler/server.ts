@@ -18,9 +18,8 @@ import {
   mergeApolloSearchFilters
 } from '../modules/sales-nav/salesNavSearchParamExtractor';
 import type { Channel as PrismaChannel, Prisma } from '@prisma/client';
-import { getSalesNavAccessToken } from '../integrations/sales-nav/salesNavOAuthClient';
+import { getLinkedInOAuthToken } from '../integrations/sales-nav/salesNavOAuthClient';
 import { listLeadFormResponses } from '../integrations/sales-nav/linkedInLeadSyncClient';
-import { decryptProviderCredentials } from '../core/providers/providerCredentialsCrypto';
 
 const deadLetterRepository = new DeadLetterJobRepository(prisma);
 const SCHEDULER_INTERVAL_MS = 60 * 1000;
@@ -396,17 +395,15 @@ async function pollLinkedInLeadResponses(): Promise<void> {
 
   for (const account of salesNavAccounts) {
     try {
-      let credentials: Record<string, unknown>;
+      let token: string;
+      let organizationId: string;
       try {
-        credentials = decryptProviderCredentials(account.credentialsJson);
+        const oauthResult = await getLinkedInOAuthToken(account.id, prisma);
+        token = oauthResult.token;
+        organizationId = oauthResult.organizationId;
       } catch {
         continue;
       }
-
-      const clientId = typeof credentials.clientId === 'string' ? credentials.clientId : '';
-      const clientSecret = typeof credentials.clientSecret === 'string' ? credentials.clientSecret : '';
-      const organizationId = typeof credentials.organizationId === 'string' ? credentials.organizationId : '';
-      if (!clientId || !clientSecret || !organizationId) continue;
 
       const syncMeta = (account.syncMetadata as SalesNavSyncMetadata | null) ?? {};
       const processedIds = new Set(syncMeta.processedResponseIds ?? []);
@@ -416,7 +413,6 @@ async function pollLinkedInLeadResponses(): Promise<void> {
         ? new Date(syncMeta.lastResponsePolledAt).getTime()
         : clock.now().getTime() - defaultLookbackMs;
 
-      const token = await getSalesNavAccessToken(clientId, clientSecret);
       const responses = await listLeadFormResponses(token, organizationId, 'SPONSORED', {
         start: since,
         end: clock.now().getTime()

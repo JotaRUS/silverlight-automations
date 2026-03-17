@@ -1602,6 +1602,102 @@
       "name": "Providers",
       "item": [
         {
+          "name": "LinkedIn OAuth — Initiate Authorization",
+          "id": "li-oauth-auth-0001-0001-000000000001",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/providers/{{providerAccountId}}/linkedin/oauth/authorize",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "providers",
+                "{{providerAccountId}}",
+                "linkedin",
+                "oauth",
+                "authorize"
+              ]
+            },
+            "description": "Initiates the LinkedIn 3-legged OAuth (Authorization Code Flow) for a SALES_NAV_WEBHOOK provider account.\n\nReturns an `authorizationUrl` that the admin must open in a browser to grant member-level access on LinkedIn. After authorization, LinkedIn redirects to the callback endpoint.\n\n**Auth:** admin or ops.\n\n**Response:**\n```json\n{\n  \"authorizationUrl\": \"https://www.linkedin.com/oauth/v2/authorization?...\",\n  \"state\": \"random-state-value\"\n}\n```\n\n**Flow:**\n1. Call this endpoint to get the authorization URL\n2. Open the URL in a browser\n3. Log in to LinkedIn and grant permissions\n4. LinkedIn redirects to the callback endpoint which stores tokens automatically"
+          },
+          "response": []
+        },
+        {
+          "name": "LinkedIn OAuth — Callback (Browser Redirect)",
+          "id": "li-oauth-cb-0001-0001-000000000002",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/providers/linkedin/oauth/callback?code=AUTHORIZATION_CODE&state=STATE_VALUE",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "providers",
+                "linkedin",
+                "oauth",
+                "callback"
+              ],
+              "query": [
+                {
+                  "key": "code",
+                  "value": "AUTHORIZATION_CODE",
+                  "description": "Authorization code returned by LinkedIn after user grants access"
+                },
+                {
+                  "key": "state",
+                  "value": "STATE_VALUE",
+                  "description": "State parameter for CSRF protection (must match the value from the authorize step)"
+                }
+              ]
+            },
+            "description": "LinkedIn OAuth callback endpoint — handles the browser redirect from LinkedIn after the admin authorizes.\n\n**No auth required** — this is a browser redirect from LinkedIn.\n\nExchanges the authorization `code` for access and refresh tokens, stores them on the provider account, and redirects the admin back to the admin UI.\n\n**Important:** This redirect URI must be registered in the LinkedIn Developer Portal under the app's Auth tab → Authorized redirect URLs.\n\n**Token lifetimes:** Access tokens last 60 days, refresh tokens 365 days. Tokens are auto-refreshed on API calls.\n\n**Note:** This request is normally triggered by the browser redirect, not called manually from Postman. It is included here for reference."
+          },
+          "response": []
+        },
+        {
+          "name": "LinkedIn OAuth — Check Status",
+          "id": "li-oauth-st-0001-0001-000000000003",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/providers/{{providerAccountId}}/linkedin/oauth/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "providers",
+                "{{providerAccountId}}",
+                "linkedin",
+                "oauth",
+                "status"
+              ]
+            },
+            "description": "Check the current LinkedIn OAuth connection status for a SALES_NAV_WEBHOOK provider account.\n\n**Auth:** admin or ops.\n\n**Response:**\n```json\n{\n  \"status\": \"connected\",\n  \"accessTokenExpiresAt\": \"2026-05-16T12:00:00.000Z\",\n  \"refreshTokenExpiresAt\": \"2027-03-17T12:00:00.000Z\",\n  \"scope\": \"r_sales_nav_analytics r_organization_leads\"\n}\n```\n\n**Status values:**\n- `not_connected` — OAuth flow has not been completed yet\n- `connected` — Valid access token (auto-refreshed when needed)\n- `expired` — Both access and refresh tokens have expired; re-authorization required"
+          },
+          "response": []
+        },
+        {
           "name": "Create Supabase Provider",
           "id": "a1b2c3d4-e5f6-7890-abcd-ef0123456789",
           "request": {
@@ -1665,7 +1761,7 @@
         }
       ],
       "id": "c3d4e5f6-a7b8-9012-cdef-012345678901",
-      "description": "Manage provider accounts (create, test, update). Includes Supabase with configurable column mappings for email, phone, country, current company, LinkedIn URL, and job title."
+      "description": "Manage provider accounts (create, test, update) and LinkedIn OAuth authorization.\n\n**LinkedIn OAuth (3-Legged):** For SALES_NAV_WEBHOOK providers, after creating the provider with Client ID, Client Secret, and Organization ID, use the LinkedIn OAuth endpoints to complete the Authorization Code Flow. Access tokens last 60 days and are auto-refreshed; refresh tokens last 365 days.\n\nAlso includes Supabase with configurable column mappings for email, phone, country, current company, LinkedIn URL, and job title."
     },
     {
       "name": "Documentation Generator",
@@ -2091,6 +2187,12 @@
     {
       "id": "e5f6a7b8-c9d0-1234-5678-9abcdef01234",
       "key": "responseId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "id": "f6a7b8c9-d0e1-2345-6789-abcdef012345",
+      "key": "providerAccountId",
       "value": "",
       "type": "string"
     }

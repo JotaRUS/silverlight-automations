@@ -157,7 +157,7 @@ const groups: EndpointGroup[] = [
       {
         method: 'GET',
         path: '/api/v1/auth/linkedin/authorize',
-        summary: 'Build LinkedIn OAuth authorization URL',
+        summary: 'Build LinkedIn OAuth authorization URL (legacy — see Providers group)',
         auth: 'Session cookie (admin/ops)',
         queryParams: [
           { name: 'providerAccountId', type: 'UUID', required: true, description: 'LinkedIn provider account' },
@@ -166,12 +166,13 @@ const groups: EndpointGroup[] = [
         ],
         responses: [
           { status: 200, label: 'URL (json)', body: '{\n  "authorizeUrl": "https://www.linkedin.com/oauth/...",\n  "redirectUri": "...",\n  "state": "...",\n  "scopes": ["r_liteprofile"],\n  "expiresAt": "ISO date"\n}' }
-        ]
+        ],
+        notes: 'Prefer the provider-scoped endpoint: GET /api/v1/providers/{providerAccountId}/linkedin/oauth/authorize'
       },
       {
         method: 'GET',
         path: '/api/v1/auth/linkedin/callback',
-        summary: 'Handle LinkedIn OAuth callback',
+        summary: 'Handle LinkedIn OAuth callback (legacy — see Providers group)',
         auth: 'None',
         queryParams: [
           { name: 'code', type: 'string', description: 'Authorization code' },
@@ -179,7 +180,8 @@ const groups: EndpointGroup[] = [
         ],
         responses: [
           { status: 200, label: 'Connected', body: '{\n  "connected": true,\n  "providerAccountId": "uuid",\n  "scope": "r_liteprofile",\n  "accessTokenExpiresAt": "ISO",\n  "refreshTokenExpiresAt": "ISO"\n}' }
-        ]
+        ],
+        notes: 'Prefer the provider-scoped callback: GET /api/v1/providers/linkedin/oauth/callback'
       }
     ]
   },
@@ -458,7 +460,7 @@ const groups: EndpointGroup[] = [
   /* ---- Providers ---- */
   {
     title: 'Providers',
-    description: 'Manage provider accounts (Apollo, enrichment services, messaging, Supabase, etc.).',
+    description: 'Manage provider accounts (Apollo, enrichment services, messaging, Supabase, etc.) and LinkedIn OAuth authorization.',
     endpoints: [
       {
         method: 'GET',
@@ -533,6 +535,49 @@ const groups: EndpointGroup[] = [
         responses: [
           { status: 200, label: 'Bound', body: '{ "projectId": "uuid", "providerAccountId": "uuid" }' }
         ]
+      },
+      {
+        method: 'GET',
+        path: '/api/v1/providers/{providerAccountId}/linkedin/oauth/authorize',
+        summary: 'Initiate LinkedIn 3-legged OAuth authorization',
+        description: 'Returns an authorization URL for the admin to visit in a browser. After the admin grants permissions on LinkedIn, they are redirected back to the callback endpoint. Used for SALES_NAV_WEBHOOK providers.',
+        auth: 'Session cookie or API key (admin/ops)',
+        pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: 'LinkedIn Sales Nav provider account ID' }],
+        responses: [
+          { status: 200, label: 'Authorization URL', body: '{\n  "authorizationUrl": "https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=...&redirect_uri=...&state=...&scope=...",\n  "state": "random-state-value"\n}' },
+          { status: 400, label: 'Not a LinkedIn provider', body: '{ "error": "Provider is not a SALES_NAV_WEBHOOK type" }' }
+        ],
+        notes: 'The admin must open the authorizationUrl in a browser to complete the OAuth flow.'
+      },
+      {
+        method: 'GET',
+        path: '/api/v1/providers/linkedin/oauth/callback',
+        summary: 'LinkedIn OAuth callback (browser redirect)',
+        description: 'LinkedIn redirects here after the admin authorizes. Exchanges the authorization code for access and refresh tokens, stores them on the provider account, and redirects to the admin UI. This endpoint is unauthenticated — it is called by the browser redirect from LinkedIn.',
+        auth: 'None (browser redirect from LinkedIn)',
+        queryParams: [
+          { name: 'code', type: 'string', required: true, description: 'Authorization code from LinkedIn' },
+          { name: 'state', type: 'string', required: true, description: 'State parameter for CSRF protection' }
+        ],
+        responses: [
+          { status: 302, label: 'Redirect to admin UI', body: '(Redirects to /admin/providers with success status)' },
+          { status: 400, label: 'Invalid state or code', body: '{ "error": "Invalid or expired state parameter" }' }
+        ],
+        notes: 'This redirect URI must be registered in the LinkedIn Developer Portal under the app\'s Auth tab → Authorized redirect URLs. Access tokens last 60 days, refresh tokens 365 days.'
+      },
+      {
+        method: 'GET',
+        path: '/api/v1/providers/{providerAccountId}/linkedin/oauth/status',
+        summary: 'Check LinkedIn OAuth connection status',
+        description: 'Returns the current OAuth status for a LinkedIn Sales Navigator provider, including token expiration dates and granted scopes.',
+        auth: 'Session cookie or API key (admin/ops)',
+        pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: 'LinkedIn Sales Nav provider account ID' }],
+        responses: [
+          { status: 200, label: 'Connected', body: '{\n  "status": "connected",\n  "accessTokenExpiresAt": "2026-05-16T12:00:00.000Z",\n  "refreshTokenExpiresAt": "2027-03-17T12:00:00.000Z",\n  "scope": "r_sales_nav_analytics r_organization_leads"\n}' },
+          { status: 200, label: 'Not connected', body: '{\n  "status": "not_connected",\n  "accessTokenExpiresAt": null,\n  "refreshTokenExpiresAt": null,\n  "scope": null\n}' },
+          { status: 200, label: 'Expired', body: '{\n  "status": "expired",\n  "accessTokenExpiresAt": "2026-01-15T12:00:00.000Z",\n  "refreshTokenExpiresAt": "2026-03-01T12:00:00.000Z",\n  "scope": "r_sales_nav_analytics r_organization_leads"\n}' }
+        ],
+        notes: 'Status values: not_connected (OAuth not completed), connected (valid tokens, auto-refreshed), expired (re-authorization required).'
       }
     ]
   },

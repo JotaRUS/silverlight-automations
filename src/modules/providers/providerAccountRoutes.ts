@@ -8,7 +8,14 @@ import { AppError } from '../../core/errors/appError';
 import { getRequestContext } from '../../core/http/requestContext';
 import { env } from '../../config/env';
 import { prisma } from '../../db/client';
-import { getSalesNavAccessToken } from '../../integrations/sales-nav/salesNavOAuthClient';
+import {
+  getLinkedInOAuthToken,
+  buildLinkedInAuthorizationUrl,
+  generateOAuthState,
+  parseOAuthState,
+  exchangeAuthorizationCode
+} from '../../integrations/sales-nav/salesNavOAuthClient';
+import { encryptProviderCredentials } from '../../core/providers/providerCredentialsCrypto';
 import {
   listLeadForms,
   createLeadNotification,
@@ -130,29 +137,93 @@ providerAccountRoutes.post(
 );
 
 // ---------------------------------------------------------------------------
-// LinkedIn Lead Sync — Lead Forms listing & selection
+// LinkedIn OAuth 3-legged flow
 // ---------------------------------------------------------------------------
 
 async function getLinkedInTokenAndOrgId(
   providerAccountId: string
 ): Promise<{ token: string; organizationId: string }> {
-  const credentials = await providerAccountsService.getDecryptedCredentials(
-    providerAccountId,
-    'SALES_NAV_WEBHOOK'
-  );
-  const clientId = typeof credentials.clientId === 'string' ? credentials.clientId : '';
-  const clientSecret = typeof credentials.clientSecret === 'string' ? credentials.clientSecret : '';
-  const organizationId = typeof credentials.organizationId === 'string' ? credentials.organizationId : '';
-  if (!clientId || !clientSecret || !organizationId) {
-    throw new AppError(
-      'LinkedIn Sales Navigator account missing required credentials (clientId, clientSecret, organizationId)',
-      422,
-      'missing_linkedin_credentials'
-    );
-  }
-  const token = await getSalesNavAccessToken(clientId, clientSecret);
-  return { token, organizationId };
+  const result = await getLinkedInOAuthToken(providerAccountId, prisma);
+  return { token: result.token, organizationId: result.organizationId };
 }
+
+providerAccountRoutes.get(
+  '/:providerAccountId/linkedin/oauth/authorize',
+  authorize(['admin', 'ops']),
+  async (request, response, next) => {
+    try {
+      const params = parseOrThrow(providerAccountPathParamsSchema, request.params);
+      const credentials = await providerAccountsService.getDecryptedCredentials(
+        params.providerAccountId,
+        'SALES_NAV_WEBHOOK'
+      );
+      const clientId = typeof credentials.clientId === 'string' ? credentials.clientId : '';
+      if (!clientId) {
+        throw new AppError('Missing Client ID in provider credentials', 422, 'missing_client_id');
+      }
+
+      const state = generateOAuthState(params.providerAccountId);
+      const redirectUri = env.LINKEDIN_OAUTH_REDIRECT_URI;
+      const authUrl = buildLinkedInAuthorizationUrl(clientId, redirectUri, state);
+
+      response.status(200).json({ authorizationUrl: authUrl, state });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// The OAuth callback is mounted on a separate unauthenticated router (linkedInOAuthCallbackRoutes).
+
+providerAccountRoutes.get(
+  '/:providerAccountId/linkedin/oauth/status',
+  authorize(['admin', 'ops']),
+  async (request, response, next) => {
+    try {
+      const params = parseOrThrow(providerAccountPathParamsSchema, request.params);
+      const credentials = await providerAccountsService.getDecryptedCredentials(
+        params.providerAccountId,
+        'SALES_NAV_WEBHOOK'
+      );
+
+      const hasToken = typeof credentials.oauthAccessToken === 'string' && credentials.oauthAccessToken.length > 0;
+      const expiresAt = typeof credentials.oauthAccessTokenExpiresAt === 'string'
+        ? credentials.oauthAccessTokenExpiresAt
+        : null;
+      const refreshExpiresAt = typeof credentials.oauthRefreshTokenExpiresAt === 'string'
+        ? credentials.oauthRefreshTokenExpiresAt
+        : null;
+
+      let status: 'not_connected' | 'connected' | 'expired' = 'not_connected';
+      if (hasToken && expiresAt) {
+        const tokenExpired = new Date(expiresAt).getTime() <= Date.now();
+        const refreshExpired = refreshExpiresAt
+          ? new Date(refreshExpiresAt).getTime() <= Date.now()
+          : true;
+        if (!tokenExpired) {
+          status = 'connected';
+        } else if (!refreshExpired) {
+          status = 'connected';
+        } else {
+          status = 'expired';
+        }
+      }
+
+      response.status(200).json({
+        status,
+        accessTokenExpiresAt: expiresAt,
+        refreshTokenExpiresAt: refreshExpiresAt,
+        scope: typeof credentials.oauthScope === 'string' ? credentials.oauthScope : null
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// LinkedIn Lead Sync — Lead Forms listing & selection
+// ---------------------------------------------------------------------------
 
 providerAccountRoutes.get(
   '/:providerAccountId/linkedin/lead-forms',
@@ -321,6 +392,81 @@ providerAccountRoutes.delete(
       response.status(200).json({ deleted: true });
     } catch (error) {
       next(error);
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// LinkedIn OAuth callback — unauthenticated (browser redirect from LinkedIn)
+// ---------------------------------------------------------------------------
+
+export const linkedInOAuthCallbackRoutes = Router();
+
+linkedInOAuthCallbackRoutes.get(
+  '/linkedin/oauth/callback',
+  async (request, response, next) => {
+    try {
+      const code = request.query.code;
+      const state = request.query.state;
+      const errorParam = request.query.error;
+
+      if (typeof errorParam === 'string') {
+        const errorDescription = typeof request.query.error_description === 'string'
+          ? request.query.error_description
+          : errorParam;
+        response.status(200).send(
+          `<html><body><h2>LinkedIn Authorization Failed</h2><p>${errorDescription}</p><p>You may close this window.</p></body></html>`
+        );
+        return;
+      }
+
+      if (typeof code !== 'string' || typeof state !== 'string') {
+        throw new AppError('Missing code or state parameter', 400, 'invalid_oauth_callback');
+      }
+
+      const { providerAccountId } = parseOAuthState(state);
+
+      const account = await prisma.providerAccount.findUniqueOrThrow({
+        where: { id: providerAccountId }
+      });
+      const credentials = await providerAccountsService.getDecryptedCredentials(
+        providerAccountId,
+        account.providerType as 'SALES_NAV_WEBHOOK'
+      );
+
+      const clientId = typeof credentials.clientId === 'string' ? credentials.clientId : '';
+      const clientSecret = typeof credentials.clientSecret === 'string' ? credentials.clientSecret : '';
+      if (!clientId || !clientSecret) {
+        throw new AppError('Missing credentials for token exchange', 422, 'missing_credentials');
+      }
+
+      const tokens = await exchangeAuthorizationCode(
+        code,
+        clientId,
+        clientSecret,
+        env.LINKEDIN_OAUTH_REDIRECT_URI
+      );
+
+      const updatedCreds = {
+        ...credentials,
+        oauthAccessToken: tokens.accessToken,
+        oauthAccessTokenExpiresAt: tokens.accessTokenExpiresAt,
+        oauthRefreshToken: tokens.refreshToken,
+        oauthRefreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
+        oauthScope: tokens.scope
+      };
+
+      const encrypted = encryptProviderCredentials(updatedCreds as Record<string, unknown>);
+      await prisma.providerAccount.update({
+        where: { id: providerAccountId },
+        data: { credentialsJson: encrypted as unknown as Prisma.InputJsonValue }
+      });
+
+      response.status(200).send(
+        `<html><body><h2>LinkedIn Authorization Successful</h2><p>Your LinkedIn account has been connected. You may close this window and return to the admin panel.</p><script>window.opener?.postMessage({type:'linkedin-oauth-success',providerAccountId:'${providerAccountId}'},'*');setTimeout(()=>window.close(),2000);</script></body></html>`
+      );
+    } catch (err) {
+      next(err);
     }
   }
 );

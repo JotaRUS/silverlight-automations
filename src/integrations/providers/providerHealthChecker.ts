@@ -2,7 +2,6 @@ import { createSign } from 'node:crypto';
 
 import { createTransport } from 'nodemailer';
 
-import { AppError } from '../../core/errors/appError';
 import { requestJson } from '../../core/http/httpJsonClient';
 import { logger } from '../../core/logging/logger';
 import type { ProviderType } from '../../core/providers/providerTypes';
@@ -52,70 +51,11 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'unknown';
 }
 
-function salesNavOauthErrorMessage(error: unknown): string {
-  if (
-    error instanceof AppError &&
-    error.errorCode === 'provider_request_failed' &&
-    typeof error.details === 'object' &&
-    error.details !== null
-  ) {
-    const details = error.details as { statusCode?: unknown };
-    const statusCode = typeof details.statusCode === 'number' ? details.statusCode : undefined;
-    if (statusCode === 400 || statusCode === 401) {
-      return 'LinkedIn OAuth token exchange failed. Verify Client ID/Client Secret and app auth settings.';
-    }
-    if (statusCode === 403) {
-      return 'LinkedIn rejected the OAuth token request. Confirm app permissions and product access.';
-    }
-    if (statusCode !== undefined) {
-      return `LinkedIn OAuth token request failed (HTTP ${statusCode}).`;
-    }
-  }
-  return `OAuth token request failed: ${errorMessage(error)}`;
-}
-
-async function runLinkedInSalesNavigatorHealthCheck(
-  clientId: string,
-  clientSecret: string,
+async function runLinkedInLeadSyncProbe(
+  token: string,
   organizationId: string | undefined,
   correlationId: string
 ): Promise<HealthCheckResult> {
-  let token = '';
-  try {
-    const response = await requestJson<{ access_token?: string }>({
-      method: 'POST',
-      url: 'https://www.linkedin.com/oauth/v2/accessToken',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'client_credentials',
-        client_id: clientId,
-        client_secret: clientSecret
-      }).toString(),
-      provider: 'linkedin-sales-navigator',
-      operation: 'health-token',
-      correlationId
-    });
-    token = response.access_token ?? '';
-  } catch (error) {
-    return {
-      healthy: false,
-      details: {
-        phase: 'oauth_token',
-        reason: salesNavOauthErrorMessage(error)
-      }
-    };
-  }
-
-  if (!token) {
-    return {
-      healthy: false,
-      details: {
-        phase: 'oauth_token',
-        reason: 'empty_access_token'
-      }
-    };
-  }
-
   const leadFormsUrl = organizationId
     ? `https://api.linkedin.com/rest/leadForms?q=owner&owner=(organization:urn%3Ali%3Aorganization%3A${encodeURIComponent(organizationId)})&count=1`
     : 'https://api.linkedin.com/rest/leadForms?q=owner';
@@ -130,20 +70,29 @@ async function runLinkedInSalesNavigatorHealthCheck(
   const responseText = await leadSyncResponse.text().catch(() => '');
   const responseSnippet = responseText.slice(0, 300);
 
+  logger.info(
+    {
+      provider: 'linkedin-sales-navigator',
+      operation: 'health-lead-sync-probe',
+      correlationId,
+      statusCode: leadSyncResponse.status
+    },
+    'linkedin-lead-sync-probe'
+  );
+
   let healthy = false;
   let reason = `Lead Sync probe failed (HTTP ${leadSyncResponse.status}).`;
   if (leadSyncResponse.status >= 200 && leadSyncResponse.status < 300) {
     healthy = true;
     reason = 'Lead Sync endpoint reachable.';
   } else if (leadSyncResponse.status === 400) {
-    // Expected when finder params are incomplete; still confirms endpoint access + auth.
     healthy = true;
     reason = 'Lead Sync endpoint reachable (request validation failed as expected for probe).';
   } else if (leadSyncResponse.status === 401) {
-    reason = 'Lead Sync authentication failed (invalid/expired bearer token).';
+    reason = 'Lead Sync authentication failed. OAuth token may need to be refreshed — try re-authorizing.';
   } else if (leadSyncResponse.status === 403) {
     reason =
-      'Lead Sync access denied. Your app may still be under review or missing Lead Sync permissions/roles.';
+      'Lead Sync access denied. Your app may still be under review or the authorized member may lack required roles.';
   }
 
   return {
@@ -655,20 +604,53 @@ export async function runProviderHealthCheck(
 
   if (input.providerType === 'SALES_NAV_WEBHOOK') {
     const oauthAccessToken = credentialString(input.credentials, 'oauthAccessToken');
-    if (oauthAccessToken) {
-      const oauthUserTokenResult = await runLinkedInUserTokenHealthCheck(
-        oauthAccessToken,
-        input.correlationId
-      );
-      if (oauthUserTokenResult.healthy) {
-        return oauthUserTokenResult;
-      }
+    const accessTokenExpiresAt = credentialString(input.credentials, 'oauthAccessTokenExpiresAt');
+    const refreshToken = credentialString(input.credentials, 'oauthRefreshToken');
+    const refreshTokenExpiresAt = credentialString(input.credentials, 'oauthRefreshTokenExpiresAt');
+    const organizationId = credentialString(input.credentials, 'organizationId') || undefined;
+
+    if (!oauthAccessToken) {
+      return {
+        healthy: false,
+        details: {
+          phase: 'oauth_authorization',
+          reason: 'LinkedIn account has not been authorized yet. Click "Authorize with LinkedIn" in the provider settings.'
+        }
+      };
     }
 
-    const clientId = credentialString(input.credentials, 'clientId');
-    const clientSecret = credentialString(input.credentials, 'clientSecret');
-    const organizationId = credentialString(input.credentials, 'organizationId') || undefined;
-    return runLinkedInSalesNavigatorHealthCheck(clientId, clientSecret, organizationId, input.correlationId);
+    const tokenExpired = accessTokenExpiresAt
+      ? new Date(accessTokenExpiresAt).getTime() <= Date.now()
+      : false;
+    const refreshExpired = refreshTokenExpiresAt
+      ? new Date(refreshTokenExpiresAt).getTime() <= Date.now()
+      : !refreshToken;
+
+    if (tokenExpired && refreshExpired) {
+      return {
+        healthy: false,
+        details: {
+          phase: 'oauth_authorization',
+          reason: 'LinkedIn tokens have expired. Please re-authorize by clicking "Authorize with LinkedIn" in the provider settings.',
+          accessTokenExpiresAt,
+          refreshTokenExpiresAt
+        }
+      };
+    }
+
+    if (tokenExpired && !refreshExpired) {
+      return {
+        healthy: true,
+        details: {
+          phase: 'oauth_token',
+          reason: 'Access token expired but refresh token is still valid — token will auto-refresh on next API call.',
+          accessTokenExpiresAt,
+          refreshTokenExpiresAt
+        }
+      };
+    }
+
+    return runLinkedInLeadSyncProbe(oauthAccessToken, organizationId, input.correlationId);
   }
 
   if (input.providerType === 'WIZA') {
@@ -842,12 +824,6 @@ export async function runProviderHealthCheck(
       if (oauthUserTokenResult.healthy) {
         return oauthUserTokenResult;
       }
-    }
-
-    const clientId = credentialString(input.credentials, 'clientId');
-    const clientSecret = credentialString(input.credentials, 'clientSecret');
-    if (clientId && clientSecret) {
-      return runLinkedInSalesNavigatorHealthCheck(clientId, clientSecret, undefined, input.correlationId);
     }
 
     const apiKey = credentialString(input.credentials, 'apiKey');

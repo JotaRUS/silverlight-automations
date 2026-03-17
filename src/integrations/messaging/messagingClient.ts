@@ -6,7 +6,7 @@ import type { ProviderType } from '../../core/providers/providerTypes';
 import { clock } from '../../core/time/clock';
 import { prisma } from '../../db/client';
 import { EmailClient } from './emailClient';
-import { getSalesNavAccessToken } from '../sales-nav/salesNavOAuthClient';
+import { logger } from '../../core/logging/logger';
 
 export interface SendMessageInput {
   projectId: string;
@@ -45,11 +45,6 @@ function providerStatusCode(error: unknown): number | undefined {
 
   const statusCode = (error.details as { statusCode?: unknown }).statusCode;
   return typeof statusCode === 'number' ? statusCode : undefined;
-}
-
-function isProviderAuthFailure(error: unknown): boolean {
-  const statusCode = providerStatusCode(error);
-  return statusCode === 401 || statusCode === 403;
 }
 
 const channelProviderConfigs: Partial<Record<Channel, ChannelProviderConfig>> = {
@@ -244,22 +239,19 @@ export class MessagingClient {
     }
 
     let linkedInBearerToken: string | undefined;
-    let linkedInOauthAccessToken = '';
-    let linkedInClientId = '';
-    let linkedInClientSecret = '';
     if (input.channel === 'linkedin') {
-      linkedInOauthAccessToken = credentialString(resolvedCredentials.credentials, 'oauthAccessToken');
-      if (linkedInOauthAccessToken) {
+      const oauthToken = credentialString(resolvedCredentials.credentials, 'oauthAccessToken');
+      if (oauthToken) {
         const expiresAt = credentialString(resolvedCredentials.credentials, 'oauthAccessTokenExpiresAt');
         const isExpired = expiresAt && new Date(expiresAt).getTime() <= Date.now();
         if (!isExpired) {
-          linkedInBearerToken = linkedInOauthAccessToken;
+          linkedInBearerToken = oauthToken;
+        } else {
+          logger.warn(
+            { channel: input.channel, correlationId: input.correlationId },
+            'linkedin-oauth-token-expired-for-messaging'
+          );
         }
-      }
-      linkedInClientId = credentialString(resolvedCredentials.credentials, 'clientId');
-      linkedInClientSecret = credentialString(resolvedCredentials.credentials, 'clientSecret');
-      if (!linkedInBearerToken && linkedInClientId && linkedInClientSecret) {
-        linkedInBearerToken = await getSalesNavAccessToken(linkedInClientId, linkedInClientSecret);
       }
     }
 
@@ -332,34 +324,8 @@ export class MessagingClient {
     try {
       response = await sendProviderRequest(headers);
     } catch (error) {
-      const shouldRetryWithLinkedInClientCredentials =
-        input.channel === 'linkedin' &&
-        Boolean(linkedInOauthAccessToken) &&
-        Boolean(linkedInClientId) &&
-        Boolean(linkedInClientSecret) &&
-        isProviderAuthFailure(error);
-
-      if (!shouldRetryWithLinkedInClientCredentials) {
-        await markProviderFailure(error);
-        throw error;
-      }
-
-      try {
-        const fallbackToken = await getSalesNavAccessToken(linkedInClientId, linkedInClientSecret);
-        const retryHeaders = {
-          ...headers
-        };
-        const headerName = providerConfig.apiKeyHeader ?? 'authorization';
-        if (headerName === 'authorization') {
-          retryHeaders.authorization = `Bearer ${fallbackToken}`;
-        } else {
-          retryHeaders[headerName] = fallbackToken;
-        }
-        response = await sendProviderRequest(retryHeaders);
-      } catch (retryError) {
-        await markProviderFailure(retryError);
-        throw retryError;
-      }
+      await markProviderFailure(error);
+      throw error;
     }
 
     const providerMessageId = this.extractProviderMessageId(response, input.channel);

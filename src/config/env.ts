@@ -20,6 +20,10 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(32).default('replace-with-long-test-secret-1234567890'),
   JWT_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
   EXTERNAL_APP_BASE_URL: z.string().url().default('http://localhost:3000'),
+  LINKEDIN_OAUTH_REDIRECT_URI: z
+    .string()
+    .url()
+    .default('http://localhost:3000/api/v1/providers/linkedin/oauth/callback'),
 
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),

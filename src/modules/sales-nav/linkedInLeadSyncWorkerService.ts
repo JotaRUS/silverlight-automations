@@ -7,7 +7,7 @@ import type { LinkedInFetchResponseJob } from '../../queues/definitions/jobPaylo
 import { getQueues } from '../../queues';
 import { buildJobId } from '../../queues/jobId';
 import { enqueueWithContext } from '../../queues/producers/enqueueWithContext';
-import { getSalesNavAccessToken } from '../../integrations/sales-nav/salesNavOAuthClient';
+import { getLinkedInOAuthToken } from '../../integrations/sales-nav/salesNavOAuthClient';
 import {
   getLeadFormResponse,
   getLeadForm
@@ -17,8 +17,6 @@ import {
   extractFormIdFromUrn,
   mapLeadFormResponseToLead
 } from './linkedInResponseMapper';
-import { ProviderAccountsService } from '../providers/providerAccountsService';
-
 interface SalesNavSyncMetadata {
   webhookSubscriptionId?: string;
   lastResponsePolledAt?: string;
@@ -34,24 +32,13 @@ interface SalesNavSyncMetadata {
 const MAX_PROCESSED_IDS = 500;
 
 export class LinkedInLeadSyncWorkerService {
-  private readonly providerAccountsService: ProviderAccountsService;
-
-  public constructor(private readonly prismaClient: PrismaClient) {
-    this.providerAccountsService = new ProviderAccountsService(prismaClient);
-  }
+  public constructor(private readonly prismaClient: PrismaClient) {}
 
   public async fetchAndIngestResponse(
     payload: LinkedInFetchResponseJob,
     jobLogger: JobLogger
   ): Promise<void> {
-    const credentials = await this.providerAccountsService.getDecryptedCredentials(
-      payload.providerAccountId,
-      'SALES_NAV_WEBHOOK'
-    );
-
-    const clientId = credentials.clientId as string;
-    const clientSecret = credentials.clientSecret as string;
-    const token = await getSalesNavAccessToken(clientId, clientSecret);
+    const { token } = await getLinkedInOAuthToken(payload.providerAccountId, this.prismaClient);
 
     const response = await getLeadFormResponse(token, payload.responseId);
 

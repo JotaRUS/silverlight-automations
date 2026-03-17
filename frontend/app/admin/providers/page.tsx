@@ -13,13 +13,16 @@ import {
   createProviderAccount,
   deleteProviderAccount,
   deleteLinkedInWebhookSubscription,
+  getLinkedInOAuthAuthorizeUrl,
+  getLinkedInOAuthStatus,
   listLinkedInLeadForms,
   listProviderAccounts,
   registerLinkedInWebhook,
   testProviderConnection,
   updateProviderAccount,
   updateSyncedForms,
-  type LeadFormSummary
+  type LeadFormSummary,
+  type LinkedInOAuthStatus
 } from '@/services/providerService';
 import type { ProviderType } from '@/types/provider';
 
@@ -242,6 +245,107 @@ function UpdateCredentialsForm({
         </Button>
         <Button variant="secondary" onClick={onDone}>Cancel</Button>
       </div>
+    </div>
+  );
+}
+
+function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
+  const queryClient = useQueryClient();
+  const [authorizing, setAuthorizing] = useState(false);
+  const [error, setError] = useState('');
+
+  const statusQuery = useQuery({
+    queryKey: ['linkedin-oauth-status', accountId],
+    queryFn: () => getLinkedInOAuthStatus(accountId),
+    refetchInterval: 30_000
+  });
+
+  const oauthStatus: LinkedInOAuthStatus | null = statusQuery.data ?? null;
+
+  useEffect(() => {
+    const handler = (event: MessageEvent): void => {
+      if (
+        typeof event.data === 'object' &&
+        event.data !== null &&
+        (event.data as { type?: string }).type === 'linkedin-oauth-success' &&
+        (event.data as { providerAccountId?: string }).providerAccountId === accountId
+      ) {
+        void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', accountId] });
+        void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [accountId, queryClient]);
+
+  const handleAuthorize = async (): Promise<void> => {
+    setAuthorizing(true);
+    setError('');
+    try {
+      const { authorizationUrl } = await getLinkedInOAuthAuthorizeUrl(accountId);
+      window.open(authorizationUrl, 'linkedin-oauth', 'width=600,height=700');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start authorization');
+    } finally {
+      setAuthorizing(false);
+    }
+  };
+
+  const statusBadge = (): JSX.Element => {
+    if (!oauthStatus || oauthStatus.status === 'not_connected') {
+      return <Badge tone="warning">Not Connected</Badge>;
+    }
+    if (oauthStatus.status === 'expired') {
+      return <Badge tone="danger">Expired</Badge>;
+    }
+    return <Badge tone="success">Connected</Badge>;
+  };
+
+  const expiryInfo = (): string | null => {
+    if (!oauthStatus?.accessTokenExpiresAt) return null;
+    const expiresAt = new Date(oauthStatus.accessTokenExpiresAt);
+    const daysLeft = Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    if (daysLeft < 0) return 'Access token expired';
+    return `Access token expires in ${String(daysLeft)} day${daysLeft !== 1 ? 's' : ''}`;
+  };
+
+  return (
+    <div className="mt-3 space-y-2 rounded-md border border-blue-200 bg-blue-50/40 p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-blue-800">LinkedIn Authorization</p>
+        {statusBadge()}
+      </div>
+
+      {oauthStatus?.status === 'connected' && expiryInfo() ? (
+        <p className="text-xs text-slate-600">{expiryInfo()}</p>
+      ) : null}
+
+      {oauthStatus?.status === 'not_connected' ? (
+        <p className="text-xs text-slate-600">
+          Authorize your LinkedIn account to enable the Lead Sync API. A LinkedIn member with the
+          required ad account / organization roles must authorize the app.
+        </p>
+      ) : null}
+
+      {oauthStatus?.status === 'expired' ? (
+        <p className="text-xs text-amber-700">
+          LinkedIn tokens have expired. Re-authorize to resume Lead Sync.
+        </p>
+      ) : null}
+
+      {error ? <p className="text-xs text-red-600">{error}</p> : null}
+
+      <Button
+        variant={oauthStatus?.status === 'connected' ? 'secondary' : 'primary'}
+        onClick={() => void handleAuthorize()}
+        disabled={authorizing}
+      >
+        {authorizing
+          ? 'Opening LinkedIn...'
+          : oauthStatus?.status === 'connected'
+            ? 'Re-authorize with LinkedIn'
+            : 'Authorize with LinkedIn'}
+      </Button>
     </div>
   );
 }
@@ -728,9 +832,13 @@ export default function ProviderAccountsPage(): JSX.Element {
                     onDone={() => setEditingCredentials(null)}
                   />
                 ) : null}
-                {account.providerType === 'SALES_NAV_WEBHOOK' &&
-                  account.lastHealthStatus === 'healthy' ? (
-                  <LinkedInLeadSyncPanel accountId={account.id} />
+                {account.providerType === 'SALES_NAV_WEBHOOK' ? (
+                  <>
+                    <LinkedInOAuthPanel accountId={account.id} />
+                    {account.lastHealthStatus === 'healthy' ? (
+                      <LinkedInLeadSyncPanel accountId={account.id} />
+                    ) : null}
+                  </>
                 ) : null}
               </div>
             ))}
