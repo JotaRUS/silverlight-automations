@@ -20,7 +20,8 @@ import {
   listLeadForms,
   createLeadNotification,
   listLeadNotifications,
-  deleteLeadNotification
+  deleteLeadNotification,
+  type LinkedInOwner
 } from '../../integrations/sales-nav/linkedInLeadSyncClient';
 import { buildQuestionFieldMap } from '../sales-nav/linkedInResponseMapper';
 import {
@@ -142,9 +143,13 @@ providerAccountRoutes.post(
 
 async function getLinkedInTokenAndOrgId(
   providerAccountId: string
-): Promise<{ token: string; organizationId: string }> {
+): Promise<{ token: string; organizationId: string; sponsoredAccountId?: string }> {
   const result = await getLinkedInOAuthToken(providerAccountId, prisma);
-  return { token: result.token, organizationId: result.organizationId };
+  return {
+    token: result.token,
+    organizationId: result.organizationId,
+    sponsoredAccountId: result.credentials.sponsoredAccountId
+  };
 }
 
 providerAccountRoutes.get(
@@ -235,7 +240,8 @@ providerAccountRoutes.get(
     try {
       const params = parseOrThrow(providerAccountPathParamsSchema, request.params);
       const { token, organizationId } = await getLinkedInTokenAndOrgId(params.providerAccountId);
-      const formsResponse = await listLeadForms(token, organizationId, { count: 100 });
+      const owner: LinkedInOwner = { type: 'organization', id: organizationId };
+      const formsResponse = await listLeadForms(token, owner, { count: 100 });
 
       const forms = formsResponse.elements.map((form) => ({
         id: String(form.id),
@@ -317,10 +323,13 @@ providerAccountRoutes.post(
   async (request, response, next) => {
     try {
       const params = parseOrThrow(providerAccountPathParamsSchema, request.params);
-      const { token, organizationId } = await getLinkedInTokenAndOrgId(params.providerAccountId);
+      const { token, organizationId, sponsoredAccountId } = await getLinkedInTokenAndOrgId(params.providerAccountId);
 
       const webhookUrl = `${env.EXTERNAL_APP_BASE_URL}/webhooks/sales-nav/${params.providerAccountId}/notification`;
-      const subscription = await createLeadNotification(token, webhookUrl, organizationId, 'SPONSORED');
+      const owner: LinkedInOwner = sponsoredAccountId
+        ? { type: 'sponsoredAccount', id: sponsoredAccountId }
+        : { type: 'organization', id: organizationId };
+      const subscription = await createLeadNotification(token, webhookUrl, owner, 'SPONSORED');
 
       const account = await prisma.providerAccount.findUniqueOrThrow({
         where: { id: params.providerAccountId }
@@ -352,8 +361,11 @@ providerAccountRoutes.get(
   async (request, response, next) => {
     try {
       const params = parseOrThrow(providerAccountPathParamsSchema, request.params);
-      const { token, organizationId } = await getLinkedInTokenAndOrgId(params.providerAccountId);
-      const subscriptions = await listLeadNotifications(token, organizationId, 'SPONSORED');
+      const { token, organizationId, sponsoredAccountId } = await getLinkedInTokenAndOrgId(params.providerAccountId);
+      const owner: LinkedInOwner = sponsoredAccountId
+        ? { type: 'sponsoredAccount', id: sponsoredAccountId }
+        : { type: 'organization', id: organizationId };
+      const subscriptions = await listLeadNotifications(token, owner, 'SPONSORED');
       response.status(200).json(subscriptions.elements);
     } catch (error) {
       next(error);

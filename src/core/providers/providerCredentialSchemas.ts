@@ -11,6 +11,7 @@ const salesNavCredentialSchema = z.object({
   clientId: z.string().min(1),
   clientSecret: z.string().min(1),
   organizationId: z.string().min(1),
+  sponsoredAccountId: z.string().min(1).optional(),
   oauthAccessToken: z.string().min(1).optional(),
   oauthRefreshToken: z.string().min(1).optional(),
   oauthAccessTokenExpiresAt: z.string().datetime().optional(),

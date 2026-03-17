@@ -68,7 +68,8 @@ const CREDENTIAL_FIELDS: Record<ProviderType, CredentialFieldDef[]> = {
   SALES_NAV_WEBHOOK: [
     { key: 'clientId', label: 'Client ID', type: 'text', placeholder: 'e.g. 77vlauv23ezc0v' },
     { key: 'clientSecret', label: 'Client Secret', type: 'password', placeholder: 'Primary client secret' },
-    { key: 'organizationId', label: 'Organization ID', type: 'text', placeholder: 'LinkedIn org ID (numeric, from company page URL)' }
+    { key: 'organizationId', label: 'Organization ID', type: 'text', placeholder: 'LinkedIn org ID (numeric, from company page URL)' },
+    { key: 'sponsoredAccountId', label: 'Sponsored Account ID (optional)', type: 'text', placeholder: 'For sponsored lead ads — e.g. 522147830' }
   ],
   LEADMAGIC: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   PROSPEO: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],

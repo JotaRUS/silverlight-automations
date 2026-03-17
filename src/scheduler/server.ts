@@ -19,7 +19,7 @@ import {
 } from '../modules/sales-nav/salesNavSearchParamExtractor';
 import type { Channel as PrismaChannel, Prisma } from '@prisma/client';
 import { getLinkedInOAuthToken } from '../integrations/sales-nav/salesNavOAuthClient';
-import { listLeadFormResponses } from '../integrations/sales-nav/linkedInLeadSyncClient';
+import { listLeadFormResponses, type LinkedInOwner } from '../integrations/sales-nav/linkedInLeadSyncClient';
 
 const deadLetterRepository = new DeadLetterJobRepository(prisma);
 const SCHEDULER_INTERVAL_MS = 60 * 1000;
@@ -397,10 +397,12 @@ async function pollLinkedInLeadResponses(): Promise<void> {
     try {
       let token: string;
       let organizationId: string;
+      let sponsoredAccountId: string | undefined;
       try {
         const oauthResult = await getLinkedInOAuthToken(account.id, prisma);
         token = oauthResult.token;
         organizationId = oauthResult.organizationId;
+        sponsoredAccountId = oauthResult.credentials.sponsoredAccountId;
       } catch {
         continue;
       }
@@ -412,31 +414,52 @@ async function pollLinkedInLeadResponses(): Promise<void> {
       const since = syncMeta.lastResponsePolledAt
         ? new Date(syncMeta.lastResponsePolledAt).getTime()
         : clock.now().getTime() - defaultLookbackMs;
+      const timeRange = { start: since, end: clock.now().getTime() };
 
-      const responses = await listLeadFormResponses(token, organizationId, 'SPONSORED', {
-        start: since,
-        end: clock.now().getTime()
-      });
+      const orgOwner: LinkedInOwner = { type: 'organization', id: organizationId };
+      const pollTargets: Array<{ owner: LinkedInOwner; leadType: string }> = [
+        { owner: orgOwner, leadType: 'COMPANY' },
+        { owner: orgOwner, leadType: 'EVENT' }
+      ];
+      if (sponsoredAccountId) {
+        pollTargets.push({
+          owner: { type: 'sponsoredAccount', id: sponsoredAccountId },
+          leadType: 'SPONSORED'
+        });
+      }
 
       let enqueued = 0;
-      for (const formResponse of responses.elements) {
-        if (formResponse.testLead) continue;
-        if (processedIds.has(formResponse.id)) continue;
+      for (const target of pollTargets) {
+        try {
+          const responses = await listLeadFormResponses(
+            token, target.owner, target.leadType, timeRange
+          );
 
-        await enqueueWithContext(
-          getQueues().salesNavIngestionQueue,
-          'linkedin-lead-sync.fetch-response',
-          {
-            providerAccountId: account.id,
-            responseId: formResponse.id,
-            organizationId,
-            leadType: formResponse.leadType
-          },
-          {
-            jobId: buildJobId('li-lead-sync', account.id, formResponse.id)
+          for (const formResponse of responses.elements) {
+            if (formResponse.testLead) continue;
+            if (processedIds.has(formResponse.id)) continue;
+
+            await enqueueWithContext(
+              getQueues().salesNavIngestionQueue,
+              'linkedin-lead-sync.fetch-response',
+              {
+                providerAccountId: account.id,
+                responseId: formResponse.id,
+                organizationId,
+                leadType: formResponse.leadType
+              },
+              {
+                jobId: buildJobId('li-lead-sync', account.id, formResponse.id)
+              }
+            );
+            enqueued += 1;
           }
-        );
-        enqueued += 1;
+        } catch (error) {
+          logger.warn(
+            { err: error, accountId: account.id, leadType: target.leadType },
+            'linkedin-poll-lead-type-failed'
+          );
+        }
       }
 
       await prisma.providerAccount.update({

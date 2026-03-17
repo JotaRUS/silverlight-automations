@@ -8,8 +8,23 @@ const LINKEDIN_VERSIONED_HEADERS: Record<string, string> = {
   'X-Restli-Protocol-Version': '2.0.0'
 };
 
-function buildOrgOwnerUrn(organizationId: string): string {
-  return `urn:li:organization:${organizationId}`;
+export type LinkedInOwner =
+  | { type: 'organization'; id: string }
+  | { type: 'sponsoredAccount'; id: string };
+
+function buildOwnerUrn(owner: LinkedInOwner): string {
+  return owner.type === 'organization'
+    ? `urn:li:organization:${owner.id}`
+    : `urn:li:sponsoredAccount:${owner.id}`;
+}
+
+function buildOwnerQueryParam(owner: LinkedInOwner): string {
+  const urn = encodeURIComponent(buildOwnerUrn(owner));
+  return `(${owner.type}:${urn})`;
+}
+
+function buildOwnerJsonPayload(owner: LinkedInOwner): Record<string, string> {
+  return { [owner.type]: buildOwnerUrn(owner) };
 }
 
 function authHeaders(token: string): Record<string, string> {
@@ -90,17 +105,16 @@ interface LinkedInPaginatedResponse<T> {
 
 export async function listLeadForms(
   token: string,
-  organizationId: string,
+  owner: LinkedInOwner,
   options?: { start?: number; count?: number }
 ): Promise<LinkedInPaginatedResponse<LinkedInLeadForm>> {
-  const ownerParam = `(organization:${encodeURIComponent(buildOrgOwnerUrn(organizationId))})`;
-  const params = new URLSearchParams({ q: 'owner', owner: ownerParam });
-  if (options?.start !== undefined) params.set('start', String(options.start));
-  if (options?.count !== undefined) params.set('count', String(options.count));
+  const parts = [`q=owner`, `owner=${buildOwnerQueryParam(owner)}`];
+  if (options?.start !== undefined) parts.push(`start=${String(options.start)}`);
+  if (options?.count !== undefined) parts.push(`count=${String(options.count)}`);
 
   return linkedInRequest<LinkedInPaginatedResponse<LinkedInLeadForm>>(
     'GET',
-    `${LINKEDIN_REST_BASE}/leadForms?${params.toString()}`,
+    `${LINKEDIN_REST_BASE}/leadForms?${parts.join('&')}`,
     token
   );
 }
@@ -160,28 +174,26 @@ export async function getLeadFormResponse(
 
 export async function listLeadFormResponses(
   token: string,
-  organizationId: string,
+  owner: LinkedInOwner,
   leadType: string,
   timeRange?: { start: number; end: number },
   options?: { start?: number; count?: number }
 ): Promise<LinkedInPaginatedResponse<LinkedInLeadFormResponse>> {
-  const ownerParam = `(organization:${encodeURIComponent(buildOrgOwnerUrn(organizationId))})`;
-  const leadTypeParam = `(leadType:${leadType})`;
-  const params = new URLSearchParams({
-    q: 'owner',
-    owner: ownerParam,
-    leadType: leadTypeParam,
-    limitedToTestLeads: 'false'
-  });
+  const parts = [
+    `q=owner`,
+    `owner=${buildOwnerQueryParam(owner)}`,
+    `leadType=(leadType:${leadType})`,
+    `limitedToTestLeads=false`
+  ];
   if (timeRange) {
-    params.set('submittedAtTimeRange', `(start:${String(timeRange.start)},end:${String(timeRange.end)})`);
+    parts.push(`submittedAtTimeRange=(start:${String(timeRange.start)},end:${String(timeRange.end)})`);
   }
-  if (options?.start !== undefined) params.set('start', String(options.start));
-  if (options?.count !== undefined) params.set('count', String(options.count));
+  if (options?.start !== undefined) parts.push(`start=${String(options.start)}`);
+  if (options?.count !== undefined) parts.push(`count=${String(options.count)}`);
 
   return linkedInRequest<LinkedInPaginatedResponse<LinkedInLeadFormResponse>>(
     'GET',
-    `${LINKEDIN_REST_BASE}/leadFormResponses?${params.toString()}`,
+    `${LINKEDIN_REST_BASE}/leadFormResponses?${parts.join('&')}`,
     token
   );
 }
@@ -202,7 +214,7 @@ export interface LinkedInLeadNotification {
 export async function createLeadNotification(
   token: string,
   webhook: string,
-  organizationId: string,
+  owner: LinkedInOwner,
   leadType: string
 ): Promise<LinkedInLeadNotification> {
   return linkedInRequest<LinkedInLeadNotification>(
@@ -211,7 +223,7 @@ export async function createLeadNotification(
     token,
     {
       webhook,
-      owner: { organization: buildOrgOwnerUrn(organizationId) },
+      owner: buildOwnerJsonPayload(owner),
       leadType
     }
   );
@@ -219,20 +231,18 @@ export async function createLeadNotification(
 
 export async function listLeadNotifications(
   token: string,
-  organizationId: string,
+  owner: LinkedInOwner,
   leadType: string
 ): Promise<LinkedInPaginatedResponse<LinkedInLeadNotification>> {
-  const ownerParam = `(value:(organization:${encodeURIComponent(buildOrgOwnerUrn(organizationId))}))`;
-  const leadTypeParam = `(leadType:${leadType})`;
-  const params = new URLSearchParams({
-    q: 'criteria',
-    owner: ownerParam,
-    leadType: leadTypeParam
-  });
+  const parts = [
+    `q=criteria`,
+    `owner=(value:${buildOwnerQueryParam(owner)})`,
+    `leadType=(leadType:${leadType})`
+  ];
 
   return linkedInRequest<LinkedInPaginatedResponse<LinkedInLeadNotification>>(
     'GET',
-    `${LINKEDIN_REST_BASE}/leadNotifications?${params.toString()}`,
+    `${LINKEDIN_REST_BASE}/leadNotifications?${parts.join('&')}`,
     token
   );
 }

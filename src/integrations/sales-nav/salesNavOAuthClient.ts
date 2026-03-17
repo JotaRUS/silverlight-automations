@@ -172,6 +172,7 @@ export interface LinkedInCredentials {
   clientId: string;
   clientSecret: string;
   organizationId: string;
+  sponsoredAccountId?: string;
   oauthAccessToken?: string;
   oauthAccessTokenExpiresAt?: string;
   oauthRefreshToken?: string;
