@@ -14,6 +14,7 @@ export const providerTypeSchema = z.enum([
   'DATAGM',
   'PEOPLEDATALABS',
   'ANYLEADS',
+  'OPENAI',
   'LINKEDIN',
   'EMAIL_PROVIDER',
   'TWILIO',
@@ -72,6 +73,7 @@ export type ProjectProviderBindingField =
   | 'voicemailDropProviderAccountId'
   | 'yayProviderAccountId'
   | 'anyleadsProviderAccountId'
+  | 'openaiProviderAccountId'
   | 'googleSheetsProviderAccountId'
   | 'supabaseProviderAccountId';
 
@@ -89,6 +91,7 @@ export const PROVIDER_TYPE_TO_PROJECT_BINDING_FIELD: Record<ProviderType, Projec
   DATAGM: 'datagmProviderAccountId',
   PEOPLEDATALABS: 'peopledatalabsProviderAccountId',
   ANYLEADS: 'anyleadsProviderAccountId',
+  OPENAI: 'openaiProviderAccountId',
   LINKEDIN: 'linkedinProviderAccountId',
   EMAIL_PROVIDER: 'emailProviderAccountId',
   TWILIO: 'twilioProviderAccountId',

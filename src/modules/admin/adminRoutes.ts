@@ -943,6 +943,42 @@ const OUTREACH_CHANNELS: PrismaChannel[] = [
   'LINE', 'WECHAT', 'VIBER', 'TELEGRAM', 'KAKAOTALK'
 ];
 
+adminRoutes.get('/cooldown-logs', async (request, response, next) => {
+  try {
+    const limit = Math.min(Number(request.query.limit) || 50, 200);
+    const projectId = typeof request.query.projectId === 'string' ? request.query.projectId : undefined;
+
+    const where: Record<string, unknown> = {};
+    if (projectId) where.projectId = projectId;
+
+    const logs = await prisma.cooldownLog.findMany({
+      where,
+      include: {
+        expert: { select: { fullName: true } },
+        project: { select: { name: true } }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit
+    });
+
+    const result = logs.map((log) => ({
+      id: log.id,
+      expertName: log.expert.fullName,
+      projectName: log.project.name,
+      channel: log.channel,
+      blocked: log.blocked,
+      overrideApplied: log.overrideApplied,
+      reason: log.reason,
+      enforcedAt: log.enforcedAt.toISOString(),
+      expiresAt: log.expiresAt.toISOString()
+    }));
+
+    response.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
 adminRoutes.post('/workers/outreach-leads', async (request, response, next) => {
   try {
     const { projectId: filterProjectId } = bulkProjectSchema.parse(request.body);

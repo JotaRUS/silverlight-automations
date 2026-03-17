@@ -136,16 +136,17 @@ export default function HelpPage(): JSX.Element {
         <SectionHeading id="overview">Platform Overview</SectionHeading>
         <p className="text-sm text-slate-600 leading-relaxed">
           The Expert Sourcing Automation Platform helps you find, verify, and reach out to domain experts at
-          scale. It automates the full pipeline: discovering potential experts from sources like Apollo and
-          LinkedIn Sales Navigator, enriching their contact details through multiple data providers, running
-          multi-channel outreach (email, phone, WhatsApp, Telegram, and more), managing call campaigns, and
-          screening respondents for qualification. The system includes an auto-sourcing engine that continuously
-          queues enrichment and outreach in the background until each project reaches its target expert count —
-          no external scraper dependency required.
+          scale. <strong>Sales Navigator URLs</strong> are the primary lead source; leads are ingested via the Lead Sync API
+          (Sales Nav webhook) or CSV import. Apollo is used only for <strong>enrichment</strong> — specifically email pattern
+          detection by enriching 2–3 leads per company to infer the format (e.g. first.last@company.com), then the
+          email pattern engine generates emails for remaining leads without extra API calls. For personal emails (Gmail,
+          Hotmail, etc.), <strong>AnyLeads</strong> is used. The system runs multi-channel outreach (email, phone, WhatsApp,
+          Telegram, and more), manages call campaigns, and screens respondents. An auto-sourcing engine continuously
+          queues enrichment and outreach until each project reaches its target — no external scraper dependency required.
         </p>
         <div className="flex flex-wrap items-center gap-2 text-xs font-medium py-3">
           {[
-            { label: 'Sources', desc: 'Apollo, Sales Nav' },
+            { label: 'Sources', desc: 'Sales Nav, CSV' },
             { label: 'Leads', desc: 'Imported profiles' },
             { label: 'Enrichment', desc: 'Contact discovery' },
             { label: 'Outreach', desc: '13 channels' },
@@ -359,10 +360,11 @@ export default function HelpPage(): JSX.Element {
 
         <SubHeading>Wizard flow updates</SubHeading>
         <ul className="list-disc list-inside text-sm text-slate-600 space-y-1 ml-1">
-          <li>Step 1 captures project details (name, target, geography, priority).</li>
-          <li>Step 2 presents configured provider accounts grouped by function.</li>
-          <li>Only one account per provider type can be selected per project.</li>
-          <li>You can bind selected providers immediately or skip and bind later.</li>
+          <li><strong>Step 1 — Job Title Discovery:</strong> Select countries and companies, then run Get Job Titles via Apollo + OpenAI to discover target job titles.</li>
+          <li><strong>Step 2 — Lead Sources:</strong> Add Sales Navigator URLs and/or CSV import to supply leads.</li>
+          <li><strong>Step 3 — Export Destinations:</strong> Choose where enriched data is exported (Google Sheets, Supabase, etc.).</li>
+          <li><strong>Step 4 — Outreach Configuration:</strong> Select channels and write the outreach message template.</li>
+          <li>Only one account per provider type can be selected per project. You can bind providers immediately or skip and bind later.</li>
         </ul>
 
         <SubHeading>Edit project controls</SubHeading>
@@ -478,6 +480,26 @@ export default function HelpPage(): JSX.Element {
           For other regions, both professional and personal emails may be used. This is enforced automatically.
         </p>
 
+        <SubHeading>Email Pattern Engine</SubHeading>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          When enriching leads, the system uses Apollo to enrich 2–3 leads per company to detect the email format (e.g.
+          first.last@company.com). Once detected, remaining emails are generated from the pattern without additional
+          API calls. For personal emails (Gmail, Hotmail, etc.), AnyLeads is used. The strategy (professional vs
+          personal) is configurable per project or defaults by country.
+        </p>
+
+        <SubHeading>Expert Network Cross-Check (Contract 2.3)</SubHeading>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Before outreach, the system checks if an expert already exists in the network. Existing experts get
+          project-specific invitations; new experts get signup invitations.
+        </p>
+
+        <SubHeading>Outreach Cooldown (Contract 2.4)</SubHeading>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          The same expert is not contacted more than once in a rolling 30-day period, regardless of channel, unless
+          explicitly overridden. Cooldown enforcement is visible in the Observability page.
+        </p>
+
         <SubHeading>Google Sheets Auto-Export</SubHeading>
         <p className="text-sm text-slate-600 leading-relaxed">
           When phone numbers are verified during enrichment, they are automatically exported to the designated
@@ -521,7 +543,7 @@ export default function HelpPage(): JSX.Element {
         <div className="space-y-2">
           <ProviderGuide
             name="Apollo"
-            role="Job title discovery and lead sourcing"
+            role="Job title discovery and email pattern enrichment (2–3 leads per company)"
             fields={['API Key']}
             steps={[
               'Log in to your Apollo.io account.',
@@ -536,8 +558,8 @@ export default function HelpPage(): JSX.Element {
             notes="You must be an account admin to create API keys. API access depends on your Apollo pricing plan."
           />
           <ProviderGuide
-            name="LinkedIn Sales Navigator"
-            role="LinkedIn Sales Navigator lead ingestion via OAuth 2.0"
+            name="Lead Sync API"
+            role="Lead Sync API ingestion via OAuth 2.0"
             fields={['Client ID', 'Client Secret']}
             steps={[
               'Go to the LinkedIn Developer Portal at developer.linkedin.com.',
@@ -551,6 +573,27 @@ export default function HelpPage(): JSX.Element {
               { label: 'Authorization Code Flow Guide', url: 'https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow?tabs=HTTPS1' }
             ]}
             notes="For OAuth 2.0 Authorization Code Flow, set redirect URI to https://silverlight-automations.siblingssoftware.com.ar/api/v1/auth/linkedin/callback and generate auth URLs from /api/v1/auth/linkedin/authorize."
+          />
+        </div>
+
+        {/* -- AI Services -- */}
+        <SubHeading>AI Services</SubHeading>
+        <div className="space-y-2">
+          <ProviderGuide
+            name="OpenAI"
+            role="Job title discovery and classification via GPT models"
+            fields={['API Key']}
+            steps={[
+              'Sign in to platform.openai.com.',
+              'Navigate to API Keys and click Create new secret key.',
+              'Copy the key immediately — it won\'t be shown again.',
+              'Paste it into the form. Optionally set model (default gpt-4o-mini) and temperature (default 0.2).'
+            ]}
+            links={[
+              { label: 'OpenAI API Keys', url: 'https://platform.openai.com/api-keys' },
+              { label: 'OpenAI API Reference', url: 'https://platform.openai.com/docs/api-reference' }
+            ]}
+            notes="OpenAI is used in Job Title Discovery (Step 1) alongside Apollo to expand and classify job titles. Health check verifies models endpoint reachability."
           />
         </div>
 
@@ -730,7 +773,7 @@ export default function HelpPage(): JSX.Element {
             links={[
               { label: 'LinkedIn Developer Portal', url: 'https://developer.linkedin.com/' }
             ]}
-            notes="For sourcing and webhook ingestion, use the LinkedIn Sales Navigator provider with Client ID + Client Secret."
+            notes="For sourcing and webhook ingestion, use the Lead Sync API provider with Client ID + Client Secret."
           />
           <ProviderGuide
             name="Email Provider"
@@ -962,7 +1005,7 @@ export default function HelpPage(): JSX.Element {
         <SubHeading>Set up a new project from scratch</SubHeading>
         <ol className="list-decimal list-inside space-y-2 text-sm text-slate-600">
           <li><strong>Configure your provider accounts first.</strong> Go to the Providers page, add API keys for the services you need (enrichment, messaging, calling, data sync).</li>
-          <li><strong>Create a new project via the wizard.</strong> Go to Projects, click &quot;New Project&quot;. Step 1: Project details (name, target, geography). Step 2: Lead sources (Apollo, Sales Nav, enrichment providers). Step 3: Export destinations (Google Sheets, Supabase). Step 4: Outreach (select healthy channels and write a message template with variables like {`{{FirstName}}`}, {`{{Country}}`}). Step 5: Review and start prospecting.</li>
+          <li><strong>Create a new project via the wizard.</strong> Go to Projects, click &quot;New Project&quot;. Step 1: Job Title Discovery (countries, companies, Get Job Titles via Apollo + OpenAI). Step 2: Lead Sources (Sales Navigator URLs, CSV import). Step 3: Export Destinations (Google Sheets, Supabase). Step 4: Outreach Configuration (select channels and write a message template with variables like {`{{FirstName}}`}, {`{{Country}}`}). Review and start prospecting.</li>
           <li><strong>The auto-sourcing engine takes over.</strong> The system automatically queues enrichment and outreach for your leads every 5 minutes until the target is reached.</li>
           <li><strong>Monitor progress.</strong> Use the Dashboard for overview, Leads page for pipeline status, and Outreach page for messaging activity.</li>
         </ol>
@@ -1098,7 +1141,7 @@ export default function HelpPage(): JSX.Element {
             },
             {
               q: 'Why does project setup show no providers to select?',
-              a: 'The project wizard only shows active provider accounts with saved credentials. First add provider accounts on the Providers page, then return to the project wizard. If an account appears unhealthy, use "Test Connection" and update credentials if needed.'
+              a: 'The project wizard only shows active provider accounts with saved credentials. First add provider accounts on the Providers page (including Apollo and OpenAI for Job Title Discovery, and enrichment/outreach providers), then return to the project wizard. If an account appears unhealthy, use "Test Connection" and update credentials if needed.'
             }
           ].map((item) => (
             <details key={item.q} className="group border border-slate-200 rounded-lg">

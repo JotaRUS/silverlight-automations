@@ -198,7 +198,7 @@ export default function WorkersPage(): JSX.Element {
               onClick={() => void runAction('resume-sourcing')}
               disabled={actionLoading !== null}
             >
-              {actionLoading === 'resume-sourcing' ? 'Queuing...' : 'Resume sourcing'}
+              {actionLoading === 'resume-sourcing' ? 'Polling...' : 'Poll Lead Sync'}
             </Button>
           )}
           {actionResult && (

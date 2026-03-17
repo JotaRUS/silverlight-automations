@@ -29,6 +29,11 @@ const envSchema = z.object({
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
   OPENAI_CLASSIFICATION_TEMPERATURE: z.coerce.number().min(0).max(0.2).default(0.2),
 
+  ENABLE_APOLLO_SOURCING: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+
   PROVIDER_ENCRYPTION_SECRET: z.string().min(32).default('replace-with-provider-encryption-secret-1234567890')
 });
 

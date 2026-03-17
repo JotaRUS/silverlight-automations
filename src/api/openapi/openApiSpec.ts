@@ -140,6 +140,24 @@ export const openApiSpec = {
         security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
       }
     },
+    '/api/v1/projects/{projectId}/sales-nav-searches': {
+      get: {
+        summary: 'List active Sales Navigator searches for a project',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }]
+      }
+    },
+    '/api/v1/projects/{projectId}/sales-nav-searches/{searchId}': {
+      delete: {
+        summary: 'Remove a Sales Navigator search',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
+      }
+    },
+    '/api/v1/projects/{projectId}/import-leads': {
+      post: {
+        summary: 'Import leads from CSV data',
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }, { csrfHeader: [] }]
+      }
+    },
     '/api/v1/admin/leads': {
       get: {
         summary: 'List leads with enrichment attempt summaries',
@@ -346,6 +364,16 @@ export const openApiSpec = {
         responses: {
           '200': { description: 'Object with `events` (ProcessedWebhookEvent array) and `total`' }
         }
+      }
+    },
+    '/api/v1/admin/cooldown-logs': {
+      get: {
+        summary: 'List recent cooldown enforcement logs',
+        parameters: [
+          { name: 'limit', in: 'query', required: false, schema: { type: 'integer', default: 50, maximum: 200 }, description: 'Max records to return' },
+          { name: 'projectId', in: 'query', required: false, schema: { type: 'string', format: 'uuid' }, description: 'Filter by project' }
+        ],
+        security: [{ bearerApiKey: [] }, { xApiKey: [] }, { sessionCookie: [] }]
       }
     },
     '/api/v1/admin/observability/fraud': {

@@ -2,7 +2,7 @@ import type { ProviderType } from '@/types/provider';
 
 export const PROVIDER_DISPLAY_NAMES: Record<ProviderType, string> = {
   APOLLO: 'Apollo',
-  SALES_NAV_WEBHOOK: 'LinkedIn Sales Navigator',
+  SALES_NAV_WEBHOOK: 'Lead Sync API',
   LEADMAGIC: 'LeadMagic',
   PROSPEO: 'Prospeo',
   EXA: 'Exa.ai',
@@ -14,6 +14,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderType, string> = {
   DATAGM: 'Datagma',
   PEOPLEDATALABS: 'People Data Labs',
   ANYLEADS: 'Anyleads',
+  OPENAI: 'OpenAI',
   LINKEDIN: 'LinkedIn Messaging (Legacy)',
   EMAIL_PROVIDER: 'Email (SendGrid)',
   TWILIO: 'SMS (Twilio)',
@@ -44,6 +45,7 @@ export const PROVIDER_TYPE_TO_FIELD: Record<ProviderType, string> = {
   DATAGM: 'datagmProviderAccountId',
   PEOPLEDATALABS: 'peopledatalabsProviderAccountId',
   ANYLEADS: 'anyleadsProviderAccountId',
+  OPENAI: 'openaiProviderAccountId',
   LINKEDIN: 'linkedinProviderAccountId',
   EMAIL_PROVIDER: 'emailProviderAccountId',
   TWILIO: 'twilioProviderAccountId',
@@ -83,6 +85,12 @@ export const PROVIDER_CATEGORIES: ProviderCategory[] = [
     label: 'Data Enrichment',
     icon: 'database',
     types: ['LEADMAGIC', 'PROSPEO', 'EXA', 'ROCKETREACH', 'WIZA', 'FORAGER', 'ZELIQ', 'CONTACTOUT', 'DATAGM', 'PEOPLEDATALABS', 'ANYLEADS']
+  },
+  {
+    key: 'ai',
+    label: 'AI Services',
+    icon: 'psychology',
+    types: ['OPENAI']
   },
   {
     key: 'outreach',

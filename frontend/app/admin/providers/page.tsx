@@ -40,6 +40,7 @@ const providerTypes: ProviderType[] = [
   'DATAGM',
   'PEOPLEDATALABS',
   'ANYLEADS',
+  'OPENAI',
   'EMAIL_PROVIDER',
   'TWILIO',
   'VOICEMAIL_DROP',
@@ -85,6 +86,11 @@ const CREDENTIAL_FIELDS: Record<ProviderType, CredentialFieldDef[]> = {
   DATAGM: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   PEOPLEDATALABS: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   ANYLEADS: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter Anyleads API key' }],
+  OPENAI: [
+    { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-...' },
+    { key: 'model', label: 'Model', type: 'text', placeholder: 'gpt-4o-mini' },
+    { key: 'classificationTemperature', label: 'Temperature (0-2)', type: 'text', placeholder: '0.2' }
+  ],
   LINKEDIN: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   EMAIL_PROVIDER: [
     { key: 'host', label: 'SMTP Host', type: 'text', placeholder: 'smtp.sendgrid.net' },
@@ -422,7 +428,7 @@ function LinkedInLeadSyncPanel({ accountId }: { accountId: string }): JSX.Elemen
 
   return (
     <div className="mt-3 space-y-3 rounded-md border border-indigo-200 bg-indigo-50/40 p-3">
-      <p className="text-sm font-semibold text-indigo-800">LinkedIn Lead Sync</p>
+      <p className="text-sm font-semibold text-indigo-800">Lead Sync API</p>
 
       {message ? (
         <p className={`text-xs ${message.tone === 'success' ? 'text-emerald-700' : 'text-red-600'}`}>

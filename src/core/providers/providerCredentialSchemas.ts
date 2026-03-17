@@ -121,6 +121,12 @@ const supabaseCredentialSchema = z.object({
   columnJobTitle: z.string().min(1).optional()
 });
 
+const openaiCredentialSchema = z.object({
+  apiKey: z.string().min(1),
+  model: z.string().default('gpt-4o-mini'),
+  classificationTemperature: z.coerce.number().min(0).max(2).default(0.2)
+});
+
 const providerCredentialParsers: Record<ProviderType, z.ZodType<Record<string, unknown>>> = {
   APOLLO: singleApiKeySchema,
   SALES_NAV_WEBHOOK: salesNavCredentialSchema,
@@ -135,6 +141,7 @@ const providerCredentialParsers: Record<ProviderType, z.ZodType<Record<string, u
   DATAGM: singleApiKeySchema,
   PEOPLEDATALABS: singleApiKeySchema,
   ANYLEADS: singleApiKeySchema,
+  OPENAI: openaiCredentialSchema,
   LINKEDIN: linkedinCredentialSchema,
   EMAIL_PROVIDER: emailProviderCredentialSchema,
   TWILIO: twilioCredentialSchema,

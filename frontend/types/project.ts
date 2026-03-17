@@ -1,4 +1,5 @@
 export type ProjectStatus = 'ACTIVE' | 'COMPLETED' | 'PAUSED' | 'ARCHIVED';
+export type EmailStrategy = 'PROFESSIONAL' | 'PERSONAL' | 'BOTH';
 
 export interface ProjectRecord {
   id: string;
@@ -11,6 +12,7 @@ export interface ProjectRecord {
   regionConfig?: Record<string, unknown>;
   priority: number;
   overrideCooldown: boolean;
+  emailStrategy?: EmailStrategy;
   status: ProjectStatus;
   enrichmentRoutingConfig?: Record<string, unknown> | null;
   createdAt: string;
@@ -39,6 +41,8 @@ export interface ProjectRecord {
   kakaotalkProviderAccountId?: string | null;
   voicemailDropProviderAccountId?: string | null;
   yayProviderAccountId?: string | null;
+  anyleadsProviderAccountId?: string | null;
+  openaiProviderAccountId?: string | null;
   googleSheetsProviderAccountId?: string | null;
   supabaseProviderAccountId?: string | null;
 }

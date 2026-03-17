@@ -25,15 +25,34 @@ import { listProviderAccounts } from '@/services/providerService';
 import {
   addProjectCompanies,
   addProjectJobTitles,
+  addSalesNavSearches,
   deleteProject,
+  deleteSalesNavSearch,
   getProject,
+  importLeadsCsv,
   kickProject,
   listProjectCompanies,
   listProjectJobTitles,
+  listSalesNavSearches,
   updateProject
 } from '@/services/projectService';
+import type { SalesNavSearchRecord } from '@/services/projectService';
 import type { ProviderAccount, ProviderType } from '@/types/provider';
-import type { ProjectRecord, ProjectStatus } from '@/types/project';
+import type { EmailStrategy, ProjectRecord, ProjectStatus } from '@/types/project';
+
+function parseSalesNavCsv(text: string): Record<string, string>[] {
+  const lines = text.split('\n').filter((l) => l.trim());
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',').map((h) => h.trim().replace(/^"|"$/g, ''));
+  return lines.slice(1).map((line) => {
+    const values = line.split(',').map((v) => v.trim().replace(/^"|"$/g, ''));
+    const row: Record<string, string> = {};
+    headers.forEach((h, i) => { row[h] = values[i] ?? ''; });
+    return row;
+  });
+}
+
+const MAX_SEARCHES = 6;
 
 const STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
   { value: 'ACTIVE', label: 'Active' },
@@ -69,6 +88,12 @@ export default function ProjectEditPage(): JSX.Element {
     enabled: !!projectId
   });
 
+  const salesNavQuery = useQuery({
+    queryKey: ['sales-nav-searches', projectId],
+    queryFn: () => listSalesNavSearches(projectId),
+    enabled: !!projectId
+  });
+
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [targetThreshold, setTargetThreshold] = useState('');
@@ -78,12 +103,61 @@ export default function ProjectEditPage(): JSX.Element {
   const [companyNames, setCompanyNames] = useState<string[]>([]);
   const [jobTitles, setJobTitles] = useState<string[]>([]);
   const [overrideCooldown, setOverrideCooldown] = useState(false);
+  const [emailStrategy, setEmailStrategy] = useState<EmailStrategy>('PROFESSIONAL');
   const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({});
   const [outreachTemplate, setOutreachTemplate] = useState('');
   const templateRef = useRef<HTMLTextAreaElement>(null);
   const [initialized, setInitialized] = useState(false);
   const [filtersInitialized, setFiltersInitialized] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const [newSearchUrl, setNewSearchUrl] = useState('');
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvPreview, setCsvPreview] = useState<{ rows: Record<string, string>[]; headers: string[] } | null>(null);
+  const [importResult, setImportResult] = useState<{ imported: number; duplicatesSkipped: number; errors: string[] } | null>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
+
+  const addSearchMutation = useMutation({
+    mutationFn: (url: string) =>
+      addSalesNavSearches(projectId, [{ sourceUrl: url, normalizedUrl: url }]),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['sales-nav-searches', projectId] });
+      setNewSearchUrl('');
+      toast.success('Search URL added');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to add search')
+  });
+
+  const deleteSearchMutation = useMutation({
+    mutationFn: (searchId: string) => deleteSalesNavSearch(projectId, searchId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['sales-nav-searches', projectId] });
+      toast.success('Search removed');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to remove search')
+  });
+
+  const importCsvMutation = useMutation({
+    mutationFn: (rows: Record<string, string>[]) => importLeadsCsv(projectId, rows),
+    onSuccess: (data) => {
+      setImportResult(data);
+      setCsvFile(null);
+      setCsvPreview(null);
+      if (csvInputRef.current) csvInputRef.current.value = '';
+      void queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      toast.success(`Imported ${data.imported} leads`);
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Import failed')
+  });
+
+  const handleCsvSelect = useCallback(async (file: File) => {
+    setCsvFile(file);
+    setImportResult(null);
+    const text = await file.text();
+    const rows = parseSalesNavCsv(text);
+    const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
+    setCsvPreview({ rows, headers });
+  }, []);
 
   useEffect(() => {
     if (projectQuery.data && !initialized) {
@@ -95,6 +169,7 @@ export default function ProjectEditPage(): JSX.Element {
       setStatus(p.status);
       setSelectedGeos(p.geographyIsoCodes);
       setOverrideCooldown(p.overrideCooldown);
+      setEmailStrategy((p.emailStrategy ?? 'PROFESSIONAL') as EmailStrategy);
       setOutreachTemplate((p as unknown as Record<string, unknown>).outreachMessageTemplate as string ?? '');
 
       const providerSelections: Record<string, boolean> = {};
@@ -149,6 +224,7 @@ export default function ProjectEditPage(): JSX.Element {
         priority: Number(priority) || 0,
         status,
         overrideCooldown,
+        emailStrategy,
         outreachMessageTemplate: outreachTemplate || null,
         ...providerBindings
       } as Partial<ProjectRecord>);
@@ -365,6 +441,19 @@ export default function ProjectEditPage(): JSX.Element {
             onChange={setJobTitles}
             placeholder="Type a job title and press Enter"
           />
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Email Strategy</label>
+            <select
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+              value={emailStrategy}
+              onChange={(e) => setEmailStrategy(e.target.value as EmailStrategy)}
+            >
+              <option value="PROFESSIONAL">Professional (company email via Apollo pattern)</option>
+              <option value="PERSONAL">Personal (Gmail/Hotmail via AnyLeads)</option>
+              <option value="BOTH">Both (professional first, fallback to personal)</option>
+            </select>
+            <p className="mt-1 text-xs text-slate-400">Determines how email addresses are sourced during enrichment. Country default applies if not set.</p>
+          </div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -659,6 +748,196 @@ export default function ProjectEditPage(): JSX.Element {
             </p>
           </div>
         </div>
+      </Card>
+
+      {/* Sales Navigator Searches */}
+      <Card className="space-y-5">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+            <span className="material-symbols-outlined text-base text-slate-500">travel_explore</span>
+            Sales Navigator Searches
+          </h3>
+          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+            {salesNavQuery.data?.length ?? 0}/{MAX_SEARCHES} recommended
+          </span>
+        </div>
+
+        {/* Progress bar */}
+        <div className="space-y-1">
+          <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-300"
+              style={{ width: `${Math.min(((salesNavQuery.data?.length ?? 0) / MAX_SEARCHES) * 100, 100)}%` }}
+            />
+          </div>
+          <p className="text-xs text-slate-400">{salesNavQuery.data?.length ?? 0} of {MAX_SEARCHES} search URLs configured</p>
+        </div>
+
+        {/* List of active searches */}
+        {salesNavQuery.isLoading && (
+          <div className="flex items-center justify-center py-4 text-slate-400">
+            <span className="material-symbols-outlined animate-spin mr-2">progress_activity</span>
+            Loading searches...
+          </div>
+        )}
+
+        {salesNavQuery.isSuccess && (salesNavQuery.data ?? []).length === 0 && (
+          <div className="rounded-lg border-2 border-dashed border-slate-200 p-6 text-center">
+            <span className="material-symbols-outlined text-3xl text-slate-300">link_off</span>
+            <p className="text-sm font-medium text-slate-600 mt-1">No Sales Navigator searches added</p>
+            <p className="text-xs text-slate-400 mt-0.5">Add LinkedIn Sales Navigator search URLs below to start sourcing.</p>
+          </div>
+        )}
+
+        {salesNavQuery.isSuccess && (salesNavQuery.data ?? []).length > 0 && (
+          <div className="space-y-2">
+            {(salesNavQuery.data ?? []).map((search: SalesNavSearchRecord) => (
+              <div
+                key={search.id}
+                className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5"
+              >
+                <span className="material-symbols-outlined text-base text-slate-400">link</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-800 truncate" title={search.sourceUrl}>
+                    {search.sourceUrl.length > 60 ? search.sourceUrl.slice(0, 60) + '…' : search.sourceUrl}
+                  </p>
+                  <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                    <span>Added {new Date(search.createdAt).toLocaleDateString()}</span>
+                    {search._count && <span>{search._count.leads} leads</span>}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => deleteSearchMutation.mutate(search.id)}
+                  disabled={deleteSearchMutation.isPending}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Add new search URL */}
+        <div className="flex gap-2">
+          <Input
+            value={newSearchUrl}
+            onChange={(e) => setNewSearchUrl(e.target.value)}
+            placeholder="Paste Sales Navigator search URL..."
+            className="flex-1"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && newSearchUrl.trim()) {
+                addSearchMutation.mutate(newSearchUrl.trim());
+              }
+            }}
+          />
+          <Button
+            onClick={() => addSearchMutation.mutate(newSearchUrl.trim())}
+            disabled={!newSearchUrl.trim() || addSearchMutation.isPending}
+          >
+            {addSearchMutation.isPending ? 'Adding...' : 'Add'}
+          </Button>
+        </div>
+      </Card>
+
+      {/* CSV Import */}
+      <Card className="space-y-5">
+        <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+          <span className="material-symbols-outlined text-base text-slate-500">upload_file</span>
+          Import Leads from CSV
+        </h3>
+
+        {/* Drop zone */}
+        <div
+          className="rounded-lg border-2 border-dashed border-slate-300 p-8 text-center hover:border-primary/50 transition-colors cursor-pointer"
+          onClick={() => csvInputRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const file = e.dataTransfer.files?.[0];
+            if (file && file.name.endsWith('.csv')) void handleCsvSelect(file);
+          }}
+        >
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleCsvSelect(file);
+            }}
+          />
+          <span className="material-symbols-outlined text-4xl text-slate-300">cloud_upload</span>
+          <p className="text-sm font-medium text-slate-600 mt-2">
+            {csvFile ? csvFile.name : 'Click or drag a CSV file here'}
+          </p>
+          <p className="text-xs text-slate-400 mt-1">Supports exported Sales Navigator CSV format</p>
+        </div>
+
+        {/* Preview */}
+        {csvPreview && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-base text-emerald-500">check_circle</span>
+              <div>
+                <p className="text-sm font-medium text-slate-800">{csvPreview.rows.length} rows detected</p>
+                <p className="text-xs text-slate-400 truncate">
+                  Columns: {csvPreview.headers.join(', ')}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => importCsvMutation.mutate(csvPreview.rows)}
+                disabled={importCsvMutation.isPending || csvPreview.rows.length === 0}
+              >
+                {importCsvMutation.isPending ? 'Importing...' : `Import ${csvPreview.rows.length} Leads`}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setCsvFile(null);
+                  setCsvPreview(null);
+                  setImportResult(null);
+                  if (csvInputRef.current) csvInputRef.current.value = '';
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Result summary */}
+        {importResult && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-2">
+            <h4 className="text-sm font-semibold text-slate-700">Import Complete</h4>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                <p className="text-lg font-bold text-emerald-700">{importResult.imported}</p>
+                <p className="text-[11px] text-emerald-600">Imported</p>
+              </div>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-2">
+                <p className="text-lg font-bold text-amber-700">{importResult.duplicatesSkipped}</p>
+                <p className="text-[11px] text-amber-600">Skipped</p>
+              </div>
+              <div className="rounded-lg border border-red-200 bg-red-50 p-2">
+                <p className="text-lg font-bold text-red-700">{importResult.errors.length}</p>
+                <p className="text-[11px] text-red-600">Errors</p>
+              </div>
+            </div>
+            {importResult.errors.length > 0 && (
+              <div className="mt-2 max-h-32 overflow-y-auto rounded border border-red-100 bg-red-50/50 p-2">
+                {importResult.errors.map((err, i) => (
+                  <p key={i} className="text-xs text-red-600">{err}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </Card>
 
       {/* Quick links */}

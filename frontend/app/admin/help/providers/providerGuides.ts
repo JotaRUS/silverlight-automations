@@ -3,6 +3,7 @@ import type { ProviderType } from '@/types/provider';
 type ProviderCategory =
   | 'Lead Sourcing'
   | 'Data Enrichment'
+  | 'AI Services'
   | 'Outreach & Messaging'
   | 'Calling & Operations'
   | 'Data Sync';
@@ -105,9 +106,9 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
   {
     slug: 'sales-navigator',
     providerType: 'SALES_NAV_WEBHOOK',
-    name: 'LinkedIn Sales Navigator',
+    name: 'Lead Sync API',
     category: 'Lead Sourcing',
-    summary: 'LinkedIn Sales Navigator Lead Sync API using 3-legged OAuth (Authorization Code Flow) and webhook delivery.',
+    summary: 'Lead Sync API using 3-legged OAuth (Authorization Code Flow) and webhook delivery.',
     credentials: [
       {
         key: 'clientId',
@@ -523,11 +524,42 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
     lastReviewed: '2026-03-09'
   },
   {
+    slug: 'openai',
+    providerType: 'OPENAI',
+    name: 'OpenAI',
+    category: 'AI Services',
+    summary: 'AI-powered job title expansion and scoring for lead sourcing projects using GPT models.',
+    credentials: [
+      { key: 'apiKey', label: 'API Key', required: true, description: 'API key from platform.openai.com under API Keys.' },
+      { key: 'model', label: 'Model', required: false, description: 'Model to use for title classification. Default: gpt-4o-mini.' },
+      { key: 'classificationTemperature', label: 'Temperature', required: false, description: 'Controls randomness (0-2). Lower values are more deterministic. Default: 0.2.' }
+    ],
+    prerequisites: ['OpenAI account with active API access and billing configured.'],
+    credentialSteps: [
+      'Sign in to platform.openai.com.',
+      'Navigate to API Keys and click Create new secret key.',
+      'Copy the key immediately — it won\'t be shown again.',
+      'Optionally set model (default gpt-4o-mini) and temperature (default 0.2).'
+    ],
+    platformConfiguration: [...sharedPlatformSteps],
+    validationChecklist: ['Health check succeeds (models endpoint reachable).', 'Job Title Discovery returns expanded titles for test companies.'],
+    commonPitfalls: [
+      { issue: 'API key rejected.', resolution: 'Ensure the key is from an organization with active billing.' },
+      { issue: 'Rate limiting.', resolution: 'OpenAI applies token and request rate limits based on your plan tier.' }
+    ],
+    officialLinks: [
+      { label: 'OpenAI Platform', url: 'https://platform.openai.com' },
+      { label: 'API Reference', url: 'https://platform.openai.com/docs/api-reference' },
+      { label: 'Models', url: 'https://platform.openai.com/docs/models' }
+    ],
+    lastReviewed: '2026-03-03'
+  },
+  {
     slug: 'linkedin',
     providerType: 'LINKEDIN',
     name: 'LinkedIn Messaging (Legacy)',
     category: 'Outreach & Messaging',
-    summary: 'Legacy LinkedIn outreach token provider. New sourcing integrations should use LinkedIn Sales Navigator.',
+    summary: 'Legacy LinkedIn outreach token provider. New sourcing integrations should use the Lead Sync API.',
     credentials: [
       { key: 'apiKey', label: 'API Key / Access Token', required: true, description: 'LinkedIn API credential/token used for outbound calls.' }
     ],
@@ -1040,6 +1072,7 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
 const categoryOrder: ProviderCategory[] = [
   'Lead Sourcing',
   'Data Enrichment',
+  'AI Services',
   'Outreach & Messaging',
   'Calling & Operations',
   'Data Sync'

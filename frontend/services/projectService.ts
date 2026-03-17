@@ -83,6 +83,47 @@ export async function addProjectJobTitles(
   });
 }
 
+export async function triggerJobTitleDiscovery(
+  projectId: string,
+  companies: { companyName: string; companyId?: string }[],
+  geographyIsoCodes: string[]
+): Promise<{ accepted: boolean }> {
+  return apiRequest<{ accepted: boolean }>('/api/v1/job-title-discovery/trigger', {
+    method: 'POST',
+    body: { projectId, companies, geographyIsoCodes }
+  });
+}
+
+export interface SalesNavSearchRecord {
+  id: string;
+  sourceUrl: string;
+  normalizedUrl: string;
+  isActive: boolean;
+  createdAt: string;
+  _count?: { leads: number };
+}
+
+export async function listSalesNavSearches(projectId: string): Promise<SalesNavSearchRecord[]> {
+  return apiRequest<SalesNavSearchRecord[]>(`/api/v1/projects/${projectId}/sales-nav-searches`);
+}
+
+export async function deleteSalesNavSearch(projectId: string, searchId: string): Promise<void> {
+  await apiRequest(`/api/v1/projects/${projectId}/sales-nav-searches/${searchId}`, {
+    method: 'DELETE'
+  });
+}
+
+export async function importLeadsCsv(
+  projectId: string,
+  leads: Record<string, string>[],
+  salesNavSearchId?: string
+): Promise<{ imported: number; duplicatesSkipped: number; errors: string[] }> {
+  return apiRequest(`/api/v1/projects/${projectId}/import-leads`, {
+    method: 'POST',
+    body: { leads, salesNavSearchId }
+  });
+}
+
 export interface ScreeningQuestionRecord {
   id: string;
   projectId: string;

@@ -14,6 +14,12 @@ enum ProjectStatus {
   ARCHIVED
 }
 
+enum EmailStrategy {
+  PROFESSIONAL
+  PERSONAL
+  BOTH
+}
+
 enum LeadStatus {
   NEW
   ENRICHING
@@ -95,6 +101,7 @@ enum ProviderType {
   VOICEMAIL_DROP
   YAY
   ANYLEADS
+  OPENAI
   GOOGLE_SHEETS
   SUPABASE
 }
@@ -232,6 +239,7 @@ model Project {
   regionConfig                     Json                @db.JsonB
   enrichmentRoutingConfig          Json?               @db.JsonB
   overrideCooldown                 Boolean             @default(false)
+  emailStrategy                    EmailStrategy       @default(PROFESSIONAL)
   apolloProviderAccountId          String?             @db.Uuid
   salesNavWebhookProviderAccountId String?             @db.Uuid
   leadmagicProviderAccountId       String?             @db.Uuid
@@ -257,6 +265,7 @@ model Project {
   voicemailDropProviderAccountId   String?             @db.Uuid
   yayProviderAccountId             String?             @db.Uuid
   anyleadsProviderAccountId        String?             @db.Uuid
+  openaiProviderAccountId          String?             @db.Uuid
   googleSheetsProviderAccountId    String?             @db.Uuid
   supabaseProviderAccountId        String?             @db.Uuid
   outreachMessageTemplate          String?
@@ -301,6 +310,7 @@ model Project {
   voicemailDropProviderAccount     ProviderAccount?    @relation("project_voicemail_drop_provider_account", fields: [voicemailDropProviderAccountId], references: [id], onDelete: SetNull)
   yayProviderAccount               ProviderAccount?    @relation("project_yay_provider_account", fields: [yayProviderAccountId], references: [id], onDelete: SetNull)
   anyleadsProviderAccount          ProviderAccount?    @relation("project_anyleads_provider_account", fields: [anyleadsProviderAccountId], references: [id], onDelete: SetNull)
+  openaiProviderAccount            ProviderAccount?    @relation("project_openai_provider_account", fields: [openaiProviderAccountId], references: [id], onDelete: SetNull)
   googleSheetsProviderAccount      ProviderAccount?    @relation("project_google_sheets_provider_account", fields: [googleSheetsProviderAccountId], references: [id], onDelete: SetNull)
   supabaseProviderAccount          ProviderAccount?    @relation("project_supabase_provider_account", fields: [supabaseProviderAccountId], references: [id], onDelete: SetNull)
 
@@ -349,6 +359,7 @@ model ProviderAccount {
   voicemailDropBoundProjects   Project[]    @relation("project_voicemail_drop_provider_account")
   yayBoundProjects             Project[]    @relation("project_yay_provider_account")
   anyleadsBoundProjects        Project[]    @relation("project_anyleads_provider_account")
+  openaiBoundProjects          Project[]    @relation("project_openai_provider_account")
   googleSheetsBoundProjects    Project[]    @relation("project_google_sheets_provider_account")
   supabaseBoundProjects        Project[]    @relation("project_supabase_provider_account")
 
@@ -852,4 +863,17 @@ model DeadLetterJob {
 
   @@index([queueName, failedAt], map: "idx_dlq_queue_failed_at")
   @@index([archivedAt], map: "idx_dlq_archived_at")
+}
+
+model CompanyEmailPattern {
+  id            String   @id @default(uuid()) @db.Uuid
+  domain        String   @unique
+  pattern       String
+  confidence    Decimal  @db.Decimal(3, 2)
+  sampleCount   Int      @default(0)
+  sampleEmails  Json     @db.JsonB
+  detectedAt    DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([domain], map: "idx_company_email_pattern_domain")
 }

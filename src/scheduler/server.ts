@@ -1,5 +1,6 @@
 import { subDays } from './timeUtils';
 import { AUTO_SOURCING, isoCodeToLocationName } from '../config/constants';
+import { env } from '../config/env';
 import { logger } from '../core/logging/logger';
 import { installFatalProcessHandlers } from '../core/process/fatalHandlers';
 import { clock } from '../core/time/clock';
@@ -354,7 +355,9 @@ async function runAutoSourcingLoop(): Promise<void> {
     const outreachQueued = await queuePendingOutreach(project.id, project.name, timeSlice);
     totalOutreachQueued += outreachQueued;
 
-    const apolloQueued = await queueApolloSourcingIfNeeded(project, timeSlice);
+    const apolloQueued = env.ENABLE_APOLLO_SOURCING
+      ? await queueApolloSourcingIfNeeded(project, timeSlice)
+      : 0;
     totalApolloSearchesQueued += apolloQueued;
 
     const stalled = await detectStalledSourcing(project);
@@ -859,7 +862,7 @@ async function detectStalledSourcing(project: {
     metadata: { activeSources, signedUpCount: project.signedUpCount, targetThreshold: project.targetThreshold }
   });
 
-  if (project.apolloProviderAccountId) {
+  if (env.ENABLE_APOLLO_SOURCING && project.apolloProviderAccountId) {
     const timeSlice = clock.now().toISOString().slice(0, 13);
     await queueApolloSourcingIfNeeded(project, `${timeSlice}-stalled`);
   }

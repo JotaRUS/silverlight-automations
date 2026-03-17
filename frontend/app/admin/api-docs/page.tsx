@@ -325,6 +325,22 @@ const groups: EndpointGroup[] = [
       },
       {
         method: 'POST',
+        path: '/api/v1/projects/{projectId}/import-leads',
+        summary: 'Import leads from CSV data',
+        auth: 'API key or Session + CSRF (admin/ops)',
+        pathParams: [{ name: 'projectId', type: 'UUID', required: true, description: 'Project ID' }],
+        bodyParams: [
+          { name: 'leads', type: 'array', required: true, description: 'Array of row objects (parsed CSV): each object has string keys (column names) and string values' },
+          { name: 'salesNavSearchId', type: 'UUID', description: 'Optional Sales Nav search to associate leads with' }
+        ],
+        bodyExample: '{\n  "leads": [\n    { "email": "jane@example.com", "firstName": "Jane", "lastName": "Doe" },\n    { "email": "john@example.com", "firstName": "John", "lastName": "Smith" }\n  ],\n  "salesNavSearchId": "uuid"\n}',
+        responses: [
+          { status: 200, label: 'Imported', body: '{ "imported": 10, "duplicatesSkipped": 2, "errors": [] }' },
+          { status: 400, label: 'Validation error', body: '{ "error": "Invalid or missing leads" }' }
+        ]
+      },
+      {
+        method: 'POST',
         path: '/api/v1/projects/{projectId}/apollo-search',
         summary: 'Queue manual Apollo search with filters',
         description: 'Falls back to stored project filters when not provided in the body.',
@@ -343,6 +359,16 @@ const groups: EndpointGroup[] = [
         ]
       },
       {
+        method: 'GET',
+        path: '/api/v1/projects/{projectId}/sales-nav-searches',
+        summary: 'List active Sales Navigator searches',
+        auth: 'Session (admin/ops)',
+        pathParams: [{ name: 'projectId', type: 'UUID', required: true, description: 'Project ID' }],
+        responses: [
+          { status: 200, label: 'Searches', body: '[\n  { "id": "uuid", "sourceUrl": "https://linkedin.com/sales/search/...", "createdAt": "ISO" }\n]' }
+        ]
+      },
+      {
         method: 'POST',
         path: '/api/v1/projects/{projectId}/sales-nav-searches',
         summary: 'Attach Sales Navigator search URLs',
@@ -351,6 +377,20 @@ const groups: EndpointGroup[] = [
         bodyExample: '{\n  "searches": [\n    { "sourceUrl": "https://linkedin.com/sales/search/..." }\n  ]\n}',
         responses: [
           { status: 200, label: 'Attached', body: '{ "count": 1 }' }
+        ]
+      },
+      {
+        method: 'DELETE',
+        path: '/api/v1/projects/{projectId}/sales-nav-searches/{searchId}',
+        summary: 'Remove a Sales Navigator search',
+        auth: 'Session + CSRF (admin/ops)',
+        pathParams: [
+          { name: 'projectId', type: 'UUID', required: true, description: 'Project ID' },
+          { name: 'searchId', type: 'UUID', required: true, description: 'Search ID' }
+        ],
+        responses: [
+          { status: 200, label: 'Removed', body: '{ "ok": true }' },
+          { status: 404, label: 'Not found', body: '{ "error": "Search not found" }' }
         ]
       },
       {
@@ -569,7 +609,7 @@ const groups: EndpointGroup[] = [
         method: 'GET',
         path: '/api/v1/providers/{providerAccountId}/linkedin/oauth/status',
         summary: 'Check LinkedIn OAuth connection status',
-        description: 'Returns the current OAuth status for a LinkedIn Sales Navigator provider, including token expiration dates and granted scopes.',
+        description: 'Returns the current OAuth status for a Lead Sync API provider, including token expiration dates and granted scopes.',
         auth: 'Session cookie or API key (admin/ops)',
         pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: 'LinkedIn Sales Nav provider account ID' }],
         responses: [
@@ -1041,6 +1081,19 @@ const groups: EndpointGroup[] = [
       },
       {
         method: 'GET',
+        path: '/api/v1/admin/cooldown-logs',
+        summary: 'List recent cooldown enforcement logs',
+        auth: 'Session (admin/ops)',
+        queryParams: [
+          { name: 'limit', type: 'number', description: 'Max 200, default 50' },
+          { name: 'projectId', type: 'UUID', description: 'Filter by project' }
+        ],
+        responses: [
+          { status: 200, label: 'Logs', body: '[\n  { "id": "uuid", "expertId": "uuid", "projectId": "uuid", "action": "BLOCKED", "createdAt": "ISO", "expert": { "fullName": "..." }, "project": { "name": "..." } }\n]' }
+        ]
+      },
+      {
+        method: 'GET',
         path: '/api/v1/admin/ping',
         summary: 'Admin health ping',
         auth: 'Session (admin only)',
@@ -1106,7 +1159,7 @@ const groups: EndpointGroup[] = [
       {
         method: 'POST',
         path: '/webhooks/sales-nav/{providerAccountId}',
-        summary: 'LinkedIn Sales Navigator lead ingestion',
+        summary: 'Lead Sync API lead ingestion',
         auth: 'Bearer token or x-sales-nav-client-id header',
         pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: 'Sales Nav provider' }],
         responses: [
@@ -1116,7 +1169,7 @@ const groups: EndpointGroup[] = [
       {
         method: 'POST',
         path: '/webhooks/sales-nav/{providerAccountId}/notification',
-        summary: 'LinkedIn Lead Sync notification webhook',
+        summary: 'Lead Sync API notification webhook',
         auth: 'LinkedIn signature verification',
         pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: 'Sales Nav provider' }],
         responses: [

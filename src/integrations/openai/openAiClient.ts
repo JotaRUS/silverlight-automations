@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-import { env } from '../../config/env';
 import { AppError } from '../../core/errors/appError';
 import { requestJson } from '../../core/http/httpJsonClient';
 
@@ -25,6 +24,12 @@ const titleExpansionResultSchema = z.object({
   )
 });
 
+export interface OpenAiCredentials {
+  apiKey: string;
+  model: string;
+  classificationTemperature: number;
+}
+
 export interface JobTitleExpansionInput {
   companyName: string;
   geographyIsoCode: string;
@@ -40,8 +45,11 @@ export interface ExpandedTitle {
 }
 
 export class OpenAiClient {
-  public async expandAndScoreTitles(input: JobTitleExpansionInput): Promise<ExpandedTitle[]> {
-    if (!env.OPENAI_API_KEY) {
+  public async expandAndScoreTitles(
+    input: JobTitleExpansionInput,
+    credentials: OpenAiCredentials
+  ): Promise<ExpandedTitle[]> {
+    if (!credentials.apiKey) {
       throw new AppError('OpenAI API key is missing', 500, 'openai_api_key_missing');
     }
 
@@ -58,11 +66,11 @@ export class OpenAiClient {
       method: 'POST',
       url: 'https://api.openai.com/v1/chat/completions',
       headers: {
-        authorization: `Bearer ${env.OPENAI_API_KEY}`
+        authorization: `Bearer ${credentials.apiKey}`
       },
       body: {
-        model: env.OPENAI_MODEL,
-        temperature: env.OPENAI_CLASSIFICATION_TEMPERATURE,
+        model: credentials.model || 'gpt-4o-mini',
+        temperature: credentials.classificationTemperature ?? 0.2,
         response_format: {
           type: 'json_object'
         },

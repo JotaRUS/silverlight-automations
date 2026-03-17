@@ -275,7 +275,15 @@ There is no dedicated list endpoint. Projects are accessed individually by ID. F
 - Maintaining a local list of project IDs.
 - Or querying the database through a future list endpoint.
 
-#### Create Project
+#### Create Project (Wizard)
+
+The project creation wizard is a five-step guided flow:
+
+1. **Job Title Discovery** — Define project basics (name, description, target threshold, geography), add target companies, and trigger Apollo + OpenAI job title discovery. This is the first step in the wizard — job titles are discovered before lead sourcing begins.
+2. **Lead Sources** — Add Sales Navigator search URLs (~6 recommended per project) as the primary lead source, optionally import leads from a CSV export (parsed client-side), and bind enrichment providers. Apollo sourcing is disabled by default (`ENABLE_APOLLO_SOURCING=false`).
+3. **Export Destinations** — Select Google Sheets and/or Supabase accounts for export.
+4. **Outreach** — Select outreach channels and write a mandatory message template with variable insertion (`{{FirstName}}`, `{{LastName}}`, `{{Country}}`, `{{JobTitle}}`, `{{CurrentCompany}}`).
+5. **Start Prospecting** — Completion screen with summary and links.
 
 **API call:**
 
@@ -283,7 +291,7 @@ There is no dedicated list endpoint. Projects are accessed individually by ID. F
 POST /api/v1/projects
 ```
 
-**Form fields:**
+**Form fields (Step 1 — Job Title Discovery):**
 
 | Field               | Input type      | Validation               | Required |
 |---------------------|-----------------|--------------------------|----------|
@@ -293,6 +301,15 @@ POST /api/v1/projects
 | Geography ISO Codes | Multi-select/tags | 2-char ISO codes, min 1 | Yes      |
 | Priority            | Number input    | Min 0                    | No       |
 | Override Cooldown   | Checkbox        | —                        | No       |
+| Target Companies    | Repeating rows  | Name + domain + country  | No       |
+
+**Step 2 — Lead Sources:**
+
+| Field                | Input type          | Notes                                    |
+|----------------------|---------------------|------------------------------------------|
+| Sales Nav URLs       | Repeating URL rows  | ~6 recommended, min 1 per project        |
+| CSV Import           | File upload / paste | Client-side CSV parsing, maps to lead fields |
+| Enrichment Providers | Checkbox matrix     | Bound from configured provider accounts  |
 
 **On success (201):** Save returned `id`, navigate to project detail.
 
@@ -310,6 +327,16 @@ Body: partial fields
 ```
 
 Use an inline edit or modal pattern. Only send changed fields.
+
+The project edit page includes an **Email Strategy** selector with three options:
+
+| Strategy        | Description                                         |
+|-----------------|-----------------------------------------------------|
+| `PROFESSIONAL`  | Only use professional/work email addresses           |
+| `PERSONAL`      | Allow personal email addresses (Gmail, Yahoo, etc.)  |
+| `BOTH`          | Use both professional and personal email addresses   |
+
+This controls how the enrichment pipeline filters email addresses for outreach.
 
 ---
 
@@ -343,6 +370,14 @@ Body: { "companies": [ { "name": "...", "domain": "...", "countryIso": "..." }, 
 
 #### Sales Nav Searches Tab
 
+**List searches:**
+
+```
+GET /api/v1/projects/:projectId/sales-nav-searches
+```
+
+Displays all configured Sales Nav search URLs for the project in a table with source URL and creation date. Each row has a delete action.
+
 **Add searches:**
 
 ```
@@ -352,7 +387,24 @@ Body: { "searches": [ { "sourceUrl": "...", "normalizedUrl": "..." }, ... ] }
 
 Minimum **1 search** required.
 
+**Delete a search:**
+
+```
+DELETE /api/v1/projects/:projectId/sales-nav-searches/:searchId
+```
+
+Returns 204 No Content.
+
 **Form:** Repeating rows with URL inputs. Validate URLs client-side.
+
+#### CSV Import
+
+```
+POST /api/v1/projects/:projectId/import-leads
+Body: { "leads": [ { "firstName": "...", "lastName": "...", ... } ], "salesNavSearchId": "optional-uuid" }
+```
+
+The project detail page includes a CSV import section that allows pasting or uploading a CSV file exported from Sales Navigator. The CSV is parsed client-side and sent as a JSON array of lead objects. Leads are ingested and enqueued for enrichment automatically.
 
 #### Screening Questions Tab
 
@@ -594,6 +646,12 @@ Body: { "reason": "optional reason" }
 
 ---
 
+### Expert Network Cross-Check
+
+The Leads page includes an **Expert Network Cross-Check** info banner explaining the system's outreach differentiation behavior: before initiating outreach, the system checks whether an expert already exists in the network (has outreach threads from other projects). Existing experts receive project-specific invitation messages rather than general sign-up invitations. This logic is automatic and does not require manual intervention.
+
+---
+
 ### 4.9 Outreach
 
 **Purpose:** Send messages to experts through any of 13 channels.
@@ -693,6 +751,30 @@ POST /api/v1/documentation/generate
 ```
 
 **UI:** A single "Generate Documentation" button. On success, display: "Documentation generation queued (Job ID: ...)". Output files are written to `docs/generated/` on the server.
+
+---
+
+### 4.13 Observability Page — Cooldown Tab
+
+The `/admin/observability` page includes a **Cooldown** tab alongside the existing Activity Feed, Dead Letter Queue, Webhook Log, and Fraud & Violations tabs.
+
+**API call:**
+
+```
+GET /api/v1/admin/cooldown-logs?limit=100&projectId=<optional>
+```
+
+The Cooldown tab displays outreach cooldown enforcement records from the `CooldownLog` table. Each row shows:
+
+| Column        | Description                                          |
+|---------------|------------------------------------------------------|
+| Expert Name   | Name of the expert who was subject to cooldown       |
+| Project       | Project that triggered the outreach attempt           |
+| Channel       | Outreach channel (EMAIL, WHATSAPP, etc.)             |
+| Action        | Whether the cooldown was enforced (blocked) or overridden |
+| Created At    | Timestamp of the cooldown event                       |
+
+An info banner explains the outreach cooldown contract: the same expert is not contacted more than once within a rolling 30-day period, regardless of channel, unless explicitly overridden.
 
 ---
 

@@ -525,6 +525,99 @@
           "response": []
         },
         {
+          "name": "List Sales Nav Searches",
+          "id": "b1c2d3e4-f5a6-7890-bcde-f12345678901",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/sales-nav-searches",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "sales-nav-searches"
+              ]
+            },
+            "description": "List all Sales Navigator search URLs configured for a project.\n\n**Auth:** admin or ops."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Sales Nav Search",
+          "id": "c2d3e4f5-a6b7-8901-cdef-023456789012",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/sales-nav-searches/{{salesNavSearchId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "sales-nav-searches",
+                "{{salesNavSearchId}}"
+              ]
+            },
+            "description": "Delete a Sales Navigator search URL from a project.\n\n**Response:** 204 No Content\n\n**Auth:** admin or ops."
+          },
+          "response": []
+        },
+        {
+          "name": "Import Leads (CSV)",
+          "id": "d3e4f5a6-b7c8-9012-def0-134567890123",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leads\": [\n    {\n      \"firstName\": \"Jane\",\n      \"lastName\": \"Doe\",\n      \"companyName\": \"Stripe\",\n      \"jobTitle\": \"VP of Engineering\",\n      \"linkedinUrl\": \"https://linkedin.com/in/janedoe\",\n      \"countryIso\": \"US\"\n    },\n    {\n      \"firstName\": \"John\",\n      \"lastName\": \"Smith\",\n      \"companyName\": \"Wise\",\n      \"jobTitle\": \"Director of Product\",\n      \"linkedinUrl\": \"https://linkedin.com/in/johnsmith\",\n      \"countryIso\": \"GB\"\n    }\n  ],\n  \"salesNavSearchId\": null\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/projects/{{projectId}}/import-leads",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "projects",
+                "{{projectId}}",
+                "import-leads"
+              ]
+            },
+            "description": "Import leads into a project from a CSV export (parsed client-side into JSON). Each lead is a flexible key-value object. Leads are ingested and enqueued for enrichment automatically.\n\n**Required:** leads (array, min 1)\n**Optional:** salesNavSearchId (UUID) — associate imported leads with a specific Sales Nav search\n\n**Auth:** admin or ops."
+          },
+          "response": []
+        },
+        {
           "name": "List Available Channels",
           "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
           "request": {
@@ -2117,6 +2210,30 @@
             "description": "Fraud-flagged call logs and FRAUD/ENFORCEMENT system events. Supports date range filtering and pagination."
           },
           "response": []
+        },
+        {
+          "name": "Cooldown Logs",
+          "id": "obs-cd-0001-0001-0001-0000000000006",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/cooldown-logs?limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "cooldown-logs"],
+              "query": [
+                { "key": "projectId", "value": "{{projectId}}", "description": "Filter by project (optional)", "disabled": true },
+                { "key": "limit", "value": "50", "description": "Max 200 (default 50)" }
+              ]
+            },
+            "description": "Returns outreach cooldown enforcement records with related expert and project names. The 30-day cooldown prevents contacting the same expert more than once within a rolling period.\n\n**Query params:** limit (1-200, default 50), projectId (optional UUID filter)\n\n**Auth:** admin or ops."
+          },
+          "response": []
         }
       ],
       "id": "obs-fold-0001-0001-0001-000000000000",
@@ -2193,6 +2310,12 @@
     {
       "id": "f6a7b8c9-d0e1-2345-6789-abcdef012345",
       "key": "providerAccountId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "id": "a7b8c9d0-e1f2-3456-789a-bcdef0123456",
+      "key": "salesNavSearchId",
       "value": "",
       "type": "string"
     }

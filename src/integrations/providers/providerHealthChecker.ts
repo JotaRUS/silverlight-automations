@@ -747,6 +747,20 @@ export async function runProviderHealthCheck(
     return { healthy: false, details: { statusCode: response.status, reason: `Anyleads health probe failed (HTTP ${response.status}).` } };
   }
 
+  if (input.providerType === 'OPENAI') {
+    const apiKey = credentialString(input.credentials, 'apiKey');
+    const endpoint = 'https://api.openai.com/v1/models';
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: { authorization: `Bearer ${apiKey}` }
+    });
+    const text = await response.text().catch(() => '');
+    logger.info({ provider: 'openai', statusCode: response.status, responseSnippet: text.slice(0, 300) }, 'openai-health-check-response');
+    if (response.status === 200) return { healthy: true, details: { statusCode: 200, reason: 'OpenAI reachable and API key accepted.' } };
+    if (response.status === 401 || response.status === 403) return { healthy: false, details: { statusCode: response.status, reason: 'OpenAI rejected the API key.' } };
+    return { healthy: false, details: { statusCode: response.status, reason: `OpenAI health probe failed (HTTP ${response.status}).` } };
+  }
+
   if (input.providerType === 'VIBER') {
     const apiKey = credentialString(input.credentials, 'apiKey');
     const endpoint = 'https://chatapi.viber.com/pa/get_account_info';

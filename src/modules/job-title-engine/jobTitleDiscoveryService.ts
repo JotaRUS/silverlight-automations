@@ -1,10 +1,12 @@
 import type { PrismaClient } from '@prisma/client';
 
 import { ApolloClient } from '../../integrations/apollo/apolloClient';
-import { OpenAiClient } from '../../integrations/openai/openAiClient';
+import { OpenAiClient, type OpenAiCredentials } from '../../integrations/openai/openAiClient';
+import { ProviderAccountsService } from '../providers/providerAccountsService';
 import { deduplicateNormalizedTitles } from './titleNormalizer';
 import type { JobTitleDiscoveryRequest } from './jobTitleDiscoverySchemas';
 import { clock } from '../../core/time/clock';
+import { AppError } from '../../core/errors/appError';
 
 interface JobTitleDiscoveryDependencies {
   prismaClient: PrismaClient;
@@ -13,9 +15,42 @@ interface JobTitleDiscoveryDependencies {
 }
 
 export class JobTitleDiscoveryService {
-  public constructor(private readonly dependencies: JobTitleDiscoveryDependencies) {}
+  private readonly providerAccountsService: ProviderAccountsService;
+
+  public constructor(private readonly dependencies: JobTitleDiscoveryDependencies) {
+    this.providerAccountsService = new ProviderAccountsService(dependencies.prismaClient);
+  }
+
+  private async resolveOpenAiCredentials(projectId: string): Promise<OpenAiCredentials> {
+    const project = await this.dependencies.prismaClient.project.findUnique({
+      where: { id: projectId },
+      select: { openaiProviderAccountId: true }
+    });
+
+    if (!project?.openaiProviderAccountId) {
+      throw new AppError(
+        'No OpenAI provider bound to this project. Add an OpenAI provider account and bind it to the project.',
+        400,
+        'openai_provider_not_bound'
+      );
+    }
+
+    const credentials = await this.providerAccountsService.getDecryptedCredentials(
+      project.openaiProviderAccountId,
+      'OPENAI'
+    );
+
+    return {
+      apiKey: typeof credentials.apiKey === 'string' ? credentials.apiKey : '',
+      model: typeof credentials.model === 'string' ? credentials.model : 'gpt-4o-mini',
+      classificationTemperature: typeof credentials.classificationTemperature === 'number'
+        ? credentials.classificationTemperature
+        : 0.2
+    };
+  }
 
   public async discover(request: JobTitleDiscoveryRequest, correlationId: string): Promise<number> {
+    const openAiCredentials = await this.resolveOpenAiCredentials(request.projectId);
     let persistedCount = 0;
 
     for (const company of request.companies) {
@@ -31,12 +66,15 @@ export class JobTitleDiscoveryService {
       }
 
       const normalizedSourceTitles = deduplicateNormalizedTitles(collectedTitles);
-      const expandedTitles = await this.dependencies.openAiClient.expandAndScoreTitles({
-        companyName: company.companyName,
-        geographyIsoCode: request.geographyIsoCodes[0],
-        sourceTitles: normalizedSourceTitles,
-        correlationId
-      });
+      const expandedTitles = await this.dependencies.openAiClient.expandAndScoreTitles(
+        {
+          companyName: company.companyName,
+          geographyIsoCode: request.geographyIsoCodes[0],
+          sourceTitles: normalizedSourceTitles,
+          correlationId
+        },
+        openAiCredentials
+      );
 
       for (const expandedTitle of expandedTitles) {
         if (!expandedTitle.relevant) {

@@ -161,6 +161,46 @@ projectsRoutes.post('/:projectId/sales-nav-searches', async (request, response, 
   }
 });
 
+projectsRoutes.get('/:projectId/sales-nav-searches', async (request, response, next) => {
+  try {
+    const params = parseOrThrow(pathParamsSchema, request.params);
+    const searches = await projectsService.listSalesNavSearches(params.projectId);
+    response.json(searches);
+  } catch (error) {
+    next(error);
+  }
+});
+
+projectsRoutes.delete('/:projectId/sales-nav-searches/:searchId', async (request, response, next) => {
+  try {
+    const params = parseOrThrow(
+      pathParamsSchema.extend({ searchId: z.string().uuid() }),
+      request.params
+    );
+    await projectsService.deleteSalesNavSearch(params.projectId, params.searchId);
+    response.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
+projectsRoutes.post('/:projectId/import-leads', async (request, response, next) => {
+  try {
+    const params = parseOrThrow(pathParamsSchema, request.params);
+    const body = parseOrThrow(
+      z.object({
+        leads: z.array(z.record(z.string())).min(1),
+        salesNavSearchId: z.string().uuid().optional()
+      }),
+      request.body
+    );
+    const result = await projectsService.importLeads(params.projectId, body.leads, body.salesNavSearchId);
+    response.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
 projectsRoutes.get('/:projectId/screening-questions', async (request, response, next) => {
   try {
     const params = parseOrThrow(pathParamsSchema, request.params);

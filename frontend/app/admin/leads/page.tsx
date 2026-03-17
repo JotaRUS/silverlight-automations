@@ -45,7 +45,8 @@ interface LeadRecord {
   googleSheetsExportedAt?: string | null;
   supabaseExportedAt?: string | null;
   createdAt: string;
-  metadata?: { city?: string; state?: string; country?: string; companyName?: string; [key: string]: unknown };
+  cooldownBlocked?: boolean;
+  metadata?: { city?: string; state?: string; country?: string; companyName?: string; invitationType?: string; [key: string]: unknown };
   project?: { id: string; name: string };
   expert?: {
     fullName?: string;
@@ -55,7 +56,7 @@ interface LeadRecord {
   enrichmentAttempts?: EnrichmentAttemptRecord[];
 }
 
-type ColumnKey = 'firstName' | 'lastName' | 'jobTitle' | 'currentCompany' | 'status' | 'country' | 'email' | 'phone' | 'linkedin' | 'confidence' | 'exported' | 'added' | 'actions';
+type ColumnKey = 'firstName' | 'lastName' | 'jobTitle' | 'currentCompany' | 'status' | 'network' | 'country' | 'email' | 'phone' | 'linkedin' | 'confidence' | 'exported' | 'added' | 'actions';
 
 const ALL_COLUMNS: { key: ColumnKey; label: string }[] = [
   { key: 'firstName', label: 'First Name' },
@@ -63,6 +64,7 @@ const ALL_COLUMNS: { key: ColumnKey; label: string }[] = [
   { key: 'jobTitle', label: 'Job Title' },
   { key: 'currentCompany', label: 'Current Company' },
   { key: 'status', label: 'Status' },
+  { key: 'network', label: 'Network' },
   { key: 'country', label: 'Country' },
   { key: 'email', label: 'Email' },
   { key: 'phone', label: 'Phone' },
@@ -693,6 +695,15 @@ export default function LeadsPage(): JSX.Element {
         })}
       </div>
 
+      {/* Expert Network Cross-Check info */}
+      <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50/60 px-4 py-3 text-sm text-blue-800">
+        <span className="material-symbols-outlined mt-0.5 text-lg text-blue-500 shrink-0">info</span>
+        <p>
+          <span className="font-semibold">Expert Network Cross-Check (Contract 2.3):</span>{' '}
+          Before initiating outreach, the system checks whether an expert already exists in the network. Existing experts receive project-specific invitation messages rather than general sign-up invitations.
+        </p>
+      </div>
+
       {/* Loading */}
       {leadsQuery.isLoading && (
         <div className="flex items-center justify-center py-16">
@@ -753,6 +764,7 @@ export default function LeadsPage(): JSX.Element {
                   {show('jobTitle') && <th className="px-4 py-3">Job Title</th>}
                   {show('currentCompany') && <th className="px-4 py-3">Current Company</th>}
                   {show('status') && <th className="px-4 py-3">Status</th>}
+                  {show('network') && <th className="px-4 py-3">Network</th>}
                   {show('country') && <th className="px-4 py-3">Country</th>}
                   {show('email') && <th className="px-4 py-3">Email</th>}
                   {show('phone') && <th className="px-4 py-3">Phone</th>}
@@ -799,36 +811,56 @@ export default function LeadsPage(): JSX.Element {
                       )}
                       {show('status') && (
                         <td className="px-4 py-3">
-                          {lead.status === 'ENRICHED' && lead.enrichmentAttempts && lead.enrichmentAttempts.length > 0 ? (
-                            <div className="group relative inline-flex">
-                              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold cursor-default ${badge.class}`}>
-                                {badge.label}
-                              </span>
-                              <div className="pointer-events-none absolute left-0 top-full z-20 mt-1.5 hidden w-56 rounded-lg border border-slate-200 bg-white p-2.5 shadow-lg group-hover:block">
-                                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Enrichment providers</p>
-                                <div className="space-y-1">
-                                  {lead.enrichmentAttempts.map((attempt, i) => (
-                                    <div key={i} className="flex items-center justify-between text-[11px]">
-                                      <span className="font-medium text-slate-700">
-                                        {ENRICHMENT_PROVIDER_LABELS[attempt.provider] ?? attempt.provider}
-                                      </span>
-                                      <span className={
-                                        attempt.status === 'SUCCESS'
-                                          ? 'text-emerald-600'
-                                          : attempt.status === 'RATE_LIMITED'
-                                            ? 'text-amber-600'
-                                            : 'text-red-500'
-                                      }>
-                                        {attempt.status === 'SUCCESS' ? 'found data' : attempt.status === 'RATE_LIMITED' ? 'rate limited' : 'no data'}
-                                      </span>
-                                    </div>
-                                  ))}
+                          <div className="flex items-center gap-1.5">
+                            {lead.status === 'ENRICHED' && lead.enrichmentAttempts && lead.enrichmentAttempts.length > 0 ? (
+                              <div className="group relative inline-flex">
+                                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold cursor-default ${badge.class}`}>
+                                  {badge.label}
+                                </span>
+                                <div className="pointer-events-none absolute left-0 top-full z-20 mt-1.5 hidden w-56 rounded-lg border border-slate-200 bg-white p-2.5 shadow-lg group-hover:block">
+                                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Enrichment providers</p>
+                                  <div className="space-y-1">
+                                    {lead.enrichmentAttempts.map((attempt, i) => (
+                                      <div key={i} className="flex items-center justify-between text-[11px]">
+                                        <span className="font-medium text-slate-700">
+                                          {ENRICHMENT_PROVIDER_LABELS[attempt.provider] ?? attempt.provider}
+                                        </span>
+                                        <span className={
+                                          attempt.status === 'SUCCESS'
+                                            ? 'text-emerald-600'
+                                            : attempt.status === 'RATE_LIMITED'
+                                              ? 'text-amber-600'
+                                              : 'text-red-500'
+                                        }>
+                                          {attempt.status === 'SUCCESS' ? 'found data' : attempt.status === 'RATE_LIMITED' ? 'rate limited' : 'no data'}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
+                            ) : (
+                              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${badge.class}`}>
+                                {badge.label}
+                              </span>
+                            )}
+                            {lead.cooldownBlocked && (
+                              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                                Cooldown
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                      {show('network') && (
+                        <td className="px-4 py-3">
+                          {lead.metadata?.invitationType === 'project_invitation' ? (
+                            <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                              Existing
+                            </span>
                           ) : (
-                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${badge.class}`}>
-                              {badge.label}
+                            <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                              New
                             </span>
                           )}
                         </td>

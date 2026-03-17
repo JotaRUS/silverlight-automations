@@ -57,7 +57,7 @@ This repository implements a deterministic, queue-driven automation platform for
 | `job-title-discovery` | Job title resolution | Resolve/normalize expert job titles |
 | `sales-nav-ingestion` | Lead batch import | Ingest leads from Sales Navigator webhooks |
 | `lead-ingestion` | Lead processing | Normalize and deduplicate incoming leads |
-| `enrichment` | `enrichment.run` | Multi-provider contact data enrichment |
+| `enrichment` | `enrichment.run` | Multi-provider contact data enrichment with email pattern detection |
 | `outreach` | `outreach.send` | Multi-channel message dispatch |
 | `screening` | `screening.followup` | Expert screening question flow |
 | `call-allocation` | `call-allocation.assign-current` | Match callers to call tasks |
@@ -100,6 +100,30 @@ Jobs use deterministic IDs via `buildJobId(prefix, ...segments)`. BullMQ dedupli
 | `AUTO_SOURCING.ENRICHMENT_BATCH_SIZE` | `50` |
 | `AUTO_SOURCING.OUTREACH_BATCH_SIZE` | `30` |
 | `AUTO_SOURCING.STALE_PIPELINE_HOURS` | `24` |
+
+---
+
+## Enrichment Pipeline — Email Pattern Detection
+
+The enrichment module includes the `EmailPatternService` (`src/modules/enrichment/emailPatternService.ts`) which detects and stores company-wide email address patterns during the enrichment flow.
+
+### How it works
+
+1. During enrichment, when verified email addresses are found for experts at a company, the service collects `(email, firstName, lastName)` samples.
+2. The `detectPattern()` method tests each sample against 11 known email format patterns (e.g., `{first}.{last}`, `{first}{last}`, `{f}{last}`, `{first}_{last}`, etc.) and selects the pattern with the highest match count.
+3. When a pattern reaches ≥ 2 samples and ≥ 80% confidence, it is persisted to the `CompanyEmailPattern` table via `persistPattern()`.
+4. For subsequent leads at the same company domain, `getOrDetectPattern()` returns the stored pattern and `generateEmail()` can synthesize a likely email address without requiring an enrichment provider call.
+
+### Key thresholds
+
+| Constant | Value | Purpose |
+|---|---|---|
+| `MIN_SAMPLES_FOR_CONFIDENCE` | `2` | Minimum email samples before a pattern is considered reliable |
+| `HIGH_CONFIDENCE_THRESHOLD` | `0.80` | Minimum confidence ratio (matches / samples) for a stored pattern to be used |
+
+### Feature flag — Apollo sourcing
+
+Apollo-based lead sourcing in the auto-sourcing loop is controlled by the `ENABLE_APOLLO_SOURCING` environment variable (default: `false`). When disabled, the platform relies on Sales Navigator URLs and CSV imports as primary lead sources. The scheduler checks this flag before queuing Apollo sourcing jobs.
 
 ---
 
@@ -238,14 +262,17 @@ Tasks are assigned within a serializable transaction:
 
 ## Provider Account System
 
-### 25 provider types in 4 categories
+### 26 provider types in 5 categories
 
 **Lead Sourcing**
-- `APOLLO` — Apollo.io lead search
-- `SALES_NAV_WEBHOOK` — LinkedIn Sales Navigator (OAuth 2.0 Client Credentials — Client ID + Client Secret)
+- `APOLLO` — Apollo.io lead search (disabled by default via `ENABLE_APOLLO_SOURCING=false`)
+- `SALES_NAV_WEBHOOK` — LinkedIn Sales Navigator (OAuth 2.0 Authorization Code Flow — Client ID + Client Secret + Organization ID). Primary lead source via Sales Nav URLs and CSV imports.
 
 **Data Enrichment** (10 providers)
 - `LEADMAGIC`, `PROSPEO`, `EXA`, `ROCKETREACH`, `WIZA`, `FORAGER`, `ZELIQ`, `CONTACTOUT`, `DATAGM`, `PEOPLEDATALABS`
+
+**AI**
+- `OPENAI` — OpenAI API for job title scoring and expansion (bound via `openaiProviderAccountId` on projects)
 
 **Outreach Channels** (11 providers)
 - `LINKEDIN` (legacy messaging token provider), `EMAIL_PROVIDER`, `TWILIO`, `WHATSAPP_2CHAT`, `RESPONDIO`, `LINE`, `WECHAT`, `VIBER`, `TELEGRAM`, `KAKAOTALK`, `VOICEMAIL_DROP`
@@ -275,11 +302,13 @@ Domain modules **never** call providers directly. All external system access goe
 
 ## Project Wizard
 
-3-step frontend wizard for project creation:
+5-step frontend wizard for project creation:
 
-1. **Project Details** — name, geography, target threshold, priority, and other metadata.
-2. **Lead Sources** — displays all active provider accounts as a matrix of checkboxes grouped by category (Lead Sourcing, Data Enrichment, Outreach Channels, Calling & Operations). Only accounts with saved credentials are shown. One account per provider type can be bound.
-3. **Start Prospecting** — confirms setup and activates the project.
+1. **Job Title Discovery** — name, geography, target threshold, priority, target companies, and OpenAI-powered job title discovery. This is the first step to identify real titles before sourcing begins.
+2. **Lead Sources** — Add Sales Navigator search URLs (~6 recommended) as the primary lead source, optionally import leads from CSV, and bind enrichment provider accounts. Apollo sourcing is disabled by default (`ENABLE_APOLLO_SOURCING=false`).
+3. **Export Destinations** — Select Google Sheets and/or Supabase accounts for automated export.
+4. **Outreach** — Select outreach channels and write a mandatory message template with variable insertion.
+5. **Start Prospecting** — confirms setup and activates the project.
 
 On save, the wizard PATCHes the project record with all selected provider account IDs, setting the corresponding per-type foreign keys.
 
@@ -316,6 +345,7 @@ Implemented schema (Prisma) includes:
 | `system_events` | Structured system alerts and audit events |
 | `dead_letter_jobs` | Failed job archive with source queue and error detail |
 | `processed_webhook_events` | Idempotency guard for webhook ingestion |
+| `company_email_patterns` | Detected email format patterns per company domain (e.g., `{first}.{last}`) with confidence scores |
 
 ---
 

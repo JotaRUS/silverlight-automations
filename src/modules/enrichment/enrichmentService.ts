@@ -26,6 +26,8 @@ import { resolveTemplate, type TemplateContext } from '../outreach/outreachServi
 import { isChannelAvailableForProject } from '../outreach/channelSelection';
 import { ProjectCompletionService } from '../projects/projectCompletionService';
 import { normalizeEmail, normalizePhone, isFakeEmail, isFakePhone } from './enrichmentValidators';
+import { EmailPatternService } from './emailPatternService';
+import { COUNTRY_EMAIL_DEFAULTS } from '../../config/constants';
 
 const SLUG_STOP_WORDS = new Set([
   'the', 'and', 'inc', 'llc', 'ltd', 'corp', 'group', 'global', 'digital',
@@ -539,7 +541,109 @@ export class EnrichmentService {
     const collectedPhones: string[] = (job.phones ?? []).filter((p) => !isFakePhone(p));
     const leadMetadata = (lead.metadata as Record<string, unknown> | null) ?? {};
 
-    if (projectRecord?.apolloProviderAccountId) {
+    const emailPatternService = new EmailPatternService(this.prismaClient);
+    const emailStrategy = (project as unknown as { emailStrategy?: string } | null)?.emailStrategy
+      ?? COUNTRY_EMAIL_DEFAULTS[(lead.countryIso ?? '').toUpperCase()]
+      ?? 'PROFESSIONAL';
+
+    const companyDomain = job.companyName
+      ? (await this.prismaClient.company.findFirst({
+          where: { name: { equals: job.companyName, mode: 'insensitive' }, domain: { not: null } },
+          select: { domain: true }
+        }))?.domain ?? null
+      : null;
+
+    let patternGenerated = false;
+
+    if (emailStrategy === 'PROFESSIONAL' || emailStrategy === 'BOTH') {
+      if (companyDomain && accumulatedPerson.firstName && accumulatedPerson.lastName) {
+        const existingPattern = await emailPatternService.getOrDetectPattern(companyDomain);
+        if (existingPattern) {
+          const generated = emailPatternService.generateEmail(
+            accumulatedPerson.firstName,
+            accumulatedPerson.lastName,
+            companyDomain,
+            existingPattern.pattern
+          );
+          if (generated && !isFakeEmail(generated)) {
+            collectedEmails.push(generated);
+            hasEmail = true;
+            patternGenerated = true;
+          }
+        }
+      }
+
+      if (!patternGenerated && projectRecord?.apolloProviderAccountId) {
+        const apolloResult = await this.runApolloProvider({
+          leadId: job.leadId,
+          projectId: job.projectId,
+          correlationId,
+          apolloId: typeof leadMetadata.apolloId === 'string' ? leadMetadata.apolloId : undefined,
+          firstName: accumulatedPerson.firstName,
+          lastName: accumulatedPerson.lastName,
+          fullName: accumulatedPerson.fullName,
+          companyName: job.companyName,
+          linkedinUrl: accumulatedPerson.linkedinUrl
+        });
+        if (apolloResult) {
+          allResults.push(apolloResult);
+          if (apolloResult.personData?.firstName) {
+            accumulatedPerson.firstName = apolloResult.personData.firstName;
+          }
+          if (apolloResult.personData?.lastName) {
+            accumulatedPerson.lastName = apolloResult.personData.lastName;
+          }
+          if (
+            apolloResult.personData?.fullName &&
+            isPlausiblePersonName(apolloResult.personData.fullName, apolloResult.personData.firstName)
+          ) {
+            accumulatedPerson.fullName = apolloResult.personData.fullName;
+          } else if (accumulatedPerson.firstName && accumulatedPerson.lastName) {
+            accumulatedPerson.fullName = `${accumulatedPerson.firstName} ${accumulatedPerson.lastName}`;
+          }
+          this.mergePersonData(accumulatedPerson, apolloResult.personData);
+          collectedEmails.push(...apolloResult.emails);
+          collectedPhones.push(...apolloResult.phones);
+          if (apolloResult.emails.some((email) => !isFakeEmail(email))) hasEmail = true;
+          if (apolloResult.phones.some((phone) => !isFakePhone(phone))) hasPhone = true;
+
+          if (companyDomain && apolloResult.emails.length > 0) {
+            const domainEmails = apolloResult.emails.filter(
+              (e) => e.toLowerCase().endsWith(`@${companyDomain.toLowerCase()}`)
+            );
+            if (domainEmails.length > 0 && accumulatedPerson.firstName && accumulatedPerson.lastName) {
+              const allSamplesForDomain = await this.prismaClient.expertContact.findMany({
+                where: {
+                  type: 'EMAIL',
+                  valueNormalized: { endsWith: `@${companyDomain.toLowerCase()}` },
+                  deletedAt: null
+                },
+                include: { expert: { select: { firstName: true, lastName: true } } },
+                take: 10
+              });
+              const samples = allSamplesForDomain
+                .filter((c) => c.expert?.firstName && c.expert?.lastName)
+                .map((c) => ({
+                  email: c.valueNormalized ?? c.value,
+                  firstName: c.expert!.firstName!,
+                  lastName: c.expert!.lastName!
+                }));
+              samples.push(
+                ...domainEmails.map((e) => ({
+                  email: e,
+                  firstName: accumulatedPerson.firstName!,
+                  lastName: accumulatedPerson.lastName!
+                }))
+              );
+              await emailPatternService.persistPattern(companyDomain, samples);
+            }
+          }
+        }
+      }
+    } else if (!projectRecord?.apolloProviderAccountId) {
+      // no Apollo, skip
+    } else {
+      // Legacy path: if strategy is PERSONAL-only but Apollo is bound, still run Apollo for non-email data
       const apolloResult = await this.runApolloProvider({
         leadId: job.leadId,
         projectId: job.projectId,
@@ -553,24 +657,8 @@ export class EnrichmentService {
       });
       if (apolloResult) {
         allResults.push(apolloResult);
-        if (apolloResult.personData?.firstName) {
-          accumulatedPerson.firstName = apolloResult.personData.firstName;
-        }
-        if (apolloResult.personData?.lastName) {
-          accumulatedPerson.lastName = apolloResult.personData.lastName;
-        }
-        if (
-          apolloResult.personData?.fullName &&
-          isPlausiblePersonName(apolloResult.personData.fullName, apolloResult.personData.firstName)
-        ) {
-          accumulatedPerson.fullName = apolloResult.personData.fullName;
-        } else if (accumulatedPerson.firstName && accumulatedPerson.lastName) {
-          accumulatedPerson.fullName = `${accumulatedPerson.firstName} ${accumulatedPerson.lastName}`;
-        }
         this.mergePersonData(accumulatedPerson, apolloResult.personData);
-        collectedEmails.push(...apolloResult.emails);
         collectedPhones.push(...apolloResult.phones);
-        if (apolloResult.emails.some((email) => !isFakeEmail(email))) hasEmail = true;
         if (apolloResult.phones.some((phone) => !isFakePhone(phone))) hasPhone = true;
       }
     }

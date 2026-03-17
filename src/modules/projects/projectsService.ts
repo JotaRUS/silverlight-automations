@@ -1,5 +1,8 @@
 import type { Prisma, PrismaClient, Project, ScreeningQuestion } from '@prisma/client';
 import { extractApolloFiltersFromSalesNavSearch } from '../sales-nav/salesNavSearchParamExtractor';
+import { enqueueWithContext } from '../../queues/producers/enqueueWithContext';
+import { getQueues } from '../../queues';
+import { buildJobId } from '../../queues/jobId';
 
 export interface ProjectCreateInput {
   name: string;
@@ -352,6 +355,102 @@ export class ProjectsService {
     });
 
     return result.count;
+  }
+
+  public async listSalesNavSearches(projectId: string): Promise<unknown[]> {
+    return this.prismaClient.salesNavSearch.findMany({
+      where: { projectId, isActive: true, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      include: { _count: { select: { leads: true } } }
+    });
+  }
+
+  public async deleteSalesNavSearch(projectId: string, searchId: string): Promise<void> {
+    await this.prismaClient.salesNavSearch.updateMany({
+      where: { id: searchId, projectId },
+      data: { isActive: false, deletedAt: new Date() }
+    });
+  }
+
+  public async importLeads(
+    projectId: string,
+    rows: Record<string, string>[],
+    salesNavSearchId?: string
+  ): Promise<{ imported: number; duplicatesSkipped: number; errors: string[] }> {
+    let imported = 0;
+    const errors: string[] = [];
+
+    const columnMap: Record<string, string> = {
+      'First Name': 'firstName',
+      'Last Name': 'lastName',
+      'first_name': 'firstName',
+      'last_name': 'lastName',
+      'firstName': 'firstName',
+      'lastName': 'lastName',
+      'Title': 'jobTitle',
+      'Job Title': 'jobTitle',
+      'title': 'jobTitle',
+      'Company': 'companyName',
+      'Company Name': 'companyName',
+      'company': 'companyName',
+      'companyName': 'companyName',
+      'LinkedIn URL': 'linkedinUrl',
+      'LinkedIn': 'linkedinUrl',
+      'Profile URL': 'linkedinUrl',
+      'linkedinUrl': 'linkedinUrl',
+      'Location': 'country',
+      'Country': 'country',
+      'country': 'country',
+      'Email': 'email',
+      'email': 'email',
+      'Phone': 'phone',
+      'phone': 'phone'
+    };
+
+    for (const [idx, row] of rows.entries()) {
+      try {
+        const mapped: Record<string, string> = {};
+        for (const [csvCol, value] of Object.entries(row)) {
+          const field = columnMap[csvCol];
+          if (field && value) mapped[field] = value;
+        }
+
+        const firstName = mapped.firstName || '';
+        const lastName = mapped.lastName || '';
+        const fullName = `${firstName} ${lastName}`.trim();
+        if (!fullName) {
+          errors.push(`Row ${String(idx + 1)}: missing name`);
+          continue;
+        }
+
+        await enqueueWithContext(
+          getQueues().leadIngestionQueue,
+          'lead-ingestion.ingest',
+          {
+            projectId,
+            salesNavSearchId,
+            lead: {
+              firstName,
+              lastName,
+              fullName,
+              jobTitle: mapped.jobTitle || null,
+              companyName: mapped.companyName || null,
+              linkedinUrl: mapped.linkedinUrl || null,
+              countryIso: mapped.country || null,
+              emails: mapped.email ? [mapped.email] : [],
+              phones: mapped.phone ? [mapped.phone] : [],
+              metadata: { source: 'csv-import' }
+            }
+          },
+          { jobId: buildJobId('csv-import', projectId, `${String(idx)}-${String(Date.now())}`) }
+        );
+        imported += 1;
+      } catch (err) {
+        errors.push(`Row ${String(idx + 1)}: ${err instanceof Error ? err.message : 'unknown error'}`);
+      }
+    }
+
+    return { imported, duplicatesSkipped: rows.length - imported - errors.length, errors };
   }
 
   public async createScreeningQuestion(

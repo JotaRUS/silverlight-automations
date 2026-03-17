@@ -12,6 +12,7 @@ export type ProviderType =
   | 'DATAGM'
   | 'PEOPLEDATALABS'
   | 'ANYLEADS'
+  | 'OPENAI'
   | 'LINKEDIN'
   | 'EMAIL_PROVIDER'
   | 'TWILIO'

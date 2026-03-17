@@ -12,11 +12,13 @@ import {
   fetchObsSummary,
   fetchSystemEvents,
   fetchWebhookEvents,
+  getCooldownLogs,
+  type CooldownLogRecord,
   type DlqJobRecord,
   type SystemEventRecord
 } from '@/services/adminService';
 
-type Tab = 'activity' | 'dlq' | 'webhooks' | 'fraud';
+type Tab = 'activity' | 'dlq' | 'webhooks' | 'fraud' | 'cooldown';
 
 const CATEGORIES = ['', 'SYSTEM', 'JOB', 'WEBHOOK', 'ENFORCEMENT', 'FRAUD', 'ALLOCATION'] as const;
 const TIME_RANGES = [
@@ -183,13 +185,30 @@ export default function ObservabilityPage(): JSX.Element {
     refetchInterval: 30_000
   });
 
+  const cooldownQ = useQuery({
+    queryKey: ['obs-cooldown', refreshNonce],
+    queryFn: () => getCooldownLogs({ limit: 100 }),
+    refetchInterval: 30_000
+  });
+
+  const cooldownBlocked = cooldownQ.data?.filter((r) => {
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    return r.blocked && new Date(r.enforcedAt).getTime() >= thirtyDaysAgo;
+  }).length ?? 0;
+
+  const cooldownAllowed = cooldownQ.data?.filter((r) => {
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    return !r.blocked && new Date(r.enforcedAt).getTime() >= thirtyDaysAgo;
+  }).length ?? 0;
+
   const s = summaryQ.data;
 
   const TABS: { key: Tab; label: string; count?: number }[] = [
     { key: 'activity', label: 'Activity Feed', count: s?.recentEventCount },
     { key: 'dlq', label: 'Dead Letter Queue', count: s?.dlqCount },
     { key: 'webhooks', label: 'Webhook Log', count: s?.webhookCount },
-    { key: 'fraud', label: 'Fraud & Violations', count: s?.fraudFlagCount }
+    { key: 'fraud', label: 'Fraud & Violations', count: s?.fraudFlagCount },
+    { key: 'cooldown', label: 'Cooldown' }
   ];
 
   return (
@@ -489,8 +508,82 @@ export default function ObservabilityPage(): JSX.Element {
         </Card>
       )}
 
+      {tab === 'cooldown' && (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 flex items-start gap-2">
+            <span className="material-symbols-outlined text-blue-500 mt-0.5 text-base">info</span>
+            <span>
+              <strong>Outreach Cooldown (Contract 2.4):</strong> The same expert is not contacted more than once within a rolling 30-day period, regardless of channel, unless explicitly overridden.
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Card className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg text-red-600 bg-red-50">
+                <span className="material-symbols-outlined text-lg">block</span>
+              </div>
+              <div>
+                <p className="text-2xl font-bold tabular-nums text-slate-800">
+                  {cooldownQ.isLoading ? <span className="inline-block h-6 w-10 animate-pulse rounded bg-slate-100" /> : cooldownBlocked}
+                </p>
+                <p className="text-xs text-slate-500">Blocked (30d)</p>
+              </div>
+            </Card>
+            <Card className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg text-emerald-600 bg-emerald-50">
+                <span className="material-symbols-outlined text-lg">check_circle</span>
+              </div>
+              <div>
+                <p className="text-2xl font-bold tabular-nums text-slate-800">
+                  {cooldownQ.isLoading ? <span className="inline-block h-6 w-10 animate-pulse rounded bg-slate-100" /> : cooldownAllowed}
+                </p>
+                <p className="text-xs text-slate-500">Allowed (30d)</p>
+              </div>
+            </Card>
+          </div>
+
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead><tr className="border-b border-slate-200 text-xs uppercase text-slate-500">
+                  <th className="p-3 font-semibold">Expert</th>
+                  <th className="p-3 font-semibold">Project</th>
+                  <th className="p-3 font-semibold w-28">Channel</th>
+                  <th className="p-3 font-semibold w-24">Status</th>
+                  <th className="p-3 font-semibold w-36">Enforced At</th>
+                  <th className="p-3 font-semibold w-36">Expires At</th>
+                </tr></thead>
+                <tbody>
+                  {cooldownQ.isLoading && <SkeletonRows cols={6} />}
+                  {!cooldownQ.isLoading && (cooldownQ.data?.length ?? 0) === 0 && (
+                    <tr><td colSpan={6} className="py-12 text-center text-sm text-slate-400">
+                      <span className="material-symbols-outlined mb-1 block text-3xl text-slate-300">timer_off</span>
+                      No cooldown events recorded
+                    </td></tr>
+                  )}
+                  {cooldownQ.data?.map((log: CooldownLogRecord) => (
+                    <tr key={log.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                      <td className="p-3 text-sm text-slate-700">{log.expertName}</td>
+                      <td className="p-3 text-sm text-slate-600">{log.projectName}</td>
+                      <td className="p-3"><Badge tone="neutral">{log.channel}</Badge></td>
+                      <td className="p-3">
+                        <Badge tone={log.blocked ? 'danger' : 'success'}>
+                          {log.blocked ? 'Blocked' : 'Allowed'}
+                        </Badge>
+                      </td>
+                      <td className="p-3 text-xs text-slate-500 whitespace-nowrap" title={log.enforcedAt}>{relativeTime(log.enforcedAt)}</td>
+                      <td className="p-3 text-xs text-slate-500 whitespace-nowrap" title={log.expiresAt}>{new Date(log.expiresAt).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {/* Error banner */}
-      {(activityQ.isError || dlqQ.isError || whQ.isError || fraudQ.isError) && (
+      {(activityQ.isError || dlqQ.isError || whQ.isError || fraudQ.isError || cooldownQ.isError) && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           Failed to load observability data. Retrying automatically...
         </div>

@@ -350,6 +350,26 @@ export async function fetchFraudEvents(params?: ObsFilterParams): Promise<{ call
   return apiRequest<{ callLogs: FraudCallLog[]; events: SystemEventRecord[]; totalLogs: number; totalEvents: number }>(buildObsQuery('/api/v1/admin/observability/fraud', params));
 }
 
+export interface CooldownLogRecord {
+  id: string;
+  expertName: string;
+  projectName: string;
+  channel: string;
+  blocked: boolean;
+  overrideApplied: boolean;
+  reason: string | null;
+  enforcedAt: string;
+  expiresAt: string;
+}
+
+export async function getCooldownLogs(params?: { limit?: number; projectId?: string }): Promise<CooldownLogRecord[]> {
+  const query = new URLSearchParams();
+  if (params?.limit) query.set('limit', String(params.limit));
+  if (params?.projectId) query.set('projectId', params.projectId);
+  const qs = query.toString();
+  return apiRequest<CooldownLogRecord[]>(`/api/v1/admin/cooldown-logs${qs ? `?${qs}` : ''}`);
+}
+
 export interface QueueStat {
   name: string;
   waiting: number;

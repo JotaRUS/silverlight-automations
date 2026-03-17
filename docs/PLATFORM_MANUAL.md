@@ -45,10 +45,14 @@ The platform is composed of three long-running processes backed by PostgreSQL an
 ```text
                         +------------------------+
                         |   External Sources     |
-                        | Apollo / Sales Nav     |
+                        | Sales Nav URLs (primary)|
+                        | CSV Lead Import        |
+                        | Apollo (disabled by default) |
                         | 10 Enrichment Providers|
+                        | Email Pattern Engine   |
                         | 13 Messaging Channels  |
                         | Yay.com Webhooks       |
+                        | OpenAI (title scoring) |
                         +-----------+------------+
                                     |
                                     v
@@ -465,6 +469,7 @@ curl -X POST http://localhost:3000/api/v1/projects \
 | `contactoutProviderAccountId` | UUID | no | Bind ContactOut provider account |
 | `datagmProviderAccountId` | UUID | no | Bind DataGM provider account |
 | `peopledatalabsProviderAccountId` | UUID | no | Bind PeopleDataLabs provider account |
+| `openaiProviderAccountId` | UUID | no | Bind OpenAI provider account |
 | `linkedinProviderAccountId` | UUID | no | Bind LinkedIn provider account |
 | `emailProviderAccountId` | UUID | no | Bind Email provider account |
 | `twilioProviderAccountId` | UUID | no | Bind Twilio provider account |
@@ -543,6 +548,48 @@ curl -X POST http://localhost:3000/api/v1/projects/<projectId>/sales-nav-searche
 ```
 
 Minimum 1 search required. Response: `{"created": N}`
+
+#### List Sales Navigator searches
+
+```bash
+curl http://localhost:3000/api/v1/projects/<projectId>/sales-nav-searches \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Returns all Sales Nav search URLs configured for the project.
+
+#### Delete a Sales Navigator search
+
+```bash
+curl -X DELETE http://localhost:3000/api/v1/projects/<projectId>/sales-nav-searches/<searchId> \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Returns 204 No Content.
+
+#### Import leads from CSV
+
+```bash
+curl -X POST http://localhost:3000/api/v1/projects/<projectId>/import-leads \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "leads": [
+      {"firstName": "Jane", "lastName": "Doe", "companyName": "Stripe", "jobTitle": "VP of Engineering", "linkedinUrl": "https://linkedin.com/in/janedoe", "countryIso": "US"},
+      {"firstName": "John", "lastName": "Smith", "companyName": "Wise", "jobTitle": "Director of Product", "linkedinUrl": "https://linkedin.com/in/johnsmith", "countryIso": "GB"}
+    ],
+    "salesNavSearchId": "<optional-salesNavSearchId>"
+  }'
+```
+
+**Request body:**
+
+| Field              | Type     | Required | Notes                                   |
+|--------------------|----------|----------|-----------------------------------------|
+| `leads`            | object[] | yes      | Min 1 lead, each is a key-value record  |
+| `salesNavSearchId` | UUID     | no       | Associate imported leads with a search  |
+
+This endpoint supports importing leads that were exported from Sales Navigator as CSV files. The leads array accepts flexible key-value objects. Leads are ingested and enqueued for enrichment automatically.
 
 #### Manage screening questions
 
@@ -1211,6 +1258,16 @@ The `/admin/observability` page provides a unified view into every system activi
 | **Dead Letter Queue** | `DeadLetterJob` | Failed background jobs that exhausted all retries. Shows error messages, stack traces, and the original job payload |
 | **Webhook Log** | `ProcessedWebhookEvent` | Inbound webhook deduplication records — useful for verifying that Yay and Sales Nav payloads were received and processed |
 | **Fraud & Violations** | `CallLog` (fraud-flagged) + `SystemEvent` (FRAUD, ENFORCEMENT) | Suspicious call patterns and enforcement actions such as auto-cancelled tasks or idle-caller reassignments |
+| **Cooldown** | `CooldownLog` | Outreach cooldown enforcement records — shows which experts were blocked or overridden, with expert name, project, channel, and timestamps. The 30-day cooldown prevents contacting the same expert more than once within a rolling 30-day period. |
+
+#### Cooldown logs API
+
+```bash
+curl "http://localhost:3000/api/v1/admin/cooldown-logs?limit=50&projectId=<optional>" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Returns up to 200 cooldown log records with related expert and project names. Supports filtering by `projectId` and `limit` (max 200).
 
 ### Filtering and search
 
@@ -1357,6 +1414,8 @@ When a lead is ingested, the enrichment pipeline attempts to find verified conta
 
 Each attempt is logged as an `EnrichmentAttempt` with provider, status, confidence score, and response payload.
 
+**Email Pattern Engine:** During enrichment, the `EmailPatternService` analyses verified email addresses to detect company-wide email patterns (e.g., `{first}.{last}@domain.com`). When enough samples are collected (≥ 2) and confidence exceeds 80%, the pattern is stored in the `CompanyEmailPattern` table and can be used to generate email addresses for future leads at the same company domain. The service supports 11 common patterns including `{first}.{last}`, `{first}{last}`, `{f}{last}`, `{first}_{last}`, and others.
+
 **Region-aware rules:** Experts in Canada, GB, Australia, and all European countries require professional email addresses only (personal emails are filtered out).
 
 ### Auto-outreach behavior
@@ -1434,10 +1493,11 @@ Channel names are normalized automatically (e.g., `kakao`, `kaokao` → `kakaota
 
 ### Sourcing
 
-| Variable                   | Required | Description                           |
-|----------------------------|----------|---------------------------------------|
-| `APOLLO_API_KEY`           | no       | Apollo.io API key                     |
-| Sales Nav (OAuth)          | no       | Client ID, Client Secret, and Organization ID stored as encrypted provider credentials (see Provider management). Uses 3-legged OAuth (Authorization Code Flow) — after creating the provider, an admin must complete the "Authorize with LinkedIn" flow to grant member-level access. Access tokens last 60 days and are auto-refreshed. Configure via Admin → Providers. |
+| Variable                   | Required | Default | Description                           |
+|----------------------------|----------|---------|---------------------------------------|
+| `ENABLE_APOLLO_SOURCING`   | no       | `false` | Set to `true` to enable Apollo-based lead sourcing in the auto-sourcing loop. Disabled by default — Sales Nav URLs and CSV import are the primary lead sources. |
+| `APOLLO_API_KEY`           | no       | —       | Apollo.io API key (only needed if `ENABLE_APOLLO_SOURCING=true`) |
+| Sales Nav (OAuth)          | no       | —       | Client ID, Client Secret, and Organization ID stored as encrypted provider credentials (see Provider management). Uses 3-legged OAuth (Authorization Code Flow) — after creating the provider, an admin must complete the "Authorize with LinkedIn" flow to grant member-level access. Access tokens last 60 days and are auto-refreshed. Configure via Admin → Providers. |
 
 ### Enrichment providers
 
@@ -1691,8 +1751,8 @@ The platform includes a Next.js admin portal at `http://localhost:3001` (start w
 
 Five-step guided flow for creating and configuring projects:
 
-1. **Project Details** — Basics: name, description, target threshold, geography, target companies, and job titles.
-2. **Lead Sources** — Select configured provider accounts for sourcing and enrichment (Apollo, Sales Nav, enrichment providers). Provider health is validated before binding.
+1. **Job Title Discovery** — Define project basics (name, description, target threshold, geography), add target companies, and run Apollo + OpenAI job title discovery to find real titles at those organizations.
+2. **Lead Sources** — Add Sales Navigator search URLs (~6 recommended per project) as the primary lead source, optionally import leads from a CSV export, and bind enrichment providers. Apollo sourcing is disabled by default (`ENABLE_APOLLO_SOURCING=false`).
 3. **Export Destinations** — Select Google Sheets and/or Supabase accounts for export. Only accounts already configured on the Providers page are shown.
 4. **Outreach** — Select healthy outreach channels and write a mandatory message template. The template supports variable insertion: `{{FirstName}}`, `{{LastName}}`, `{{Country}}`, `{{JobTitle}}`, `{{CurrentCompany}}`. Outreach is sent automatically after enrichment.
 5. **Start Prospecting** — Completion screen with summary and links to view leads in real time.
@@ -1761,6 +1821,8 @@ Both buttons show a loading state while processing and report the number of jobs
 ### Provider management
 
 Lists all configured provider accounts with connection health checks. Supports adding new provider accounts, testing connectivity, and viewing usage metrics. Supabase can be bound as a destination provider so enriched leads are exported automatically into a configured table.
+
+Provider types include: lead sourcing (APOLLO, SALES_NAV_WEBHOOK), data enrichment (LEADMAGIC, PROSPEO, EXA, ROCKETREACH, WIZA, FORAGER, ZELIQ, CONTACTOUT, DATAGM, PEOPLEDATALABS), AI (OPENAI — used for job title scoring and expansion), outreach channels (LINKEDIN, EMAIL_PROVIDER, TWILIO, WHATSAPP_2CHAT, RESPONDIO, LINE, WECHAT, VIBER, TELEGRAM, KAKAOTALK, VOICEMAIL_DROP), and operations (YAY, GOOGLE_SHEETS).
 
 For LinkedIn Sales Navigator (SALES_NAV_WEBHOOK) providers, after creating the provider with Client ID, Client Secret, and Organization ID, an "Authorize with LinkedIn" button initiates the 3-legged OAuth flow. The admin is redirected to LinkedIn to grant member-level access, and upon return the tokens are stored automatically. The provider card shows the current OAuth status (`not_connected`, `connected`, or `expired`) and token expiration dates.
 

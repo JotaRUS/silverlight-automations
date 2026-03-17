@@ -48,6 +48,7 @@ const providerBindingSchema = z
     voicemailDropProviderAccountId: optionalUuidOrNull,
     yayProviderAccountId: optionalUuidOrNull,
     anyleadsProviderAccountId: optionalUuidOrNull,
+    openaiProviderAccountId: optionalUuidOrNull,
     googleSheetsProviderAccountId: optionalUuidOrNull,
     supabaseProviderAccountId: optionalUuidOrNull
   })
@@ -62,6 +63,7 @@ export const projectCreateSchema = z
     priority: z.number().int().min(0).default(0),
     status: z.enum(['ACTIVE', 'COMPLETED', 'PAUSED', 'ARCHIVED']).optional(),
     overrideCooldown: z.boolean().default(false),
+    emailStrategy: z.enum(['PROFESSIONAL', 'PERSONAL', 'BOTH']).optional(),
     regionConfig: z.record(z.unknown()).default({}),
     enrichmentRoutingConfig: z
       .object({
