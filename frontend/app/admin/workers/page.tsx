@@ -10,6 +10,7 @@ import { useSocket } from '@/hooks/useSocket';
 import {
   bulkExportLeads,
   bulkOutreachLeads,
+  resumeSourcing,
   fetchQueueStats,
   type QueueStat
 } from '@/services/adminService';
@@ -78,14 +79,36 @@ export default function WorkersPage(): JSX.Element {
     queryFn: listProjects
   });
 
-  const runAction = async (action: 'export' | 'outreach') => {
+  const runAction = async (action: 'export' | 'outreach' | 'resume-sourcing') => {
     setActionLoading(action);
     setActionResult(null);
     try {
-      const pid = actionProjectId || undefined;
-      const result =
-        action === 'export' ? await bulkExportLeads(pid) : await bulkOutreachLeads(pid);
-      setActionResult(`Queued ${result.queued} job(s)`);
+      if (action === 'resume-sourcing') {
+        if (!actionProjectId) return;
+        const result = await resumeSourcing(actionProjectId);
+        const parts: string[] = [];
+        if (result.leadFormCount === 0) {
+          parts.push(`No Lead Gen Forms found for org ${result.organizationId}. Create a Lead Gen Form on your LinkedIn company page first.`);
+        } else {
+          parts.push(`${String(result.leadFormCount)} Lead Gen Form(s) found: ${result.leadFormNames.join(', ')}.`);
+        }
+        if (result.leadsFound > 0) {
+          parts.push(`${String(result.leadsFound)} new lead(s) queued for ingestion.`);
+        } else if (result.totalResponses > 0) {
+          parts.push(`${String(result.totalResponses)} form response(s) in last ${String(result.lookbackDays)}d, all already processed.`);
+        } else {
+          parts.push(`No form submissions in the last ${String(result.lookbackDays)} days.`);
+        }
+        if (result.errors?.length) {
+          parts.push(`Errors: ${result.errors.join('; ')}`);
+        }
+        setActionResult(parts.join(' '));
+      } else {
+        const pid = actionProjectId || undefined;
+        const result =
+          action === 'export' ? await bulkExportLeads(pid) : await bulkOutreachLeads(pid);
+        setActionResult(`Queued ${result.queued} job(s)`);
+      }
     } catch (err) {
       setActionResult(err instanceof Error ? err.message : 'Action failed');
     } finally {
@@ -110,8 +133,15 @@ export default function WorkersPage(): JSX.Element {
     });
   };
 
-  const queueNames = Array.from(new Set(feed.map((e) => e.queueName))).sort();
-  const filteredFeed = queueFilter === 'all' ? feed : feed.filter((e) => e.queueName === queueFilter);
+  const projectNameMap = new Map(
+    (projectsQuery.data ?? []).map((p) => [p.id, p.name])
+  );
+
+  const projectFiltered = actionProjectId
+    ? feed.filter((e) => e.data?.projectId === actionProjectId)
+    : feed;
+  const queueNames = Array.from(new Set(projectFiltered.map((e) => e.queueName))).sort();
+  const filteredFeed = queueFilter === 'all' ? projectFiltered : projectFiltered.filter((e) => e.queueName === queueFilter);
 
   const queues: QueueStat[] = statsQuery.data?.queues ?? [];
   const activeQueues = queues.filter(
@@ -162,6 +192,15 @@ export default function WorkersPage(): JSX.Element {
           >
             {actionLoading === 'outreach' ? 'Queuing...' : 'Outreach enriched leads'}
           </Button>
+          {actionProjectId && (
+            <Button
+              variant="secondary"
+              onClick={() => void runAction('resume-sourcing')}
+              disabled={actionLoading !== null}
+            >
+              {actionLoading === 'resume-sourcing' ? 'Queuing...' : 'Resume sourcing'}
+            </Button>
+          )}
           {actionResult && (
             <span className="text-sm text-slate-600">{actionResult}</span>
           )}
@@ -291,9 +330,7 @@ export default function WorkersPage(): JSX.Element {
                         )}
                         {entry.data && !entry.error && (
                           <span className="text-slate-400">
-                            {Object.entries(entry.data)
-                              .map(([k, v]) => `${k}=${v}`)
-                              .join(' ')}
+                            <JobDetails data={entry.data} projectNameMap={projectNameMap} />
                           </span>
                         )}
                       </td>
@@ -324,6 +361,39 @@ function QueueStatCard({ stat }: { stat: QueueStat }): JSX.Element {
       </div>
     </Card>
   );
+}
+
+function JobDetails({
+  data,
+  projectNameMap
+}: {
+  data: Record<string, unknown>;
+  projectNameMap: Map<string, string>;
+}): JSX.Element {
+  const parts: string[] = [];
+
+  const projectName =
+    typeof data.projectName === 'string'
+      ? data.projectName
+      : typeof data.projectId === 'string'
+        ? projectNameMap.get(data.projectId) ?? null
+        : null;
+  if (projectName) parts.push(projectName);
+
+  const expertName = typeof data.expertName === 'string' ? data.expertName : null;
+  if (expertName) parts.push(expertName);
+
+  if (parts.length === 0) {
+    const displayKeys = Object.entries(data).filter(
+      ([k]) => !['projectId', 'expertId', 'leadId', 'projectName', 'expertName'].includes(k)
+    );
+    if (displayKeys.length > 0) {
+      return <>{displayKeys.map(([k, v]) => `${k}=${String(v)}`).join(' ')}</>;
+    }
+    return <>—</>;
+  }
+
+  return <>{parts.join(' · ')}</>;
 }
 
 function StatPill({

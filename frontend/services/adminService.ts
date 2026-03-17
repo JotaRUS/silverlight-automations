@@ -376,3 +376,21 @@ export async function bulkOutreachLeads(projectId?: string): Promise<{ queued: n
     body: projectId ? { projectId } : {}
   });
 }
+
+export interface ResumeSourcingResult {
+  leadsFound: number;
+  totalResponses: number;
+  alreadyProcessed: number;
+  lookbackDays: number;
+  leadFormCount: number;
+  leadFormNames: string[];
+  organizationId: string;
+  errors?: string[];
+}
+
+export async function resumeSourcing(projectId: string): Promise<ResumeSourcingResult> {
+  return apiRequest<ResumeSourcingResult>('/api/v1/admin/workers/resume-sourcing', {
+    method: 'POST',
+    body: { projectId }
+  });
+}

@@ -4,6 +4,8 @@ import { LeadStatus, ThreadStatus, ScreeningStatus } from '@prisma/client';
 
 import type { Channel as PrismaChannel } from '@prisma/client';
 
+import type { Prisma } from '@prisma/client';
+
 import { authenticate, authorize } from '../../core/auth/authMiddleware';
 import { isoCodeToLocationName } from '../../config/constants';
 import { AppError } from '../../core/errors/appError';
@@ -11,7 +13,10 @@ import { publishRealtimeEvent } from '../../core/realtime/realtimePubSub';
 import { prisma } from '../../db/client';
 import { getQueues } from '../../queues';
 import { buildJobId } from '../../queues/jobId';
+import { enqueueWithContext } from '../../queues/producers/enqueueWithContext';
 import { redisConnection } from '../../queues/redis';
+import { getLinkedInOAuthToken } from '../../integrations/sales-nav/salesNavOAuthClient';
+import { listLeadForms, listLeadFormResponses, type LinkedInOwner } from '../../integrations/sales-nav/linkedInLeadSyncClient';
 import { isChannelAvailableForProject } from '../outreach/channelSelection';
 import { resolveTemplate, type TemplateContext } from '../outreach/outreachService';
 import { ProjectCompletionService } from '../projects/projectCompletionService';
@@ -724,6 +729,163 @@ adminRoutes.get('/workers/queue-stats', async (_request, response, next) => {
     );
 
     response.status(200).json({ queues: stats });
+  } catch (error) {
+    next(error);
+  }
+});
+
+interface SalesNavSyncMetadata {
+  webhookSubscriptionId?: string;
+  lastResponsePolledAt?: string;
+  syncedLeadFormIds?: string[];
+  processedResponseIds?: string[];
+}
+
+const resumeSourcingSchema = z.object({
+  projectId: z.string().uuid()
+});
+
+adminRoutes.post('/workers/resume-sourcing', async (request, response, next) => {
+  try {
+    const { projectId } = resumeSourcingSchema.parse(request.body);
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: {
+        id: true,
+        name: true,
+        deletedAt: true,
+        salesNavWebhookProviderAccountId: true,
+        apolloProviderAccountId: true
+      }
+    });
+    if (!project || project.deletedAt) {
+      throw new AppError('Project not found', 404, 'PROJECT_NOT_FOUND');
+    }
+
+    if (!project.salesNavWebhookProviderAccountId) {
+      throw new AppError(
+        'This project has no LinkedIn Sales Navigator provider bound. Bind one in the project settings first.',
+        422,
+        'NO_SALES_NAV_ACCOUNT'
+      );
+    }
+
+    const account = await prisma.providerAccount.findUnique({
+      where: { id: project.salesNavWebhookProviderAccountId }
+    });
+    if (!account || !account.isActive) {
+      throw new AppError(
+        'The bound LinkedIn Sales Navigator account is inactive or missing.',
+        422,
+        'SALES_NAV_ACCOUNT_INACTIVE'
+      );
+    }
+
+    let token: string;
+    let organizationId: string;
+    let sponsoredAccountId: string | undefined;
+    try {
+      const oauthResult = await getLinkedInOAuthToken(account.id, prisma);
+      token = oauthResult.token;
+      organizationId = oauthResult.organizationId;
+      sponsoredAccountId = oauthResult.credentials.sponsoredAccountId;
+    } catch (err) {
+      throw new AppError(
+        `LinkedIn OAuth token unavailable — authorize the account first. ${err instanceof Error ? err.message : ''}`,
+        422,
+        'OAUTH_TOKEN_UNAVAILABLE'
+      );
+    }
+
+    const syncMeta = (account.syncMetadata as SalesNavSyncMetadata | null) ?? {};
+    const processedIds = new Set(syncMeta.processedResponseIds ?? []);
+
+    const orgOwner: LinkedInOwner = { type: 'organization', id: organizationId };
+
+    let leadFormCount = 0;
+    const leadFormNames: string[] = [];
+    try {
+      const formsResponse = await listLeadForms(token, orgOwner, { count: 100 });
+      leadFormCount = formsResponse.elements.length;
+      leadFormNames.push(
+        ...formsResponse.elements.slice(0, 10).map((f) => f.name || `Form #${String(f.id)}`)
+      );
+    } catch {
+      // forms listing failed — continue to poll responses anyway
+    }
+
+    const MANUAL_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
+    const since = Date.now() - MANUAL_LOOKBACK_MS;
+    const timeRange = { start: since, end: Date.now() };
+
+    const pollTargets: Array<{ owner: LinkedInOwner; leadType: string }> = [
+      { owner: orgOwner, leadType: 'COMPANY' },
+      { owner: orgOwner, leadType: 'EVENT' }
+    ];
+    if (sponsoredAccountId) {
+      pollTargets.push({
+        owner: { type: 'sponsoredAccount', id: sponsoredAccountId },
+        leadType: 'SPONSORED'
+      });
+    }
+
+    let enqueued = 0;
+    let totalResponses = 0;
+    const errors: string[] = [];
+    for (const target of pollTargets) {
+      try {
+        const responses = await listLeadFormResponses(
+          token, target.owner, target.leadType, timeRange
+        );
+        totalResponses += responses.elements.length;
+
+        for (const formResponse of responses.elements) {
+          if (formResponse.testLead) continue;
+          if (processedIds.has(formResponse.id)) continue;
+
+          await enqueueWithContext(
+            getQueues().salesNavIngestionQueue,
+            'linkedin-lead-sync.fetch-response',
+            {
+              providerAccountId: account.id,
+              responseId: formResponse.id,
+              organizationId,
+              leadType: formResponse.leadType
+            },
+            {
+              jobId: buildJobId('li-lead-sync', account.id, formResponse.id)
+            }
+          );
+          enqueued += 1;
+        }
+      } catch (error) {
+        errors.push(`${target.leadType}: ${error instanceof Error ? error.message : 'unknown'}`);
+      }
+    }
+
+    if (enqueued > 0) {
+      await prisma.providerAccount.update({
+        where: { id: account.id },
+        data: {
+          syncMetadata: {
+            ...syncMeta,
+            lastResponsePolledAt: new Date().toISOString()
+          } as Prisma.InputJsonValue
+        }
+      });
+    }
+
+    response.status(200).json({
+      leadsFound: enqueued,
+      totalResponses,
+      alreadyProcessed: totalResponses - enqueued,
+      lookbackDays: 30,
+      leadFormCount,
+      leadFormNames,
+      organizationId,
+      errors: errors.length > 0 ? errors : undefined
+    });
   } catch (error) {
     next(error);
   }
