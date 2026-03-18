@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -12,12 +12,17 @@ import { TagInput } from '@/components/ui/tag-input';
 import {
   EXPORT_DESTINATION_TYPES,
   OUTREACH_CHANNEL_TYPES,
-  PROVIDER_CATEGORIES,
   PROVIDER_DISPLAY_NAMES,
-  PROVIDER_TYPE_TO_FIELD,
-  TEMPLATE_VARIABLES
+  PROVIDER_TYPE_TO_FIELD
 } from '@/lib/providerConstants';
-import { listProviderAccounts } from '@/services/providerService';
+import {
+  getLinkedInOAuthStatus,
+  listProviderAccounts,
+  triggerPlaywrightOAuth,
+  getLinkedInOAuthAuthorizeUrl,
+  updateProviderAccount,
+  type LinkedInOAuthStatus
+} from '@/services/providerService';
 import {
   addProjectCompanies,
   addProjectJobTitles,
@@ -25,21 +30,14 @@ import {
   createProject,
   importLeadsCsv,
   listProjectJobTitles,
+  scrapeSalesNav,
   triggerJobTitleDiscovery,
   updateProject
 } from '@/services/projectService';
 import type { ProjectJobTitleRecord } from '@/types/project';
 import type { ProviderAccount, ProviderType } from '@/types/provider';
 
-type WizardStep = 'providers' | 'titles' | 'sources' | 'exports' | 'outreach' | 'done';
-
-const SAMPLE_DATA: Record<string, string> = {
-  '{{FirstName}}': 'Jane',
-  '{{LastName}}': 'Doe',
-  '{{Country}}': 'United States',
-  '{{JobTitle}}': 'VP of Engineering',
-  '{{CurrentCompany}}': 'Acme Corp'
-};
+type WizardStep = 'providers' | 'titles' | 'sources' | 'done';
 
 const MANDATORY_PROVIDER_TYPES: ProviderType[] = ['OPENAI', 'APOLLO'];
 const ENRICHMENT_TYPES: ProviderType[] = [
@@ -65,8 +63,8 @@ function parseSalesNavCsv(text: string): Record<string, string>[] {
 
 export default function NewProjectWizardPage(): JSX.Element {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<WizardStep>('providers');
-  const templateRef = useRef<HTMLTextAreaElement>(null);
 
   // Step 1: Provider selection + project basics
   const [name, setName] = useState('');
@@ -88,20 +86,19 @@ export default function NewProjectWizardPage(): JSX.Element {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [titleError, setTitleError] = useState('');
 
-  // Step 3: Lead Sources
+  // Step 3: Lead Sources + LinkedIn auth
   const [salesNavUrls, setSalesNavUrls] = useState<string[]>([]);
   const [newSalesNavUrl, setNewSalesNavUrl] = useState('');
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvRows, setCsvRows] = useState<Record<string, string>[]>([]);
   const [importResult, setImportResult] = useState<{ imported: number; duplicatesSkipped: number; errors: string[] } | null>(null);
   const [sourceError, setSourceError] = useState('');
-
-  // Steps 4 & 5
-  const [selectedExports, setSelectedExports] = useState<Record<string, boolean>>({});
-  const [selectedOutreach, setSelectedOutreach] = useState<Record<string, boolean>>({});
-  const [outreachTemplate, setOutreachTemplate] = useState('');
-  const [exportError, setExportError] = useState('');
-  const [outreachError, setOutreachError] = useState('');
+  const [linkedInAuthorizing, setLinkedInAuthorizing] = useState(false);
+  const [linkedInError, setLinkedInError] = useState('');
+  const [showManualCookie, setShowManualCookie] = useState(false);
+  const [manualCookie, setManualCookie] = useState('');
+  const [savingCookie, setSavingCookie] = useState(false);
+  const [scraping, setScraping] = useState(false);
 
   const providersQuery = useQuery({
     queryKey: ['providerAccounts', 'active'],
@@ -118,29 +115,30 @@ export default function NewProjectWizardPage(): JSX.Element {
     return map;
   }, [providersQuery.data]);
 
-  const exportAccounts = useMemo(() => {
-    const result: ProviderAccount[] = [];
-    for (const t of EXPORT_DESTINATION_TYPES) {
-      for (const acct of accountsByType.get(t) ?? []) result.push(acct);
-    }
-    return result;
-  }, [accountsByType]);
+  const salesNavAccount = useMemo(() => {
+    const accounts = accountsByType.get('SALES_NAV_WEBHOOK') ?? [];
+    const allAccounts = providersQuery.data ?? [];
+    const selected = accounts.find((a) => selectedProviders[a.id]);
+    if (selected) return selected;
+    const bound = allAccounts.find(
+      (a) => a.providerType === 'SALES_NAV_WEBHOOK' && selectedProviders[a.id]
+    );
+    return bound ?? accounts[0] ?? null;
+  }, [accountsByType, selectedProviders, providersQuery.data]);
 
-  const outreachAccounts = useMemo(() => {
-    const result: ProviderAccount[] = [];
-    for (const t of OUTREACH_CHANNEL_TYPES) {
-      for (const acct of accountsByType.get(t) ?? []) {
-        if (acct.lastHealthStatus && acct.lastHealthStatus !== 'unhealthy' && acct.lastHealthStatus !== 'out_of_credits') result.push(acct);
-      }
-    }
-    return result;
-  }, [accountsByType]);
+  const linkedInOAuthQuery = useQuery({
+    queryKey: ['linkedin-oauth-status', salesNavAccount?.id],
+    queryFn: () => getLinkedInOAuthStatus(salesNavAccount!.id),
+    enabled: !!salesNavAccount?.id && step === 'sources',
+    refetchInterval: linkedInAuthorizing ? 3_000 : 30_000
+  });
+
+  const oauthStatus: LinkedInOAuthStatus | null = linkedInOAuthQuery.data ?? null;
 
   useEffect(() => {
     return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
   }, []);
 
-  // Derived: which mandatory providers are selected?
   const selectedMandatory = useMemo(() => {
     const result: Record<string, boolean> = {};
     for (const mType of MANDATORY_PROVIDER_TYPES) {
@@ -160,7 +158,6 @@ export default function NewProjectWizardPage(): JSX.Element {
 
   const allMandatoryMet = selectedMandatory.OPENAI && selectedMandatory.APOLLO && hasEnrichmentSelected;
 
-  // Auto-select single accounts for mandatory provider types
   useEffect(() => {
     if (!providersQuery.data) return;
     const auto: Record<string, boolean> = {};
@@ -296,7 +293,7 @@ export default function NewProjectWizardPage(): JSX.Element {
     onError: (err) => setTitleError(err instanceof Error ? err.message : 'Failed to save titles')
   });
 
-  // --- Step 3: Lead sources ---
+  // --- Step 3: Lead sources + LinkedIn auth + scraping ---
   const addSalesNavUrl = useCallback(() => {
     const url = newSalesNavUrl.trim();
     if (!url || salesNavUrls.includes(url)) return;
@@ -320,7 +317,104 @@ export default function NewProjectWizardPage(): JSX.Element {
     reader.readAsText(file);
   }, []);
 
-  const saveSourcesAndContinue = useMutation({
+  const handlePlaywrightAuth = async (): Promise<void> => {
+    if (!salesNavAccount) return;
+    setLinkedInAuthorizing(true);
+    setLinkedInError('');
+    try {
+      await triggerPlaywrightOAuth(salesNavAccount.id);
+      void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', salesNavAccount.id] });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to authorize';
+      if (msg.includes('playwright') || msg.includes('Playwright')) {
+        setLinkedInError('Could not open browser window. Use manual cookie paste below as fallback.');
+        setLinkedInAuthorizing(false);
+        return;
+      }
+      // Proxy timeout or connection abort — the Playwright browser is still
+      // running server-side. Polling will detect the cookie once it's saved.
+      if (msg.includes('Request failed') || msg.includes('network') || msg.includes('abort')) {
+        void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', salesNavAccount.id] });
+        return;
+      }
+      setLinkedInError(msg);
+    } finally {
+      setLinkedInAuthorizing(false);
+    }
+  };
+
+  const handleFallbackAuth = async (): Promise<void> => {
+    if (!salesNavAccount) return;
+    setLinkedInAuthorizing(true);
+    setLinkedInError('');
+    try {
+      const { authorizationUrl } = await getLinkedInOAuthAuthorizeUrl(salesNavAccount.id);
+      window.open(authorizationUrl, 'linkedin-oauth', 'width=600,height=700');
+    } catch (err) {
+      setLinkedInError(err instanceof Error ? err.message : 'Failed to start authorization');
+      setLinkedInAuthorizing(false);
+    }
+  };
+
+  useEffect(() => {
+    const handler = (event: MessageEvent): void => {
+      if (event.data?.type !== 'linkedin-oauth-success') return;
+      setLinkedInAuthorizing(false);
+      void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', salesNavAccount?.id] });
+      setTimeout(async () => {
+        if (!salesNavAccount) return;
+        try {
+          const fresh = await getLinkedInOAuthStatus(salesNavAccount.id);
+          if (!fresh.linkedInSessionCookie) {
+            setShowManualCookie(true);
+            setLinkedInError(
+              'OAuth tokens saved, but the session cookie could not be captured via browser tab. ' +
+              'Paste your li_at cookie below to enable scraping.'
+            );
+          }
+        } catch { /* status will be re-fetched by the query */ }
+      }, 1000);
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [queryClient, salesNavAccount]);
+
+  const handleSaveManualCookie = async (): Promise<void> => {
+    if (!salesNavAccount || !manualCookie.trim()) return;
+    setSavingCookie(true);
+    setLinkedInError('');
+    try {
+      await updateProviderAccount(salesNavAccount.id, {
+        credentials: {
+          linkedInSessionCookie: manualCookie.trim(),
+          linkedInSessionCookieCapturedAt: new Date().toISOString()
+        }
+      });
+      setManualCookie('');
+      setShowManualCookie(false);
+      void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', salesNavAccount.id] });
+    } catch (err) {
+      setLinkedInError(err instanceof Error ? err.message : 'Failed to save cookie');
+    } finally {
+      setSavingCookie(false);
+    }
+  };
+
+  const handleScrapeAll = async (): Promise<void> => {
+    setScraping(true);
+    setSourceError('');
+    try {
+      const result = await scrapeSalesNav(projectId);
+      setSourceError('');
+      alert(`Queued scraping for ${String(result.queued)} search URL(s). Leads will appear on the Leads page shortly.`);
+    } catch (err) {
+      setSourceError(err instanceof Error ? err.message : 'Failed to start scraping');
+    } finally {
+      setScraping(false);
+    }
+  };
+
+  const saveSourcesAndFinish = useMutation({
     mutationFn: async () => {
       if (salesNavUrls.length > 0) {
         await addSalesNavSearches(
@@ -333,41 +427,8 @@ export default function NewProjectWizardPage(): JSX.Element {
         setImportResult(result);
       }
     },
-    onSuccess: () => { setStep('exports'); setSourceError(''); },
+    onSuccess: () => { setStep('done'); setSourceError(''); },
     onError: (err) => { setSourceError(err instanceof Error ? err.message : 'Failed to save sources'); }
-  });
-
-  // --- Step 4: Exports ---
-  const exportBindMutation = useMutation({
-    mutationFn: async () => {
-      const bindings: Record<string, string> = {};
-      for (const acct of exportAccounts) {
-        if (selectedExports[acct.id]) {
-          bindings[PROVIDER_TYPE_TO_FIELD[acct.providerType]] = acct.id;
-        }
-      }
-      if (Object.keys(bindings).length > 0) {
-        return updateProject(projectId, bindings as never);
-      }
-    },
-    onSuccess: () => { setStep('outreach'); setExportError(''); },
-    onError: (err) => { setExportError(err instanceof Error ? err.message : 'Failed to bind export destinations'); }
-  });
-
-  // --- Step 5: Outreach ---
-  const outreachBindMutation = useMutation({
-    mutationFn: async () => {
-      if (!outreachTemplate.trim()) throw new Error('Message template is required');
-      const bindings: Record<string, string | null> = { outreachMessageTemplate: outreachTemplate };
-      for (const acct of outreachAccounts) {
-        if (selectedOutreach[acct.id]) {
-          bindings[PROVIDER_TYPE_TO_FIELD[acct.providerType]] = acct.id;
-        }
-      }
-      return updateProject(projectId, bindings as never);
-    },
-    onSuccess: () => { setStep('done'); setOutreachError(''); },
-    onError: (err) => { setOutreachError(err instanceof Error ? err.message : 'Failed to save outreach configuration'); }
   });
 
   // Toggle helpers
@@ -386,67 +447,19 @@ export default function NewProjectWizardPage(): JSX.Element {
     });
   }, [providersQuery.data]);
 
-  const toggleExport = useCallback((accountId: string, providerType: ProviderType) => {
-    setSelectedExports((prev) => {
-      const next = { ...prev };
-      if (next[accountId]) { delete next[accountId]; }
-      else {
-        for (const other of exportAccounts) {
-          if (other.providerType === providerType && other.id !== accountId) delete next[other.id];
-        }
-        next[accountId] = true;
-      }
-      return next;
-    });
-  }, [exportAccounts]);
-
-  const toggleOutreach = useCallback((accountId: string, providerType: ProviderType) => {
-    setSelectedOutreach((prev) => {
-      const next = { ...prev };
-      if (next[accountId]) { delete next[accountId]; }
-      else {
-        for (const other of outreachAccounts) {
-          if (other.providerType === providerType && other.id !== accountId) delete next[other.id];
-        }
-        next[accountId] = true;
-      }
-      return next;
-    });
-  }, [outreachAccounts]);
-
-  const insertVariable = useCallback((variable: string) => {
-    const textarea = templateRef.current;
-    if (!textarea) { setOutreachTemplate((prev) => prev + variable); return; }
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    setOutreachTemplate(outreachTemplate.slice(0, start) + variable + outreachTemplate.slice(end));
-    requestAnimationFrame(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + variable.length, start + variable.length);
-    });
-  }, [outreachTemplate]);
-
-  const templatePreview = useMemo(() => {
-    let preview = outreachTemplate;
-    for (const [key, value] of Object.entries(SAMPLE_DATA)) {
-      preview = preview.split(key).join(value);
-    }
-    return preview;
-  }, [outreachTemplate]);
-
   const goToLeads = useCallback(() => {
     router.push(`/admin/leads?projectId=${projectId}`);
   }, [router, projectId]);
 
-  const outreachSelectedCount = Object.values(selectedOutreach).filter(Boolean).length;
   const selectedTitleCount = discoveredTitles.filter((t) => t.selected).length;
 
   const isAfterStep = (target: WizardStep): boolean => {
-    const order: WizardStep[] = ['providers', 'titles', 'sources', 'exports', 'outreach', 'done'];
+    const order: WizardStep[] = ['providers', 'titles', 'sources', 'done'];
     return order.indexOf(step) > order.indexOf(target);
   };
 
-  // Provider account picker component
+  const hasCookie = oauthStatus?.linkedInSessionCookie === true;
+
   const renderProviderPicker = (
     types: ProviderType[],
     label: string,
@@ -534,24 +547,19 @@ export default function NewProjectWizardPage(): JSX.Element {
         <div className="h-px flex-1 bg-slate-200" />
         <StepIndicator num={3} label="Lead Sources" active={step === 'sources'} done={isAfterStep('sources')} />
         <div className="h-px flex-1 bg-slate-200" />
-        <StepIndicator num={4} label="Exports" active={step === 'exports'} done={isAfterStep('exports')} />
-        <div className="h-px flex-1 bg-slate-200" />
-        <StepIndicator num={5} label="Outreach" active={step === 'outreach'} done={isAfterStep('outreach')} />
-        <div className="h-px flex-1 bg-slate-200" />
-        <StepIndicator num={6} label="Done" active={step === 'done'} done={false} />
+        <StepIndicator num={4} label="Done" active={step === 'done'} done={false} />
       </div>
 
-      {/* ── Step 1: Providers + Project Basics ── */}
+      {/* -- Step 1: Providers + Project Basics -- */}
       {step === 'providers' && (
         <Card className="space-y-5">
           <div>
             <h2 className="text-lg font-bold">Create Project & Select Providers</h2>
             <p className="text-sm text-slate-500">
-              Set up your project and bind the required provider accounts. OpenAI and Apollo are mandatory for job title discovery.
+              Set up your project and bind all provider accounts. OpenAI and Apollo are mandatory. Outreach channels and export destinations are optional.
             </p>
           </div>
 
-          {/* Project basics */}
           <div className="space-y-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Project Name *</label>
@@ -596,7 +604,6 @@ export default function NewProjectWizardPage(): JSX.Element {
             )}
           </div>
 
-          {/* Provider selection */}
           <div className="space-y-4 pt-4 border-t border-slate-100">
             <h3 className="text-sm font-bold text-slate-800">Provider Accounts</h3>
 
@@ -672,7 +679,7 @@ export default function NewProjectWizardPage(): JSX.Element {
         </Card>
       )}
 
-      {/* ── Step 2: Job Title Discovery ── */}
+      {/* -- Step 2: Job Title Discovery -- */}
       {step === 'titles' && (
         <Card className="space-y-5">
           <div>
@@ -775,23 +782,150 @@ export default function NewProjectWizardPage(): JSX.Element {
         </Card>
       )}
 
-      {/* ── Step 3: Lead Sources ── */}
+      {/* -- Step 3: Lead Sources with LinkedIn Auth + Scraping -- */}
       {step === 'sources' && (
         <Card className="space-y-5">
           <div>
             <h2 className="text-lg font-bold">Lead Sources</h2>
             <p className="text-sm text-slate-500">
-              Add Sales Navigator search URLs (~6 recommended per project) and optionally import leads from a CSV export.
+              Connect to LinkedIn Sales Navigator to scrape leads automatically. Add search URLs (~6 recommended), authorize your LinkedIn session, then scrape.
             </p>
           </div>
 
+          {/* LinkedIn Authorization */}
+          {salesNavAccount && hasCookie && (
+            <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50/50 px-4 py-3">
+              <span className="inline-block size-2 rounded-full bg-emerald-500 shrink-0" />
+              <p className="flex-1 text-sm text-emerald-800">
+                LinkedIn session active
+                {oauthStatus?.linkedInSessionCookieCapturedAt && (
+                  <span className="text-emerald-600 ml-1 text-xs">
+                    (since {new Date(oauthStatus.linkedInSessionCookieCapturedAt).toLocaleDateString()})
+                  </span>
+                )}
+              </p>
+              <button
+                type="button"
+                onClick={() => void handlePlaywrightAuth()}
+                disabled={linkedInAuthorizing}
+                className="text-xs text-slate-400 hover:text-slate-600 hover:underline disabled:opacity-50"
+              >
+                {linkedInAuthorizing ? 'Re-authorizing...' : 'Re-authorize'}
+              </button>
+            </div>
+          )}
+
+          {salesNavAccount && !hasCookie && (
+            <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/40 p-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-blue-800">
+                  <span className="material-symbols-outlined text-base align-text-bottom mr-1">lock</span>
+                  LinkedIn Session
+                </h3>
+                {oauthStatus && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                    No session cookie
+                  </span>
+                )}
+              </div>
+
+              <p className="text-xs text-slate-600">
+                Authorize with LinkedIn to capture a session cookie. This is needed for scraping Sales Navigator search results.
+                A browser window will open — if you&apos;ve logged in before, it will remember your session.
+              </p>
+
+              {linkedInError && <p className="text-xs text-red-600">{linkedInError}</p>}
+
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => void handlePlaywrightAuth()}
+                  disabled={linkedInAuthorizing}
+                >
+                  {linkedInAuthorizing ? 'Authorizing (browser will open)...' : 'Authorize with LinkedIn'}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => void handleFallbackAuth()}
+                  disabled={linkedInAuthorizing}
+                  className="text-xs text-slate-400 hover:text-slate-600 hover:underline disabled:opacity-50"
+                >
+                  Open in browser tab
+                </button>
+              </div>
+
+              <div className="border-t border-blue-200 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowManualCookie((prev) => !prev)}
+                  className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
+                >
+                  <span className="material-symbols-outlined text-sm">
+                    {showManualCookie ? 'expand_less' : 'expand_more'}
+                  </span>
+                  Manual cookie paste (fallback)
+                </button>
+                {showManualCookie && (
+                  <div className="mt-2 space-y-2">
+                    <p className="text-xs text-slate-500">
+                      Open LinkedIn in your browser, then DevTools &gt; Application &gt; Cookies &gt; linkedin.com.
+                      Copy the value of the <code className="font-mono bg-slate-100 px-1 rounded">li_at</code> cookie.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        value={manualCookie}
+                        onChange={(e) => setManualCookie(e.target.value)}
+                        placeholder="Paste li_at cookie value..."
+                        className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-primary"
+                      />
+                      <Button
+                        onClick={() => void handleSaveManualCookie()}
+                        disabled={!manualCookie.trim() || savingCookie}
+                      >
+                        {savingCookie ? 'Saving...' : 'Save'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {!salesNavAccount && (
+            <div className="rounded-lg border-2 border-dashed border-amber-200 bg-amber-50/50 p-4 text-center">
+              <span className="material-symbols-outlined text-2xl text-amber-400">warning</span>
+              <p className="text-sm text-amber-800 mt-1">
+                No Lead Sync API (Sales Navigator) provider is configured.{' '}
+                <button type="button" onClick={() => router.push('/admin/providers')} className="underline font-medium">
+                  Go to Providers
+                </button>{' '}
+                to add one first.
+              </p>
+            </div>
+          )}
+
           {/* Sales Nav URLs */}
           <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-slate-700">
-              <span className="material-symbols-outlined text-base align-text-bottom mr-1">link</span>
-              Sales Navigator Searches
-              <span className="ml-2 text-xs font-normal text-slate-400">({salesNavUrls.length}/6 recommended)</span>
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-700">
+                <span className="material-symbols-outlined text-base align-text-bottom mr-1">link</span>
+                Sales Navigator Searches
+                <span className="ml-2 text-xs font-normal text-slate-400">({salesNavUrls.length}/6 recommended)</span>
+              </h3>
+              {salesNavUrls.length > 0 && hasCookie && (
+                <button
+                  type="button"
+                  onClick={() => void handleScrapeAll()}
+                  disabled={scraping}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-sm">
+                    {scraping ? 'progress_activity' : 'download'}
+                  </span>
+                  {scraping ? 'Scraping...' : 'Scrape All'}
+                </button>
+              )}
+            </div>
 
             {salesNavUrls.length > 0 && (
               <div className="space-y-1.5">
@@ -833,6 +967,7 @@ export default function NewProjectWizardPage(): JSX.Element {
             <h3 className="text-sm font-semibold text-slate-700">
               <span className="material-symbols-outlined text-base align-text-bottom mr-1">upload_file</span>
               Import Leads from CSV
+              <span className="ml-1 text-xs font-normal text-slate-400">(optional)</span>
             </h3>
             <label className="flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-200 p-4 cursor-pointer hover:border-slate-300 hover:bg-slate-50 transition-colors">
               <span className="material-symbols-outlined text-slate-400">cloud_upload</span>
@@ -858,136 +993,16 @@ export default function NewProjectWizardPage(): JSX.Element {
           {sourceError && <p className="text-sm text-red-600">{sourceError}</p>}
 
           <div className="flex justify-between">
-            <Button onClick={() => setStep('exports')} className="bg-slate-100 text-slate-700 hover:bg-slate-200">Skip</Button>
-            <Button onClick={() => saveSourcesAndContinue.mutate()} disabled={saveSourcesAndContinue.isPending}>
-              {saveSourcesAndContinue.isPending ? 'Saving...' : 'Save & Continue'}
-              <span className="material-symbols-outlined text-base">arrow_forward</span>
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {/* ── Step 4: Exports ── */}
-      {step === 'exports' && (
-        <Card className="space-y-5">
-          <div>
-            <h2 className="text-lg font-bold">Export Destinations</h2>
-            <p className="text-sm text-slate-500">Choose where enriched leads should be automatically exported.</p>
-          </div>
-          {exportAccounts.length === 0 ? (
-            <div className="rounded-lg border-2 border-dashed border-slate-200 p-8 text-center">
-              <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">cloud_off</span>
-              <p className="text-sm font-medium text-slate-600">No export destinations configured</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {exportAccounts.map((acct) => {
-                const isSelected = !!selectedExports[acct.id];
-                return (
-                  <button key={acct.id} type="button" onClick={() => toggleExport(acct.id, acct.providerType)}
-                    className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
-                      isSelected ? 'border-primary bg-primary/5 ring-1 ring-primary/30' : 'border-slate-200 bg-white hover:border-slate-300'
-                    }`}>
-                    <div className={`flex size-5 shrink-0 items-center justify-center rounded border ${
-                      isSelected ? 'border-primary bg-primary text-white' : 'border-slate-300'
-                    }`}>
-                      {isSelected && <span className="material-symbols-outlined text-sm">check</span>}
-                    </div>
-                    <span className="text-sm text-slate-800 truncate">{PROVIDER_DISPLAY_NAMES[acct.providerType]} — {acct.accountLabel}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          {exportError && <p className="text-sm text-red-600">{exportError}</p>}
-          <div className="flex justify-between">
-            <Button onClick={() => setStep('outreach')} className="bg-slate-100 text-slate-700 hover:bg-slate-200">Skip</Button>
-            <Button onClick={() => exportBindMutation.mutate()} disabled={Object.values(selectedExports).filter(Boolean).length === 0 || exportBindMutation.isPending}>
-              {exportBindMutation.isPending ? 'Saving...' : 'Save & Continue'}
-              <span className="material-symbols-outlined text-base">arrow_forward</span>
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {/* ── Step 5: Outreach ── */}
-      {step === 'outreach' && (
-        <Card className="space-y-5">
-          <div>
-            <h2 className="text-lg font-bold">Outreach Configuration</h2>
-            <p className="text-sm text-slate-500">Select outreach channels and write a message template.</p>
-          </div>
-          {outreachAccounts.length === 0 ? (
-            <div className="rounded-lg border-2 border-dashed border-slate-200 p-8 text-center">
-              <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">campaign</span>
-              <p className="text-sm font-medium text-slate-600">No healthy outreach channels</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-slate-700">Channels</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {outreachAccounts.map((acct) => {
-                  const isSelected = !!selectedOutreach[acct.id];
-                  return (
-                    <button key={acct.id} type="button" onClick={() => toggleOutreach(acct.id, acct.providerType)}
-                      className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
-                        isSelected ? 'border-primary bg-primary/5 ring-1 ring-primary/30' : 'border-slate-200 bg-white hover:border-slate-300'
-                      }`}>
-                      <div className={`flex size-5 shrink-0 items-center justify-center rounded border ${
-                        isSelected ? 'border-primary bg-primary text-white' : 'border-slate-300'
-                      }`}>
-                        {isSelected && <span className="material-symbols-outlined text-sm">check</span>}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-slate-800 truncate">{PROVIDER_DISPLAY_NAMES[acct.providerType]} — {acct.accountLabel}</p>
-                        <p className="text-[11px] text-emerald-600">Connected</p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-700">Message Template *</h3>
-              <span className="text-xs text-slate-400">{outreachTemplate.length} chars</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {TEMPLATE_VARIABLES.map((v) => (
-                <button key={v.key} type="button" onClick={() => insertVariable(v.key)}
-                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors">
-                  <span className="material-symbols-outlined text-xs">{v.icon}</span>{v.label}
-                </button>
-              ))}
-            </div>
-            <textarea
-              ref={templateRef}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary min-h-[100px] resize-y"
-              value={outreachTemplate}
-              onChange={(e) => setOutreachTemplate(e.target.value)}
-              placeholder="Hi {{FirstName}}, we have a project that matches your expertise..."
-            />
-            {outreachTemplate.trim() && (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Preview</p>
-                <p className="text-sm text-slate-700 whitespace-pre-wrap">{templatePreview}</p>
-              </div>
-            )}
-          </div>
-          {outreachError && <p className="text-sm text-red-600">{outreachError}</p>}
-          <div className="flex justify-between">
             <Button onClick={() => setStep('done')} className="bg-slate-100 text-slate-700 hover:bg-slate-200">Skip</Button>
-            <Button onClick={() => outreachBindMutation.mutate()}
-              disabled={!outreachTemplate.trim() || outreachSelectedCount === 0 || outreachBindMutation.isPending}>
-              {outreachBindMutation.isPending ? 'Saving...' : 'Save & Finish'}
+            <Button onClick={() => saveSourcesAndFinish.mutate()} disabled={saveSourcesAndFinish.isPending}>
+              {saveSourcesAndFinish.isPending ? 'Saving...' : 'Save & Finish'}
               <span className="material-symbols-outlined text-base">arrow_forward</span>
             </Button>
           </div>
         </Card>
       )}
 
-      {/* ── Step 6: Done ── */}
+      {/* -- Step 4: Done -- */}
       {step === 'done' && (
         <Card className="space-y-5 text-center py-8">
           <div className="flex justify-center">

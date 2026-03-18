@@ -1,8 +1,18 @@
-import { chromium, type Browser, type BrowserContext } from 'playwright';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
+import { chromium, type BrowserContext } from 'playwright';
 
 import { logger } from '../../core/logging/logger';
 
 const PLAYWRIGHT_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
+
+const DEFAULT_PROFILE_DIR = path.join(
+  os.homedir(),
+  '.silverlight',
+  'playwright-linkedin-profile'
+);
 
 export interface PlaywrightOAuthResult {
   code: string;
@@ -12,8 +22,10 @@ export interface PlaywrightOAuthResult {
 }
 
 /**
- * Launches a headed Chromium browser, navigates to the LinkedIn OAuth
- * authorization URL, and waits for the user to log in and authorize.
+ * Launches a headed Chromium browser with a **persistent profile** so
+ * the LinkedIn login session survives across invocations. On the first
+ * run the user must log in; subsequent launches reuse the stored session
+ * and typically only require one-click OAuth consent.
  *
  * After LinkedIn redirects to the callback URL, extracts both the OAuth
  * authorization code (from the redirect URL) and the `li_at` session
@@ -23,46 +35,67 @@ export async function launchLinkedInOAuthBrowser(
   authorizeUrl: string,
   callbackUrlPrefix: string
 ): Promise<PlaywrightOAuthResult> {
-  let browser: Browser | null = null;
+  let context: BrowserContext | null = null;
 
   try {
-    browser = await chromium.launch({
+    const profileDir = process.env.PLAYWRIGHT_PROFILE_DIR ?? DEFAULT_PROFILE_DIR;
+    await fs.mkdir(profileDir, { recursive: true });
+
+    context = await chromium.launchPersistentContext(profileDir, {
       headless: false,
+      viewport: { width: 1280, height: 900 },
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox'
-      ]
-    });
-
-    const context: BrowserContext = await browser.newContext({
-      viewport: { width: 1280, height: 900 },
+      ],
       userAgent:
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ' +
         'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
       locale: 'en-US'
     });
 
-    const page = await context.newPage();
+    const page = context.pages()[0] ?? await context.newPage();
+
+    let capturedCode: string | null = null;
+    let capturedState: string | null = null;
+    let capturedError: string | null = null;
+    let capturedErrorDesc: string | null = null;
+
+    const callbackPromise = new Promise<void>((resolve) => {
+      void page.route(`${callbackUrlPrefix}**`, (route) => {
+        const url = new URL(route.request().url());
+        capturedCode = url.searchParams.get('code');
+        capturedState = url.searchParams.get('state');
+        capturedError = url.searchParams.get('error');
+        capturedErrorDesc = url.searchParams.get('error_description');
+        logger.info('playwright-oauth-callback-intercepted');
+        void route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          body: '<html><body><h2>Authorization captured</h2><p>You can close this window.</p></body></html>'
+        });
+        resolve();
+      });
+    });
 
     logger.info('playwright-oauth-navigating-to-linkedin');
     await page.goto(authorizeUrl, { waitUntil: 'domcontentloaded' });
 
     logger.info('playwright-oauth-waiting-for-user-login');
-    await page.waitForURL(`${callbackUrlPrefix}**`, {
-      timeout: PLAYWRIGHT_LOGIN_TIMEOUT_MS,
-      waitUntil: 'domcontentloaded'
-    });
+    await Promise.race([
+      callbackPromise,
+      new Promise<void>((_, reject) =>
+        setTimeout(() => { reject(new Error('LinkedIn OAuth timed out waiting for user login')); }, PLAYWRIGHT_LOGIN_TIMEOUT_MS)
+      )
+    ]);
 
-    const finalUrl = new URL(page.url());
-    const code = finalUrl.searchParams.get('code');
-    const state = finalUrl.searchParams.get('state');
+    const code = capturedCode;
+    const state = capturedState;
 
     if (!code || !state) {
-      const oauthError = finalUrl.searchParams.get('error');
-      const errorDesc = finalUrl.searchParams.get('error_description');
       throw new Error(
-        `LinkedIn OAuth redirect missing code/state. error=${oauthError ?? 'none'}, ` +
-        `description=${errorDesc ?? 'none'}`
+        `LinkedIn OAuth redirect missing code/state. error=${capturedError ?? 'none'}, ` +
+        `description=${capturedErrorDesc ?? 'none'}`
       );
     }
 
@@ -81,8 +114,8 @@ export async function launchLinkedInOAuthBrowser(
 
     return { code, state, liAtCookie, liAtCookieExpiry };
   } finally {
-    if (browser) {
-      await browser.close().catch((err: unknown) => {
+    if (context) {
+      await context.close().catch((err: unknown) => {
         logger.warn({ err }, 'playwright-oauth-browser-close-error');
       });
     }
