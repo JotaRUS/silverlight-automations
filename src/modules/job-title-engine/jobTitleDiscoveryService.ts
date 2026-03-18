@@ -21,10 +21,13 @@ export class JobTitleDiscoveryService {
     this.providerAccountsService = new ProviderAccountsService(dependencies.prismaClient);
   }
 
-  private async resolveOpenAiCredentials(projectId: string): Promise<OpenAiCredentials> {
+  private async resolveProjectContext(projectId: string): Promise<{
+    projectName: string;
+    openAiCredentials: OpenAiCredentials;
+  }> {
     const project = await this.dependencies.prismaClient.project.findUnique({
       where: { id: projectId },
-      select: { openaiProviderAccountId: true }
+      select: { name: true, openaiProviderAccountId: true }
     });
 
     if (!project?.openaiProviderAccountId) {
@@ -41,33 +44,54 @@ export class JobTitleDiscoveryService {
     );
 
     return {
-      apiKey: typeof credentials.apiKey === 'string' ? credentials.apiKey : '',
-      model: typeof credentials.model === 'string' ? credentials.model : 'gpt-4o-mini',
-      classificationTemperature: typeof credentials.classificationTemperature === 'number'
-        ? credentials.classificationTemperature
-        : 0.2
+      projectName: project.name,
+      openAiCredentials: {
+        apiKey: typeof credentials.apiKey === 'string' ? credentials.apiKey : '',
+        model: typeof credentials.model === 'string' ? credentials.model : 'gpt-4o-mini',
+        classificationTemperature: typeof credentials.classificationTemperature === 'number'
+          ? credentials.classificationTemperature
+          : 0.2
+      }
     };
   }
 
   public async discover(request: JobTitleDiscoveryRequest, correlationId: string): Promise<number> {
-    const openAiCredentials = await this.resolveOpenAiCredentials(request.projectId);
+    const { projectName, openAiCredentials } = await this.resolveProjectContext(request.projectId);
     let persistedCount = 0;
 
     for (const company of request.companies) {
       const collectedTitles: string[] = [];
       for (const geographyIsoCode of request.geographyIsoCodes) {
-        const titles = await this.dependencies.apolloClient.fetchJobTitles({
-          projectId: request.projectId,
-          companyName: company.companyName,
-          geographyIsoCode,
-          correlationId
-        });
-        collectedTitles.push(...titles);
+        try {
+          const titles = await this.dependencies.apolloClient.fetchJobTitles({
+            projectId: request.projectId,
+            companyName: company.companyName,
+            geographyIsoCode,
+            correlationId
+          });
+          collectedTitles.push(...titles);
+        } catch (error) {
+          await this.dependencies.prismaClient.systemEvent.create({
+            data: {
+              category: 'JOB',
+              entityType: 'job_title_discovery',
+              entityId: request.projectId,
+              correlationId,
+              message: 'job_title_discovery_apollo_titles_failed',
+              payload: {
+                companyName: company.companyName,
+                geographyIsoCode,
+                error: error instanceof Error ? error.message : 'unknown error'
+              }
+            }
+          });
+        }
       }
 
       const normalizedSourceTitles = deduplicateNormalizedTitles(collectedTitles);
       const expandedTitles = await this.dependencies.openAiClient.expandAndScoreTitles(
         {
+          projectName,
           companyName: company.companyName,
           geographyIsoCode: request.geographyIsoCodes[0],
           sourceTitles: normalizedSourceTitles,
@@ -94,22 +118,25 @@ export class JobTitleDiscoveryService {
             titleOriginal: expandedTitle.title,
             titleNormalized: expandedTitle.title.toLowerCase(),
             relevanceScore: expandedTitle.relevanceScore,
-            source: 'apollo+openai',
+            source: normalizedSourceTitles.length > 0 ? 'apollo+openai' : 'openai_project_inference',
             aiDecisionLog: {
               reason: expandedTitle.reason,
               relevant: expandedTitle.relevant,
               relevanceScore: expandedTitle.relevanceScore,
               generatedAt: clock.now().toISOString(),
+              projectName,
               sourceTitles: normalizedSourceTitles
             }
           },
           update: {
             relevanceScore: expandedTitle.relevanceScore,
+            source: normalizedSourceTitles.length > 0 ? 'apollo+openai' : 'openai_project_inference',
             aiDecisionLog: {
               reason: expandedTitle.reason,
               relevant: expandedTitle.relevant,
               relevanceScore: expandedTitle.relevanceScore,
               generatedAt: clock.now().toISOString(),
+              projectName,
               sourceTitles: normalizedSourceTitles
             }
           }
@@ -127,7 +154,8 @@ export class JobTitleDiscoveryService {
           payload: {
             companyName: company.companyName,
             persistedCount,
-            sourceTitleCount: normalizedSourceTitles.length
+            sourceTitleCount: normalizedSourceTitles.length,
+            inferenceMode: normalizedSourceTitles.length > 0 ? 'apollo_supported' : 'openai_only'
           }
         }
       });
