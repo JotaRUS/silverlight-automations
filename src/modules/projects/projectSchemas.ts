@@ -98,14 +98,24 @@ export const attachCompaniesSchema = z.object({
     )
 });
 
+const relevanceScoreSchema = z
+  .union([z.number(), z.string()])
+  .optional()
+  .transform((val) => {
+    if (val === undefined || val === null) return undefined;
+    const n = typeof val === 'string' ? Number.parseFloat(val) : val;
+    if (!Number.isFinite(n)) return undefined;
+    const clamped = n > 1 ? n / 100 : n;
+    return Math.max(0, Math.min(1, clamped));
+  });
+
 export const attachJobTitlesSchema = z.object({
-  jobTitles: z
-    .array(
-      z.object({
-        title: z.string().min(1),
-        relevanceScore: z.number().min(0).max(1).optional()
-      })
-    )
+  jobTitles: z.array(
+    z.object({
+      title: z.string().min(1),
+      relevanceScore: relevanceScoreSchema
+    })
+  )
 });
 
 export const salesNavSearchCreateSchema = z.object({

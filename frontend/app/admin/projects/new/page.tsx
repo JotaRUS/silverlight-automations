@@ -275,7 +275,20 @@ export default function NewProjectWizardPage(): JSX.Element {
       if (selected.length > 0) {
         await addProjectJobTitles(
           projectId,
-          selected.map((t) => ({ title: t.titleOriginal, relevanceScore: t.relevanceScore }))
+          selected.map((t) => {
+            const score =
+              typeof t.relevanceScore === 'number'
+                ? t.relevanceScore
+                : Number.parseFloat(String(t.relevanceScore ?? ''));
+            const relevanceScore = Number.isFinite(score)
+              ? score <= 1
+                ? score
+                : score / 100
+              : undefined;
+            const clamped =
+              relevanceScore !== undefined ? Math.max(0, Math.min(1, relevanceScore)) : undefined;
+            return { title: t.titleOriginal, relevanceScore: clamped };
+          })
         );
       }
     },

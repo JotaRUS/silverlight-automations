@@ -17,6 +17,7 @@ import {
   screeningQuestionCreateSchema,
   screeningQuestionUpdateSchema
 } from './projectSchemas';
+import type { AttachJobTitlesInput } from './projectsService';
 import { ProjectsService } from './projectsService';
 
 const pathParamsSchema = z.object({
@@ -138,7 +139,7 @@ projectsRoutes.get('/:projectId/job-titles', async (request, response, next) => 
 projectsRoutes.post('/:projectId/job-titles', async (request, response, next) => {
   try {
     const params = parseOrThrow(pathParamsSchema, request.params);
-    const payload = parseOrThrow(attachJobTitlesSchema, request.body);
+    const payload = parseOrThrow(attachJobTitlesSchema, request.body) as AttachJobTitlesInput;
     const count = await projectsService.attachJobTitles(params.projectId, payload);
     response.status(201).json({
       createdOrUpdated: count
