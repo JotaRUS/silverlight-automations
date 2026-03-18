@@ -77,6 +77,8 @@ export interface LinkedInOAuthStatus {
   accessTokenExpiresAt: string | null;
   refreshTokenExpiresAt: string | null;
   scope: string | null;
+  linkedInSessionCookie?: boolean;
+  linkedInSessionCookieCapturedAt?: string | null;
 }
 
 export async function getLinkedInOAuthStatus(
@@ -92,6 +94,19 @@ export async function getLinkedInOAuthAuthorizeUrl(
 ): Promise<{ authorizationUrl: string; state: string }> {
   return apiRequest<{ authorizationUrl: string; state: string }>(
     `/api/v1/providers/${providerAccountId}/linkedin/oauth/authorize`
+  );
+}
+
+export async function triggerPlaywrightOAuth(
+  providerAccountId: string
+): Promise<{
+  connected: boolean;
+  linkedInSessionCookieCaptured: boolean;
+  accessTokenExpiresAt: string | null;
+  refreshTokenExpiresAt: string | null;
+}> {
+  return apiRequest(
+    `/api/v1/auth/linkedin/authorize?providerAccountId=${providerAccountId}&mode=playwright`
   );
 }
 

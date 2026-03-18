@@ -17,6 +17,7 @@ import {
   buildLinkedInRedirectUri,
   exchangeLinkedInAuthorizationCode
 } from '../../integrations/sales-nav/linkedinAuthCodeClient';
+import { launchLinkedInOAuthBrowser } from '../../integrations/sales-nav/linkedInPlaywrightAuth';
 import { ProviderAccountsService } from '../../modules/providers/providerAccountsService';
 
 const loginRequestSchema = z.object({
@@ -32,7 +33,8 @@ const devLoginRequestSchema = z.object({
 const linkedInAuthCodeAuthorizeQuerySchema = z.object({
   providerAccountId: z.string().uuid(),
   scope: z.string().optional(),
-  responseMode: z.enum(['json', 'redirect']).optional().default('json')
+  responseMode: z.enum(['json', 'redirect']).optional().default('json'),
+  mode: z.enum(['json', 'redirect', 'playwright']).optional()
 });
 
 const linkedInAuthCodeCallbackQuerySchema = z.object({
@@ -217,6 +219,79 @@ authRoutes.get(
         state,
         scopes
       });
+
+      if (parsedQuery.data.mode === 'playwright') {
+        let playwrightResult;
+        try {
+          playwrightResult = await launchLinkedInOAuthBrowser(authorizeUrl, redirectUri);
+        } catch (pwError) {
+          throw new AppError(
+            `Playwright OAuth flow failed: ${pwError instanceof Error ? pwError.message : 'unknown error'}`,
+            502,
+            'playwright_oauth_failed'
+          );
+        }
+
+        const stateSession = await linkedInOAuthStateStore.consume(playwrightResult.state);
+        if (!stateSession) {
+          throw new AppError('OAuth state expired or invalid', 400, 'invalid_oauth_state');
+        }
+
+        const correlationId = getRequestContext()?.correlationId ?? 'system';
+        const tokenResponse = await exchangeLinkedInAuthorizationCode({
+          code: playwrightResult.code,
+          clientId,
+          clientSecret,
+          redirectUri,
+          correlationId
+        });
+
+        const now = Date.now();
+        const mergedCredentials: Record<string, unknown> = {
+          ...credentials,
+          oauthAccessToken: tokenResponse.access_token,
+          oauthAccessTokenExpiresAt: new Date(now + tokenResponse.expires_in * 1000).toISOString(),
+          oauthScope:
+            typeof tokenResponse.scope === 'string' && tokenResponse.scope.length > 0
+              ? tokenResponse.scope
+              : scopes.join(' ')
+        };
+        if (typeof tokenResponse.refresh_token === 'string' && tokenResponse.refresh_token.length > 0) {
+          mergedCredentials.oauthRefreshToken = tokenResponse.refresh_token;
+        }
+        if (
+          typeof tokenResponse.refresh_token_expires_in === 'number' &&
+          Number.isFinite(tokenResponse.refresh_token_expires_in) &&
+          tokenResponse.refresh_token_expires_in > 0
+        ) {
+          mergedCredentials.oauthRefreshTokenExpiresAt = new Date(
+            now + tokenResponse.refresh_token_expires_in * 1000
+          ).toISOString();
+        }
+
+        if (playwrightResult.liAtCookie) {
+          mergedCredentials.linkedInSessionCookie = playwrightResult.liAtCookie;
+          mergedCredentials.linkedInSessionCookieCapturedAt = new Date(now).toISOString();
+          if (playwrightResult.liAtCookieExpiry) {
+            mergedCredentials.linkedInSessionCookieExpiresAt = new Date(
+              playwrightResult.liAtCookieExpiry * 1000
+            ).toISOString();
+          }
+        }
+
+        await providerAccountsService.update(stateSession.providerAccountId, {
+          credentials: mergedCredentials
+        });
+
+        response.status(200).json({
+          connected: true,
+          providerAccountId: stateSession.providerAccountId,
+          linkedInSessionCookieCaptured: Boolean(playwrightResult.liAtCookie),
+          accessTokenExpiresAt: mergedCredentials.oauthAccessTokenExpiresAt,
+          refreshTokenExpiresAt: mergedCredentials.oauthRefreshTokenExpiresAt ?? null
+        });
+        return;
+      }
 
       if (parsedQuery.data.responseMode === 'redirect') {
         response.redirect(302, authorizeUrl);

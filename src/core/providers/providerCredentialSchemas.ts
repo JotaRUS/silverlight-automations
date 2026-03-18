@@ -16,7 +16,10 @@ const salesNavCredentialSchema = z.object({
   oauthRefreshToken: z.string().min(1).optional(),
   oauthAccessTokenExpiresAt: z.string().datetime().optional(),
   oauthRefreshTokenExpiresAt: z.string().datetime().optional(),
-  oauthScope: z.string().min(1).optional()
+  oauthScope: z.string().min(1).optional(),
+  linkedInSessionCookie: z.string().min(1).optional(),
+  linkedInSessionCookieCapturedAt: z.string().datetime().optional(),
+  linkedInSessionCookieExpiresAt: z.string().datetime().optional()
 });
 
 const linkedinCredentialSchema = z

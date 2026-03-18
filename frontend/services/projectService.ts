@@ -124,6 +124,16 @@ export async function importLeadsCsv(
   });
 }
 
+export async function scrapeSalesNav(
+  projectId: string,
+  salesNavSearchId?: string
+): Promise<{ queued: number }> {
+  return apiRequest<{ queued: number }>(`/api/v1/projects/${projectId}/scrape-sales-nav`, {
+    method: 'POST',
+    body: salesNavSearchId ? { salesNavSearchId } : {}
+  });
+}
+
 export interface ScreeningQuestionRecord {
   id: string;
   projectId: string;

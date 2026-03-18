@@ -19,6 +19,7 @@ import {
   listProviderAccounts,
   registerLinkedInWebhook,
   testProviderConnection,
+  triggerPlaywrightOAuth,
   updateProviderAccount,
   updateSyncedForms,
   type LeadFormSummary,
@@ -260,6 +261,9 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
   const queryClient = useQueryClient();
   const [authorizing, setAuthorizing] = useState(false);
   const [error, setError] = useState('');
+  const [showManualCookie, setShowManualCookie] = useState(false);
+  const [manualCookie, setManualCookie] = useState('');
+  const [savingCookie, setSavingCookie] = useState(false);
 
   const statusQuery = useQuery({
     queryKey: ['linkedin-oauth-status', accountId],
@@ -293,7 +297,26 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
     }
   }, [authorizing, oauthStatus?.status, queryClient]);
 
-  const handleAuthorize = async (): Promise<void> => {
+  const handlePlaywrightAuth = async (): Promise<void> => {
+    setAuthorizing(true);
+    setError('');
+    try {
+      await triggerPlaywrightOAuth(accountId);
+      void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', accountId] });
+      void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to authorize';
+      if (msg.includes('playwright') || msg.includes('Playwright')) {
+        setError('Could not open browser window. Use "Manual Cookie Paste" below as fallback.');
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setAuthorizing(false);
+    }
+  };
+
+  const handleFallbackAuth = async (): Promise<void> => {
     setAuthorizing(true);
     setError('');
     try {
@@ -303,6 +326,28 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
       setError(err instanceof Error ? err.message : 'Failed to start authorization');
     } finally {
       setAuthorizing(false);
+    }
+  };
+
+  const handleSaveManualCookie = async (): Promise<void> => {
+    if (!manualCookie.trim()) return;
+    setSavingCookie(true);
+    setError('');
+    try {
+      await updateProviderAccount(accountId, {
+        credentials: {
+          linkedInSessionCookie: manualCookie.trim(),
+          linkedInSessionCookieCapturedAt: new Date().toISOString()
+        }
+      });
+      setManualCookie('');
+      setShowManualCookie(false);
+      void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', accountId] });
+      void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save cookie');
+    } finally {
+      setSavingCookie(false);
     }
   };
 
@@ -328,7 +373,20 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
     <div className="mt-3 space-y-2 rounded-md border border-blue-200 bg-blue-50/40 p-3">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-blue-800">LinkedIn Authorization</p>
-        {statusBadge()}
+        <div className="flex items-center gap-2">
+          {oauthStatus?.linkedInSessionCookie && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+              <span className="inline-block size-1.5 rounded-full bg-emerald-500" />
+              Session cookie captured
+              {oauthStatus.linkedInSessionCookieCapturedAt && (
+                <span className="text-emerald-500 ml-0.5">
+                  ({new Date(oauthStatus.linkedInSessionCookieCapturedAt).toLocaleDateString()})
+                </span>
+              )}
+            </span>
+          )}
+          {statusBadge()}
+        </div>
       </div>
 
       {oauthStatus?.status === 'connected' && expiryInfo() ? (
@@ -337,30 +395,77 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
 
       {oauthStatus?.status === 'not_connected' ? (
         <p className="text-xs text-slate-600">
-          Authorize your LinkedIn account to enable the Lead Sync API. A LinkedIn member with the
-          required ad account / organization roles must authorize the app.
+          Authorize your LinkedIn account to enable the Lead Sync API and Sales Navigator scraping.
+          A browser window will open for you to log in.
         </p>
       ) : null}
 
       {oauthStatus?.status === 'expired' ? (
         <p className="text-xs text-amber-700">
-          LinkedIn tokens have expired. Re-authorize to resume Lead Sync.
+          LinkedIn tokens have expired. Re-authorize to resume Lead Sync and scraping.
         </p>
       ) : null}
 
       {error ? <p className="text-xs text-red-600">{error}</p> : null}
 
-      <Button
-        variant={oauthStatus?.status === 'connected' ? 'secondary' : 'primary'}
-        onClick={() => void handleAuthorize()}
-        disabled={authorizing}
-      >
-        {authorizing
-          ? 'Opening LinkedIn...'
-          : oauthStatus?.status === 'connected'
-            ? 'Re-authorize with LinkedIn'
-            : 'Authorize with LinkedIn'}
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button
+          variant={oauthStatus?.status === 'connected' ? 'secondary' : 'primary'}
+          onClick={() => void handlePlaywrightAuth()}
+          disabled={authorizing}
+        >
+          {authorizing
+            ? 'Authorizing (browser will open)...'
+            : oauthStatus?.status === 'connected'
+              ? 'Re-authorize with LinkedIn'
+              : 'Authorize with LinkedIn'}
+        </Button>
+        <button
+          type="button"
+          onClick={() => void handleFallbackAuth()}
+          disabled={authorizing}
+          className="text-xs text-slate-400 hover:text-slate-600 hover:underline disabled:opacity-50"
+        >
+          Open in browser tab instead
+        </button>
+      </div>
+
+      <div className="border-t border-blue-200 pt-2 mt-2">
+        <button
+          type="button"
+          onClick={() => setShowManualCookie((prev) => !prev)}
+          className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
+        >
+          <span className="material-symbols-outlined text-sm">
+            {showManualCookie ? 'expand_less' : 'expand_more'}
+          </span>
+          Manual cookie paste (fallback)
+        </button>
+
+        {showManualCookie && (
+          <div className="mt-2 space-y-2">
+            <p className="text-xs text-slate-500">
+              Open LinkedIn in your browser, then DevTools &gt; Application &gt; Cookies &gt;
+              linkedin.com. Copy the value of the <code className="font-mono bg-slate-100 px-1 rounded">li_at</code> cookie and paste it below.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={manualCookie}
+                onChange={(e) => setManualCookie(e.target.value)}
+                placeholder="Paste li_at cookie value..."
+                className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-primary"
+              />
+              <Button
+                onClick={() => void handleSaveManualCookie()}
+                disabled={!manualCookie.trim() || savingCookie}
+              >
+                {savingCookie ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

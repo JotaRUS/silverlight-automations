@@ -214,6 +214,14 @@ providerAccountRoutes.get(
         }
       }
 
+      const hasSessionCookie =
+        typeof credentials.linkedInSessionCookie === 'string' &&
+        credentials.linkedInSessionCookie.length > 0;
+      const sessionCookieCapturedAt =
+        typeof credentials.linkedInSessionCookieCapturedAt === 'string'
+          ? credentials.linkedInSessionCookieCapturedAt
+          : null;
+
       response
         .setHeader('Cache-Control', 'no-store')
         .status(200)
@@ -221,7 +229,9 @@ providerAccountRoutes.get(
           status,
           accessTokenExpiresAt: expiresAt,
           refreshTokenExpiresAt: refreshExpiresAt,
-          scope: typeof credentials.oauthScope === 'string' ? credentials.oauthScope : null
+          scope: typeof credentials.oauthScope === 'string' ? credentials.oauthScope : null,
+          linkedInSessionCookie: hasSessionCookie,
+          linkedInSessionCookieCapturedAt: sessionCookieCapturedAt
         });
     } catch (error) {
       next(error);

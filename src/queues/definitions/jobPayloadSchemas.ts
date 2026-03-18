@@ -137,6 +137,15 @@ export const callAllocationJobSchema = z.object({
 
 export type CallAllocationJob = z.infer<typeof callAllocationJobSchema>;
 
+export const salesNavScraperJobSchema = z.object({
+  projectId: z.string().uuid(),
+  salesNavSearchId: z.string().uuid(),
+  sourceUrl: z.string().url(),
+  resumeFromPage: z.number().int().min(1).default(1)
+});
+
+export type SalesNavScraperJob = z.infer<typeof salesNavScraperJobSchema>;
+
 export const linkedInFetchResponseJobSchema = z.object({
   providerAccountId: z.string().uuid(),
   responseId: z.string().min(1),

@@ -24,6 +24,7 @@ interface QueueRegistry {
   jobTitleDiscoveryQueue: Queue;
   apolloLeadSourcingQueue: Queue;
   salesNavIngestionQueue: Queue;
+  salesNavScraperQueue: Queue;
   leadIngestionQueue: Queue;
   enrichmentQueue: Queue;
   outreachQueue: Queue;
@@ -50,6 +51,7 @@ export function getQueues(): QueueRegistry {
     jobTitleDiscoveryQueue: createQueue(QUEUE_NAMES.JOB_TITLE_DISCOVERY),
     apolloLeadSourcingQueue: createQueue(QUEUE_NAMES.APOLLO_LEAD_SOURCING),
     salesNavIngestionQueue: createQueue(QUEUE_NAMES.SALES_NAV_INGESTION),
+    salesNavScraperQueue: createQueue(QUEUE_NAMES.SALES_NAV_SCRAPER),
     leadIngestionQueue: createQueue(QUEUE_NAMES.LEAD_INGESTION),
     enrichmentQueue: createQueue(QUEUE_NAMES.ENRICHMENT),
     outreachQueue: createQueue(QUEUE_NAMES.OUTREACH),
@@ -76,6 +78,7 @@ export async function closeQueues(): Promise<void> {
     queueRegistry.jobTitleDiscoveryQueue,
     queueRegistry.apolloLeadSourcingQueue,
     queueRegistry.salesNavIngestionQueue,
+    queueRegistry.salesNavScraperQueue,
     queueRegistry.leadIngestionQueue,
     queueRegistry.enrichmentQueue,
     queueRegistry.outreachQueue,

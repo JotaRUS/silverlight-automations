@@ -34,6 +34,7 @@ import {
   listProjectCompanies,
   listProjectJobTitles,
   listSalesNavSearches,
+  scrapeSalesNav,
   updateProject
 } from '@/services/projectService';
 import type { SalesNavSearchRecord } from '@/services/projectService';
@@ -148,6 +149,24 @@ export default function ProjectEditPage(): JSX.Element {
       toast.success(`Imported ${data.imported} leads`);
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Import failed')
+  });
+
+  const scrapeAllMutation = useMutation({
+    mutationFn: () => scrapeSalesNav(projectId),
+    onSuccess: (data) => {
+      toast.success(`Queued scraping for ${data.queued} search URL(s)`);
+      void queryClient.invalidateQueries({ queryKey: ['sales-nav-searches', projectId] });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to start scraping')
+  });
+
+  const scrapeOneMutation = useMutation({
+    mutationFn: (searchId: string) => scrapeSalesNav(projectId, searchId),
+    onSuccess: () => {
+      toast.success('Scraping started for this search URL');
+      void queryClient.invalidateQueries({ queryKey: ['sales-nav-searches', projectId] });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to start scraping')
   });
 
   const handleCsvSelect = useCallback(async (file: File) => {
@@ -757,9 +776,24 @@ export default function ProjectEditPage(): JSX.Element {
             <span className="material-symbols-outlined text-base text-slate-500">travel_explore</span>
             Sales Navigator Searches
           </h3>
-          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-            {salesNavQuery.data?.length ?? 0}/{MAX_SEARCHES} recommended
-          </span>
+          <div className="flex items-center gap-2">
+            {(salesNavQuery.data ?? []).length > 0 && (
+              <button
+                type="button"
+                onClick={() => scrapeAllMutation.mutate()}
+                disabled={scrapeAllMutation.isPending}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-sm">
+                  {scrapeAllMutation.isPending ? 'progress_activity' : 'download'}
+                </span>
+                {scrapeAllMutation.isPending ? 'Scraping...' : 'Scrape All'}
+              </button>
+            )}
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+              {salesNavQuery.data?.length ?? 0}/{MAX_SEARCHES} recommended
+            </span>
+          </div>
         </div>
 
         {/* Progress bar */}
@@ -806,6 +840,14 @@ export default function ProjectEditPage(): JSX.Element {
                     {search._count && <span>{search._count.leads} leads</span>}
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => scrapeOneMutation.mutate(search.id)}
+                  disabled={scrapeOneMutation.isPending}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/5 transition-colors disabled:opacity-50"
+                >
+                  {scrapeOneMutation.isPending ? 'Scraping...' : 'Scrape'}
+                </button>
                 <button
                   type="button"
                   onClick={() => deleteSearchMutation.mutate(search.id)}

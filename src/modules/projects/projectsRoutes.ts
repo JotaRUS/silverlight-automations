@@ -3,7 +3,6 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { authenticate, authorize } from '../../core/auth/authMiddleware';
-import { isoCodeToLocationName } from '../../config/constants';
 import { AppError } from '../../core/errors/appError';
 import { prisma } from '../../db/client';
 import { getQueues } from '../../queues';
@@ -253,49 +252,7 @@ projectsRoutes.post('/:projectId/kick', async (request, response, next) => {
     }
 
     const timeSlice = new Date().toISOString().slice(0, 16);
-    let sourcingQueued = false;
     let enrichmentQueued = 0;
-
-    if (project.apolloProviderAccountId) {
-      const [companies, jobTitles] = await Promise.all([
-        projectsService.listCompanies(params.projectId),
-        projectsService.listJobTitles(params.projectId)
-      ]);
-      const activeLeadCount = await prisma.lead.count({
-        where: {
-          projectId: params.projectId,
-          status: { not: 'DISQUALIFIED' },
-          deletedAt: null
-        }
-      });
-      const remainingSlots = Math.max(0, project.targetThreshold - activeLeadCount);
-
-      if (remainingSlots > 0) {
-        const locations = project.geographyIsoCodes?.length
-          ? project.geographyIsoCodes.map(isoCodeToLocationName)
-          : undefined;
-
-        const perPage = Math.min(remainingSlots, 25);
-        const maxPages = Math.min(Math.ceil(remainingSlots / perPage), 3);
-        const jobId = buildJobId('apollo-sourcing', params.projectId, timeSlice);
-        await getQueues().apolloLeadSourcingQueue.add(
-          'apollo-lead-sourcing.search',
-          {
-            correlationId: request.headers['x-correlation-id'] as string || 'api-kick',
-            data: {
-              projectId: params.projectId,
-              personLocations: locations,
-              personTitles: jobTitles.map((jobTitle) => jobTitle.titleNormalized),
-              organizationNames: companies.map((company) => company.name),
-              maxPages,
-              perPage
-            }
-          },
-          { jobId }
-        );
-        sourcingQueued = true;
-      }
-    }
 
     const newLeads = await prisma.lead.findMany({
       where: { projectId: params.projectId, status: 'NEW', deletedAt: null },
@@ -334,89 +291,7 @@ projectsRoutes.post('/:projectId/kick', async (request, response, next) => {
       enrichmentQueued += 1;
     }
 
-    response.status(202).json({ sourcingQueued, enrichmentQueued });
-  } catch (error) {
-    next(error);
-  }
-});
-
-const apolloSearchBodySchema = z.object({
-  personLocations: z.array(z.string()).optional(),
-  personTitles: z.array(z.string()).optional(),
-  personSeniorities: z.array(z.string()).optional(),
-  personDepartments: z.array(z.string()).optional(),
-  personFunctions: z.array(z.string()).optional(),
-  personNotTitles: z.array(z.string()).optional(),
-  personSkills: z.array(z.string()).optional(),
-  organizationDomains: z.array(z.string()).optional(),
-  organizationNames: z.array(z.string()).optional(),
-  organizationLocations: z.array(z.string()).optional(),
-  organizationNumEmployeesRanges: z.array(z.string()).optional(),
-  keywords: z.string().optional(),
-  maxPages: z.number().int().min(1).max(10).optional(),
-  perPage: z.number().int().min(1).max(100).optional()
-});
-
-projectsRoutes.post('/:projectId/apollo-search', async (request, response, next) => {
-  try {
-    const params = parseOrThrow(pathParamsSchema, request.params);
-    const body = parseOrThrow(apolloSearchBodySchema, request.body);
-    const project = await projectsService.getProject(params.projectId);
-    if (!project) {
-      throw new AppError('Project not found', 404, 'project_not_found');
-    }
-    if (!project.apolloProviderAccountId) {
-      throw new AppError(
-        'No Apollo provider bound to this project',
-        422,
-        'no_apollo_provider'
-      );
-    }
-
-    const locations = body.personLocations?.length
-      ? body.personLocations
-      : (project.geographyIsoCodes?.length ? project.geographyIsoCodes.map(isoCodeToLocationName) : undefined);
-    const [companies, jobTitles] = await Promise.all([
-      projectsService.listCompanies(params.projectId),
-      projectsService.listJobTitles(params.projectId)
-    ]);
-
-    const jobId = buildJobId(
-      'apollo-search',
-      params.projectId,
-      new Date().toISOString().slice(0, 16)
-    );
-
-    await getQueues().apolloLeadSourcingQueue.add(
-      'apollo-lead-sourcing.search',
-      {
-        correlationId: request.headers['x-correlation-id'] as string || 'api',
-        data: {
-          projectId: params.projectId,
-          personLocations: locations,
-          personTitles: body.personTitles?.length
-            ? body.personTitles
-            : jobTitles.map((jobTitle) => jobTitle.titleNormalized),
-          personSeniorities: body.personSeniorities,
-          personDepartments: body.personDepartments,
-          personFunctions: body.personFunctions,
-          personNotTitles: body.personNotTitles,
-          personSkills: body.personSkills,
-          organizationDomains: body.organizationDomains,
-          organizationNames: body.organizationNames?.length
-            ? body.organizationNames
-            : companies.map((company) => company.name),
-          organizationLocations: body.organizationLocations,
-          organizationNumEmployeesRanges: body.organizationNumEmployeesRanges,
-          keywords: body.keywords,
-          maxPages: body.maxPages,
-          perPage: body.perPage
-        }
-      },
-      { jobId }
-    );
-
-    response.status(202).json({ message: 'Apollo search queued', jobId });
+    response.status(202).json({ enrichmentQueued });
   } catch (error) {
     next(error);
   }
@@ -464,6 +339,77 @@ projectsRoutes.get('/:projectId/available-channels', async (request, response, n
     }
 
     response.json(available);
+  } catch (error) {
+    next(error);
+  }
+});
+
+const scrapeSalesNavBodySchema = z.object({
+  salesNavSearchId: z.string().uuid().optional()
+});
+
+projectsRoutes.post('/:projectId/scrape-sales-nav', async (request, response, next) => {
+  try {
+    const params = parseOrThrow(pathParamsSchema, request.params);
+    const body = scrapeSalesNavBodySchema.safeParse(request.body);
+    const salesNavSearchId = body.success ? body.data.salesNavSearchId : undefined;
+
+    const project = await projectsService.getProject(params.projectId);
+    if (!project) {
+      throw new AppError('Project not found', 404, 'project_not_found');
+    }
+
+    if (!project.salesNavWebhookProviderAccountId) {
+      throw new AppError(
+        'No Lead Sync API provider bound to this project',
+        422,
+        'no_sales_nav_provider'
+      );
+    }
+
+    const searches = salesNavSearchId
+      ? await prisma.salesNavSearch.findMany({
+          where: { id: salesNavSearchId, projectId: params.projectId, isActive: true, deletedAt: null }
+        })
+      : await prisma.salesNavSearch.findMany({
+          where: { projectId: params.projectId, isActive: true, deletedAt: null }
+        });
+
+    if (searches.length === 0) {
+      throw new AppError(
+        'No active Sales Navigator searches found for this project',
+        422,
+        'no_active_searches'
+      );
+    }
+
+    const correlationId = (request.headers['x-correlation-id'] as string) || 'api-scrape';
+    const timeSlice = new Date().toISOString().slice(0, 16);
+    let queued = 0;
+
+    for (const search of searches) {
+      const resumeFromPage = search.paginationCursor
+        ? Math.max(1, Number.parseInt(search.paginationCursor, 10) || 1)
+        : 1;
+
+      const jobId = buildJobId('sales-nav-scraper', params.projectId, search.id, timeSlice);
+      await getQueues().salesNavScraperQueue.add(
+        'sales-nav-scraper.scrape',
+        {
+          correlationId,
+          data: {
+            projectId: params.projectId,
+            salesNavSearchId: search.id,
+            sourceUrl: search.sourceUrl,
+            resumeFromPage
+          }
+        },
+        { jobId }
+      );
+      queued++;
+    }
+
+    response.status(202).json({ queued });
   } catch (error) {
     next(error);
   }

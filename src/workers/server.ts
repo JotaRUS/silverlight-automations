@@ -16,6 +16,7 @@ import { createOutreachWorker } from '../queues/workers/outreachWorker';
 import { createPerformanceWorker } from '../queues/workers/performanceWorker';
 import { createRankingWorker } from '../queues/workers/rankingWorker';
 import { createSalesNavIngestionWorker } from '../queues/workers/salesNavIngestionWorker';
+import { createSalesNavScraperWorker } from '../queues/workers/salesNavScraperWorker';
 import { createScreeningWorker } from '../queues/workers/screeningWorker';
 import { createYayCallEventsWorker } from '../queues/workers/yayCallEventsWorker';
 import { registerWorkerEventEmitter } from '../queues/workers/workerEventEmitter';
@@ -28,6 +29,7 @@ const enrichmentWorker = createEnrichmentWorker();
 const outreachWorker = createOutreachWorker();
 const apolloLeadSourcingWorker = createApolloLeadSourcingWorker();
 const salesNavIngestionWorker = createSalesNavIngestionWorker();
+const salesNavScraperWorker = createSalesNavScraperWorker();
 const leadIngestionWorker = createLeadIngestionWorker();
 const jobTitleDiscoveryWorker = createJobTitleDiscoveryWorker();
 const rankingWorker = createRankingWorker();
@@ -45,6 +47,7 @@ registerWorkerEventEmitter(enrichmentWorker, QUEUE_NAMES.ENRICHMENT);
 registerWorkerEventEmitter(outreachWorker, QUEUE_NAMES.OUTREACH);
 registerWorkerEventEmitter(apolloLeadSourcingWorker, QUEUE_NAMES.APOLLO_LEAD_SOURCING);
 registerWorkerEventEmitter(salesNavIngestionWorker, QUEUE_NAMES.SALES_NAV_INGESTION);
+registerWorkerEventEmitter(salesNavScraperWorker, QUEUE_NAMES.SALES_NAV_SCRAPER);
 registerWorkerEventEmitter(leadIngestionWorker, QUEUE_NAMES.LEAD_INGESTION);
 registerWorkerEventEmitter(jobTitleDiscoveryWorker, QUEUE_NAMES.JOB_TITLE_DISCOVERY);
 registerWorkerEventEmitter(rankingWorker, QUEUE_NAMES.RANKING);
@@ -72,6 +75,7 @@ async function shutdown(): Promise<void> {
     outreachWorker.close(),
     apolloLeadSourcingWorker.close(),
     salesNavIngestionWorker.close(),
+    salesNavScraperWorker.close(),
     leadIngestionWorker.close(),
     jobTitleDiscoveryWorker.close(),
     rankingWorker.close(),

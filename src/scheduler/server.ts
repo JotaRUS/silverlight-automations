@@ -1,6 +1,6 @@
 import { subDays } from './timeUtils';
 import { AUTO_SOURCING, isoCodeToLocationName } from '../config/constants';
-import { env } from '../config/env';
+import { decryptProviderCredentials } from '../core/providers/providerCredentialsCrypto';
 import { logger } from '../core/logging/logger';
 import { installFatalProcessHandlers } from '../core/process/fatalHandlers';
 import { clock } from '../core/time/clock';
@@ -14,10 +14,6 @@ import { emitNotification } from '../modules/notifications/emitNotification';
 import { ProjectCompletionService } from '../modules/projects/projectCompletionService';
 import { resolveTemplate, type TemplateContext } from '../modules/outreach/outreachService';
 import { isChannelAvailableForProject } from '../modules/outreach/channelSelection';
-import {
-  extractApolloFiltersFromSalesNavSearch,
-  mergeApolloSearchFilters
-} from '../modules/sales-nav/salesNavSearchParamExtractor';
 import type { Channel as PrismaChannel, Prisma } from '@prisma/client';
 import { getLinkedInOAuthToken } from '../integrations/sales-nav/salesNavOAuthClient';
 import { listLeadFormResponses, type LinkedInOwner } from '../integrations/sales-nav/linkedInLeadSyncClient';
@@ -30,26 +26,6 @@ let schedulerHandle: NodeJS.Timeout | undefined;
 let running = false;
 let stopping = false;
 let activeCyclePromise: Promise<void> | null = null;
-
-function mergeUniqueStringValues(...collections: (string[] | undefined)[]): string[] | undefined {
-  const deduped = new Map<string, string>();
-  for (const collection of collections) {
-    if (!Array.isArray(collection)) {
-      continue;
-    }
-    for (const item of collection) {
-      const value = item.trim();
-      if (!value) {
-        continue;
-      }
-      const key = value.toLowerCase();
-      if (!deduped.has(key)) {
-        deduped.set(key, value);
-      }
-    }
-  }
-  return deduped.size > 0 ? Array.from(deduped.values()) : undefined;
-}
 
 async function runScheduledMaintenance(): Promise<void> {
   const cutoff = subDays(clock.now(), DEAD_LETTER_RETENTION_DAYS);
@@ -355,10 +331,8 @@ async function runAutoSourcingLoop(): Promise<void> {
     const outreachQueued = await queuePendingOutreach(project.id, project.name, timeSlice);
     totalOutreachQueued += outreachQueued;
 
-    const apolloQueued = env.ENABLE_APOLLO_SOURCING
-      ? await queueApolloSourcingIfNeeded(project, timeSlice)
-      : 0;
-    totalApolloSearchesQueued += apolloQueued;
+    const scrapingQueued = await queueSalesNavScrapingIfNeeded(project, timeSlice);
+    totalApolloSearchesQueued += scrapingQueued;
 
     const stalled = await detectStalledSourcing(project);
     if (stalled) {
@@ -670,122 +644,98 @@ async function queuePendingOutreach(
   return queued;
 }
 
-async function queueApolloSourcingIfNeeded(
+const SCRAPE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+async function queueSalesNavScrapingIfNeeded(
   project: {
     id: string;
     targetThreshold: number;
-    apolloProviderAccountId: string | null;
+    signedUpCount: number;
+    salesNavWebhookProviderAccountId: string | null;
     geographyIsoCodes: string[];
   },
   timeSlice: string
 ): Promise<number> {
-  if (!project.apolloProviderAccountId) {
+  if (!project.salesNavWebhookProviderAccountId) {
     return 0;
   }
 
-  const activeLeadCount = await prisma.lead.count({
-    where: {
-      projectId: project.id,
-      status: { not: 'DISQUALIFIED' },
-      deletedAt: null
-    }
-  });
-  if (activeLeadCount >= project.targetThreshold) {
+  if (project.signedUpCount >= project.targetThreshold) {
     return 0;
   }
 
-  const pipelineCount = await prisma.lead.count({
-    where: {
-      projectId: project.id,
-      status: { in: ['NEW', 'ENRICHING', 'ENRICHED', 'OUTREACH_PENDING'] },
-      deletedAt: null
-    }
+  const providerAccount = await prisma.providerAccount.findUnique({
+    where: { id: project.salesNavWebhookProviderAccountId }
   });
-
-  const remainingSlots = project.targetThreshold - activeLeadCount;
-  if (remainingSlots <= 0 || pipelineCount >= remainingSlots) {
+  if (!providerAccount) {
     return 0;
   }
 
-  const locations = project.geographyIsoCodes.length > 0
-    ? project.geographyIsoCodes.map(isoCodeToLocationName)
-    : undefined;
+  const credentials = decryptProviderCredentials(providerAccount.credentialsJson) as Record<string, unknown>;
+  const liAtCookie = typeof credentials.linkedInSessionCookie === 'string' ? credentials.linkedInSessionCookie : '';
+  if (!liAtCookie) {
+    return 0;
+  }
 
-  const jobTitles = await prisma.jobTitle.findMany({
-    where: { projectId: project.id },
-    orderBy: { relevanceScore: 'desc' },
-    take: 10,
-    select: { titleNormalized: true }
-  });
-  const companies = await prisma.company.findMany({
-    where: { projectId: project.id, deletedAt: null },
-    orderBy: { name: 'asc' },
-    take: 25,
-    select: { name: true }
-  });
-  const activeSalesNavSearches = await prisma.salesNavSearch.findMany({
+  const activeSearches = await prisma.salesNavSearch.findMany({
     where: {
       projectId: project.id,
       isActive: true,
       deletedAt: null
     },
     select: {
+      id: true,
       sourceUrl: true,
-      normalizedUrl: true,
-      metadata: true
-    },
-    take: 200
-  });
-  const salesNavFilters = mergeApolloSearchFilters(
-    activeSalesNavSearches.map((search) =>
-      extractApolloFiltersFromSalesNavSearch({
-        sourceUrl: search.sourceUrl,
-        normalizedUrl: search.normalizedUrl,
-        metadata: (search.metadata as Record<string, unknown> | null) ?? undefined
-      })
-    )
-  );
-  const personLocations = mergeUniqueStringValues(locations, salesNavFilters.personLocations);
-  const personTitles = mergeUniqueStringValues(
-    jobTitles.map((jt) => jt.titleNormalized),
-    salesNavFilters.personTitles
-  );
-
-  const leadsNeeded = Math.max(1, remainingSlots - pipelineCount);
-  const perPage = Math.min(leadsNeeded, 25);
-  const maxPages = Math.min(Math.ceil(leadsNeeded / perPage), 3);
-
-  await getQueues().apolloLeadSourcingQueue.add(
-    'apollo-lead-sourcing.search',
-    {
-      correlationId: 'scheduler',
-      data: {
-        projectId: project.id,
-        personLocations,
-        personTitles,
-        personSeniorities: salesNavFilters.personSeniorities,
-        personDepartments: salesNavFilters.personDepartments,
-        personFunctions: salesNavFilters.personFunctions,
-        personNotTitles: salesNavFilters.personNotTitles,
-        personSkills: salesNavFilters.personSkills,
-        organizationDomains: salesNavFilters.organizationDomains,
-        organizationNames: mergeUniqueStringValues(
-          companies.map((company) => company.name),
-          salesNavFilters.organizationNames
-        ),
-        organizationLocations: salesNavFilters.organizationLocations,
-        organizationNumEmployeesRanges: salesNavFilters.organizationNumEmployeesRanges,
-        keywords: salesNavFilters.keywords,
-        maxPages,
-        perPage
-      }
-    },
-    {
-      jobId: buildJobId('apollo-sourcing', project.id, timeSlice)
+      paginationCursor: true,
+      updatedAt: true
     }
-  );
+  });
 
-  return 1;
+  if (activeSearches.length === 0) {
+    return 0;
+  }
+
+  const now = clock.now().getTime();
+  let queued = 0;
+
+  for (const search of activeSearches) {
+    const lastScrapedEvent = await prisma.systemEvent.findFirst({
+      where: {
+        entityType: 'sales_nav_scraper',
+        entityId: search.id,
+        message: { in: ['sales_nav_scraper_completed', 'sales_nav_scraper_started'] }
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true }
+    });
+
+    if (lastScrapedEvent && now - lastScrapedEvent.createdAt.getTime() < SCRAPE_COOLDOWN_MS) {
+      continue;
+    }
+
+    const resumeFromPage = search.paginationCursor
+      ? Math.max(1, Number.parseInt(search.paginationCursor, 10) || 1)
+      : 1;
+
+    const jobId = buildJobId('sales-nav-scraper', project.id, search.id, timeSlice);
+    await getQueues().salesNavScraperQueue.add(
+      'sales-nav-scraper.scrape',
+      {
+        correlationId: 'scheduler',
+        data: {
+          projectId: project.id,
+          salesNavSearchId: search.id,
+          sourceUrl: search.sourceUrl,
+          resumeFromPage
+        }
+      },
+      { jobId }
+    );
+
+    queued++;
+  }
+
+  return queued;
 }
 
 async function detectStalledSourcing(project: {
@@ -831,7 +781,7 @@ async function detectStalledSourcing(project: {
     }
   });
 
-  if (activeSources === 0 && !project.apolloProviderAccountId) {
+  if (activeSources === 0) {
     return false;
   }
 
@@ -848,7 +798,7 @@ async function detectStalledSourcing(project: {
         targetThreshold: project.targetThreshold,
         activeSources,
         reason:
-          'No leads in pipeline and no recent ingestion. Triggering Apollo sourcing.'
+          'No leads in pipeline and no recent ingestion. Add more Sales Navigator URLs, click Scrape Leads, or import leads via CSV.'
       }
     }
   });
@@ -857,15 +807,10 @@ async function detectStalledSourcing(project: {
     type: 'project.stalled',
     severity: 'WARNING',
     title: `Sourcing stalled: ${project.name}`,
-    message: `No leads in pipeline, ${project.signedUpCount}/${project.targetThreshold} signed up. Re-triggering Apollo.`,
+    message: `No leads in pipeline, ${project.signedUpCount}/${project.targetThreshold} signed up. Add Sales Navigator URLs, click Scrape Leads, or import leads via CSV.`,
     projectId: project.id,
     metadata: { activeSources, signedUpCount: project.signedUpCount, targetThreshold: project.targetThreshold }
   });
-
-  if (env.ENABLE_APOLLO_SOURCING && project.apolloProviderAccountId) {
-    const timeSlice = clock.now().toISOString().slice(0, 13);
-    await queueApolloSourcingIfNeeded(project, `${timeSlice}-stalled`);
-  }
 
   return true;
 }

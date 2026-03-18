@@ -13,6 +13,7 @@ export const QUEUE_NAMES = {
   GOOGLE_SHEETS_SYNC: 'google-sheets-sync',
   SUPABASE_SYNC: 'supabase-sync',
   DOCUMENTATION: 'documentation',
+  SALES_NAV_SCRAPER: 'sales-nav-scraper',
   YAY_CALL_EVENTS: 'yay-call-events',
   DEAD_LETTER: 'dead-letter'
 } as const;
