@@ -310,11 +310,7 @@ async function runAutoSourcingLoop(): Promise<void> {
     where: { status: 'ACTIVE' },
     orderBy: { priority: 'desc' }
   });
-  const incompleteProjects = activeProjects.filter(
-    (p) => p.signedUpCount < p.targetThreshold
-  );
-
-  if (incompleteProjects.length === 0) {
+  if (activeProjects.length === 0) {
     return;
   }
 
@@ -324,7 +320,7 @@ async function runAutoSourcingLoop(): Promise<void> {
   let totalApolloSearchesQueued = 0;
   const timeSlice = clock.now().toISOString().slice(0, 13);
 
-  for (const project of incompleteProjects) {
+  for (const project of activeProjects) {
     const enrichmentQueued = await queuePendingEnrichment(project.id, timeSlice);
     totalEnrichmentQueued += enrichmentQueued;
 
@@ -342,7 +338,7 @@ async function runAutoSourcingLoop(): Promise<void> {
 
   logger.info(
     {
-      incompleteProjects: incompleteProjects.length,
+      activeProjects: activeProjects.length,
       totalEnrichmentQueued,
       totalOutreachQueued,
       totalApolloSearchesQueued,

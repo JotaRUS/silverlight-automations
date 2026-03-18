@@ -193,11 +193,16 @@ export function createSalesNavScraperWorker(): Worker<CorrelatedJobData<SalesNav
           }
         });
 
+        const noResults = result.leadsEmitted === 0 && !result.abortedReason;
         emitNotification({
           type: 'project.scraping_completed',
-          severity: result.abortedReason ? 'WARNING' : 'INFO',
-          title: `Scraping ${result.abortedReason ? 'paused' : 'completed'}: ${project.name}`,
-          message: `Scraped ${String(result.leadsEmitted)} leads (needed ${String(leadsNeeded)}, pages 1-${String(result.lastPageScraped)}).${result.abortedReason ? ` Stopped: ${result.abortedReason}` : ''}`,
+          severity: result.abortedReason ? 'WARNING' : noResults ? 'WARNING' : 'INFO',
+          title: noResults
+            ? `No leads found: ${project.name}`
+            : `Scraping ${result.abortedReason ? 'paused' : 'completed'}: ${project.name}`,
+          message: noResults
+            ? `The search URL returned no results. Try adding new Sales Navigator search URLs with different keywords or regions.`
+            : `Scraped ${String(result.leadsEmitted)} leads (needed ${String(leadsNeeded)}, pages 1-${String(result.lastPageScraped)}).${result.abortedReason ? ` Stopped: ${result.abortedReason}` : ''}`,
           projectId: payload.projectId,
           metadata: {
             salesNavSearchId: payload.salesNavSearchId,

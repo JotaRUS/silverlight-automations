@@ -105,10 +105,27 @@ function parseFullName(fullName: string): { firstName?: string; lastName?: strin
   };
 }
 
+async function waitForSearchResults(page: Page): Promise<void> {
+  const selectors = [
+    'li.artdeco-list__item',
+    'ol.search-results__result-list > li',
+    '[data-anonymize="person-name"]',
+    'a[href*="/sales/lead/"]',
+    '.artdeco-entity-lockup'
+  ];
+  try {
+    await page.waitForSelector(selectors.join(', '), { timeout: 15_000 });
+  } catch {
+    logger.warn('sales-nav-scraper-no-results-selector-found');
+  }
+}
+
 async function extractLeadsFromPage(page: Page): Promise<ScrapedLead[]> {
+  await waitForSearchResults(page);
+
   /* eslint-disable @typescript-eslint/no-unnecessary-condition */
-  return page.evaluate(() => {
-    const leads: {
+  const leads = await page.evaluate(() => {
+    const results: {
       fullName: string;
       firstName?: string;
       lastName?: string;
@@ -118,107 +135,110 @@ async function extractLeadsFromPage(page: Page): Promise<ScrapedLead[]> {
       linkedinUrl?: string;
     }[] = [];
 
-    const resultCards = document.querySelectorAll(
-      'li.artdeco-list__item, ol.search-results__result-list > li, [data-anonymize="person-name"]'
-    );
+    const CARD_SELECTORS = [
+      'li.artdeco-list__item',
+      'ol.search-results__result-list > li',
+      '[class*="search-results"] li[class*="result"]',
+      '.artdeco-entity-lockup'
+    ];
 
-    if (resultCards.length === 0) {
-      const rows = document.querySelectorAll('[class*="search-results"] [class*="result"]');
-      for (const row of rows) {
-        const nameEl =
-          row.querySelector('[data-anonymize="person-name"]') ??
-          row.querySelector('a[href*="/sales/lead/"] span') ??
-          row.querySelector('.result-lockup__name a');
-        if (!nameEl) continue;
-
-        const fullName = (nameEl.textContent ?? '').trim();
-        if (!fullName) continue;
-
-        const nameParts = fullName.split(/\s+/);
-        const firstName = nameParts[0];
-        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : undefined;
-
-        const titleEl =
-          row.querySelector('[data-anonymize="title"]') ??
-          row.querySelector('.result-lockup__highlight-keyword');
-        const companyEl =
-          row.querySelector('[data-anonymize="company-name"]') ??
-          row.querySelector('a[href*="/sales/company/"]');
-        const locationEl =
-          row.querySelector('[data-anonymize="location"]') ??
-          row.querySelector('.result-lockup__misc-item');
-
-        const profileLink =
-          row.querySelector('a[href*="/sales/lead/"]') ??
-          row.querySelector('a[href*="/in/"]');
-        let linkedinUrl: string | undefined;
-        if (profileLink) {
-          const href = profileLink.getAttribute('href') ?? '';
-          linkedinUrl = href.startsWith('http')
-            ? href.split('?')[0]
-            : `https://www.linkedin.com${href.split('?')[0]}`;
-        }
-
-        leads.push({
-          fullName,
-          firstName,
-          lastName,
-          jobTitle: (titleEl?.textContent ?? '').trim() || undefined,
-          companyName: (companyEl?.textContent ?? '').trim() || undefined,
-          location: (locationEl?.textContent ?? '').trim() || undefined,
-          linkedinUrl
-        });
-      }
-    } else {
-      for (const card of resultCards) {
-        const nameEl =
-          card.querySelector('[data-anonymize="person-name"]') ??
-          card.querySelector('a[href*="/sales/lead/"] span') ??
-          card.querySelector('.result-lockup__name a');
-        if (!nameEl) continue;
-
-        const fullName = (nameEl.textContent ?? '').trim();
-        if (!fullName) continue;
-
-        const nameParts = fullName.split(/\s+/);
-        const firstName = nameParts[0];
-        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : undefined;
-
-        const titleEl =
-          card.querySelector('[data-anonymize="title"]') ??
-          card.querySelector('.result-lockup__highlight-keyword');
-        const companyEl =
-          card.querySelector('[data-anonymize="company-name"]') ??
-          card.querySelector('a[href*="/sales/company/"]');
-        const locationEl =
-          card.querySelector('[data-anonymize="location"]') ??
-          card.querySelector('.result-lockup__misc-item');
-
-        const profileLink =
-          card.querySelector('a[href*="/sales/lead/"]') ??
-          card.querySelector('a[href*="/in/"]');
-        let linkedinUrl: string | undefined;
-        if (profileLink) {
-          const href = profileLink.getAttribute('href') ?? '';
-          linkedinUrl = href.startsWith('http')
-            ? href.split('?')[0]
-            : `https://www.linkedin.com${href.split('?')[0]}`;
-        }
-
-        leads.push({
-          fullName,
-          firstName,
-          lastName,
-          jobTitle: (titleEl?.textContent ?? '').trim() || undefined,
-          companyName: (companyEl?.textContent ?? '').trim() || undefined,
-          location: (locationEl?.textContent ?? '').trim() || undefined,
-          linkedinUrl
-        });
+    let cards: Element[] = [];
+    for (const sel of CARD_SELECTORS) {
+      const found = document.querySelectorAll(sel);
+      if (found.length > cards.length) {
+        cards = Array.from(found);
       }
     }
 
-    return leads;
+    if (cards.length === 0) {
+      const allLinks = document.querySelectorAll('a[href*="/sales/lead/"]');
+      for (const link of allLinks) {
+        const container = link.closest('li') ?? link.parentElement?.parentElement;
+        if (container && !cards.includes(container)) {
+          cards.push(container);
+        }
+      }
+    }
+
+    function extractFromCard(card: Element): typeof results[number] | null {
+      const nameEl =
+        card.querySelector('[data-anonymize="person-name"]') ??
+        card.querySelector('a[href*="/sales/lead/"] span[dir]') ??
+        card.querySelector('a[href*="/sales/lead/"] span') ??
+        card.querySelector('.result-lockup__name a') ??
+        card.querySelector('.artdeco-entity-lockup__title a span');
+      if (!nameEl) return null;
+
+      const fullName = (nameEl.textContent ?? '').trim();
+      if (!fullName || fullName.length < 2) return null;
+
+      const nameParts = fullName.split(/\s+/);
+      const firstName = nameParts[0];
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : undefined;
+
+      const titleEl =
+        card.querySelector('[data-anonymize="title"]') ??
+        card.querySelector('.result-lockup__highlight-keyword') ??
+        card.querySelector('.artdeco-entity-lockup__subtitle');
+      const companyEl =
+        card.querySelector('[data-anonymize="company-name"]') ??
+        card.querySelector('a[href*="/sales/company/"]') ??
+        card.querySelector('.artdeco-entity-lockup__subtitle a');
+      const locationEl =
+        card.querySelector('[data-anonymize="location"]') ??
+        card.querySelector('.result-lockup__misc-item') ??
+        card.querySelector('.artdeco-entity-lockup__caption');
+
+      const profileLink =
+        card.querySelector('a[href*="/sales/lead/"]') ??
+        card.querySelector('a[href*="/in/"]');
+      let linkedinUrl: string | undefined;
+      if (profileLink) {
+        const href = profileLink.getAttribute('href') ?? '';
+        linkedinUrl = href.startsWith('http')
+          ? href.split('?')[0]
+          : `https://www.linkedin.com${href.split('?')[0]}`;
+      }
+
+      return {
+        fullName,
+        firstName,
+        lastName,
+        jobTitle: (titleEl?.textContent ?? '').trim() || undefined,
+        companyName: (companyEl?.textContent ?? '').trim() || undefined,
+        location: (locationEl?.textContent ?? '').trim() || undefined,
+        linkedinUrl
+      };
+    }
+
+    const seen = new Set<string>();
+    for (const card of cards) {
+      const lead = extractFromCard(card);
+      if (!lead) continue;
+      const key = lead.linkedinUrl ?? lead.fullName;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      results.push(lead);
+    }
+
+    return results;
   });
+
+  if (leads.length === 0) {
+    const diagnostics = await page.evaluate(() => ({
+      url: location.href,
+      title: document.title,
+      bodyTextLength: document.body.innerText.length,
+      liCount: document.querySelectorAll('li').length,
+      linkToLeadCount: document.querySelectorAll('a[href*="/sales/lead/"]').length,
+      personNameCount: document.querySelectorAll('[data-anonymize="person-name"]').length,
+      artdecoListItems: document.querySelectorAll('li.artdeco-list__item').length,
+      entityLockups: document.querySelectorAll('.artdeco-entity-lockup').length
+    }));
+    logger.warn(diagnostics, 'sales-nav-scraper-zero-leads-diagnostics');
+  }
+
+  return leads;
 }
 
 function extractTotalResultCount(page: Page): Promise<number> {
@@ -253,7 +273,9 @@ export async function scrapeSearchUrl(
 
   logger.info({ url: pageUrl.toString(), startPage, maxLeads: options.maxLeads }, 'sales-nav-scraper-starting');
 
-  await page.goto(pageUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  await page.goto(pageUrl.toString(), { waitUntil: 'networkidle', timeout: 45_000 }).catch(async () => {
+    await page.waitForLoadState('domcontentloaded', { timeout: 15_000 }).catch(() => undefined);
+  });
   await randomDelay();
 
   if (await detectAuthFailure(page)) {
@@ -349,12 +371,13 @@ export async function scrapeSearchUrl(
 
     if (nextVisible) {
       await nextButton.first().click();
-      // eslint-disable-next-line @typescript-eslint/no-empty-function
-      await page.waitForLoadState('domcontentloaded', { timeout: 15_000 }).catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
     } else {
       const nextUrl = new URL(url);
       nextUrl.searchParams.set('page', String(currentPage));
-      await page.goto(nextUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 30_000 });
+      await page.goto(nextUrl.toString(), { waitUntil: 'networkidle', timeout: 45_000 }).catch(async () => {
+        await page.waitForLoadState('domcontentloaded', { timeout: 15_000 }).catch(() => undefined);
+      });
     }
 
     await randomDelay();
