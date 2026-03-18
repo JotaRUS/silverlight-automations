@@ -38,6 +38,8 @@ export interface ProjectCreateInput {
   kakaotalkProviderAccountId?: string | null;
   voicemailDropProviderAccountId?: string | null;
   yayProviderAccountId?: string | null;
+  anyleadsProviderAccountId?: string | null;
+  openaiProviderAccountId?: string | null;
   googleSheetsProviderAccountId?: string | null;
   supabaseProviderAccountId?: string | null;
   outreachMessageTemplate?: string | null;
@@ -77,6 +79,8 @@ export interface ProjectUpdateInput {
   kakaotalkProviderAccountId?: string | null;
   voicemailDropProviderAccountId?: string | null;
   yayProviderAccountId?: string | null;
+  anyleadsProviderAccountId?: string | null;
+  openaiProviderAccountId?: string | null;
   googleSheetsProviderAccountId?: string | null;
   supabaseProviderAccountId?: string | null;
   outreachMessageTemplate?: string | null;
@@ -132,7 +136,7 @@ export class ProjectsService {
   }
 
   private projectProviderBindings(
-    input: Partial<Pick<ProjectUpdateInput, 'apolloProviderAccountId' | 'salesNavWebhookProviderAccountId' | 'leadmagicProviderAccountId' | 'prospeoProviderAccountId' | 'exaProviderAccountId' | 'rocketreachProviderAccountId' | 'wizaProviderAccountId' | 'foragerProviderAccountId' | 'zeliqProviderAccountId' | 'contactoutProviderAccountId' | 'datagmProviderAccountId' | 'peopledatalabsProviderAccountId' | 'linkedinProviderAccountId' | 'emailProviderAccountId' | 'twilioProviderAccountId' | 'whatsapp2chatProviderAccountId' | 'respondioProviderAccountId' | 'lineProviderAccountId' | 'wechatProviderAccountId' | 'viberProviderAccountId' | 'telegramProviderAccountId' | 'kakaotalkProviderAccountId' | 'voicemailDropProviderAccountId' | 'yayProviderAccountId' | 'googleSheetsProviderAccountId' | 'supabaseProviderAccountId'>>
+    input: Partial<Pick<ProjectUpdateInput, 'apolloProviderAccountId' | 'salesNavWebhookProviderAccountId' | 'leadmagicProviderAccountId' | 'prospeoProviderAccountId' | 'exaProviderAccountId' | 'rocketreachProviderAccountId' | 'wizaProviderAccountId' | 'foragerProviderAccountId' | 'zeliqProviderAccountId' | 'contactoutProviderAccountId' | 'datagmProviderAccountId' | 'peopledatalabsProviderAccountId' | 'linkedinProviderAccountId' | 'emailProviderAccountId' | 'twilioProviderAccountId' | 'whatsapp2chatProviderAccountId' | 'respondioProviderAccountId' | 'lineProviderAccountId' | 'wechatProviderAccountId' | 'viberProviderAccountId' | 'telegramProviderAccountId' | 'kakaotalkProviderAccountId' | 'voicemailDropProviderAccountId' | 'yayProviderAccountId' | 'anyleadsProviderAccountId' | 'openaiProviderAccountId' | 'googleSheetsProviderAccountId' | 'supabaseProviderAccountId'>>
   ): Record<string, string | null | undefined> {
     return {
       apolloProviderAccountId: input.apolloProviderAccountId,
@@ -159,6 +163,8 @@ export class ProjectsService {
       kakaotalkProviderAccountId: input.kakaotalkProviderAccountId,
       voicemailDropProviderAccountId: input.voicemailDropProviderAccountId,
       yayProviderAccountId: input.yayProviderAccountId,
+      anyleadsProviderAccountId: input.anyleadsProviderAccountId,
+      openaiProviderAccountId: input.openaiProviderAccountId,
       googleSheetsProviderAccountId: input.googleSheetsProviderAccountId,
       supabaseProviderAccountId: input.supabaseProviderAccountId
     };

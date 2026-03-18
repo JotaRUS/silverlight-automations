@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -31,7 +31,7 @@ import {
 import type { ProjectJobTitleRecord } from '@/types/project';
 import type { ProviderAccount, ProviderType } from '@/types/provider';
 
-type WizardStep = 'titles' | 'sources' | 'exports' | 'outreach' | 'done';
+type WizardStep = 'providers' | 'titles' | 'sources' | 'exports' | 'outreach' | 'done';
 
 const SAMPLE_DATA: Record<string, string> = {
   '{{FirstName}}': 'Jane',
@@ -40,6 +40,12 @@ const SAMPLE_DATA: Record<string, string> = {
   '{{JobTitle}}': 'VP of Engineering',
   '{{CurrentCompany}}': 'Acme Corp'
 };
+
+const MANDATORY_PROVIDER_TYPES: ProviderType[] = ['OPENAI', 'APOLLO'];
+const ENRICHMENT_TYPES: ProviderType[] = [
+  'LEADMAGIC', 'PROSPEO', 'EXA', 'ROCKETREACH', 'WIZA', 'FORAGER',
+  'ZELIQ', 'CONTACTOUT', 'DATAGM', 'PEOPLEDATALABS', 'ANYLEADS'
+];
 
 interface DiscoveredTitle extends ProjectJobTitleRecord {
   selected: boolean;
@@ -59,26 +65,30 @@ function parseSalesNavCsv(text: string): Record<string, string>[] {
 
 export default function NewProjectWizardPage(): JSX.Element {
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const [step, setStep] = useState<WizardStep>('titles');
+  const [step, setStep] = useState<WizardStep>('providers');
   const templateRef = useRef<HTMLTextAreaElement>(null);
 
+  // Step 1: Provider selection + project basics
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [targetThreshold, setTargetThreshold] = useState('10');
   const [priority, setPriority] = useState('0');
   const [selectedGeos, setSelectedGeos] = useState<string[]>(['US']);
-  const [companyNames, setCompanyNames] = useState<string[]>([]);
 
+  const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({});
   const [projectId, setProjectId] = useState('');
   const [createError, setCreateError] = useState('');
 
+  // Step 2: Job Title Discovery
+  const [companyNames, setCompanyNames] = useState<string[]>([]);
   const [discoveryRunning, setDiscoveryRunning] = useState(false);
   const [discoveryError, setDiscoveryError] = useState('');
   const [discoveredTitles, setDiscoveredTitles] = useState<DiscoveredTitle[]>([]);
   const [discoveryCompleted, setDiscoveryCompleted] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [titleError, setTitleError] = useState('');
 
+  // Step 3: Lead Sources
   const [salesNavUrls, setSalesNavUrls] = useState<string[]>([]);
   const [newSalesNavUrl, setNewSalesNavUrl] = useState('');
   const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -86,11 +96,10 @@ export default function NewProjectWizardPage(): JSX.Element {
   const [importResult, setImportResult] = useState<{ imported: number; duplicatesSkipped: number; errors: string[] } | null>(null);
   const [sourceError, setSourceError] = useState('');
 
-  const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({});
+  // Steps 4 & 5
   const [selectedExports, setSelectedExports] = useState<Record<string, boolean>>({});
   const [selectedOutreach, setSelectedOutreach] = useState<Record<string, boolean>>({});
   const [outreachTemplate, setOutreachTemplate] = useState('');
-  const [bindError, setBindError] = useState('');
   const [exportError, setExportError] = useState('');
   const [outreachError, setOutreachError] = useState('');
 
@@ -128,12 +137,48 @@ export default function NewProjectWizardPage(): JSX.Element {
   }, [accountsByType]);
 
   useEffect(() => {
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
+    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
   }, []);
 
-  const createAndDiscover = useMutation({
+  // Derived: which mandatory providers are selected?
+  const selectedMandatory = useMemo(() => {
+    const result: Record<string, boolean> = {};
+    for (const mType of MANDATORY_PROVIDER_TYPES) {
+      const accounts = accountsByType.get(mType) ?? [];
+      result[mType] = accounts.some((a) => selectedProviders[a.id]);
+    }
+    return result;
+  }, [accountsByType, selectedProviders]);
+
+  const hasEnrichmentSelected = useMemo(() => {
+    for (const eType of ENRICHMENT_TYPES) {
+      const accounts = accountsByType.get(eType) ?? [];
+      if (accounts.some((a) => selectedProviders[a.id])) return true;
+    }
+    return false;
+  }, [accountsByType, selectedProviders]);
+
+  const allMandatoryMet = selectedMandatory.OPENAI && selectedMandatory.APOLLO && hasEnrichmentSelected;
+
+  // Auto-select single accounts for mandatory provider types
+  useEffect(() => {
+    if (!providersQuery.data) return;
+    const auto: Record<string, boolean> = {};
+    let changed = false;
+    for (const mType of MANDATORY_PROVIDER_TYPES) {
+      const accounts = accountsByType.get(mType) ?? [];
+      if (accounts.length === 1 && !selectedProviders[accounts[0].id]) {
+        auto[accounts[0].id] = true;
+        changed = true;
+      }
+    }
+    if (changed) {
+      setSelectedProviders((prev) => ({ ...prev, ...auto }));
+    }
+  }, [providersQuery.data, accountsByType, selectedProviders]);
+
+  // --- Step 1: Create project + bind providers ---
+  const createAndBindMutation = useMutation({
     mutationFn: async () => {
       const project = await createProject({
         name,
@@ -145,60 +190,72 @@ export default function NewProjectWizardPage(): JSX.Element {
         regionConfig: {}
       });
 
-      if (companyNames.length) {
-        await addProjectCompanies(
-          project.id,
-          companyNames.map((c) => ({ name: c }))
-        );
+      const bindings: Record<string, string> = {};
+      const allAccounts = providersQuery.data ?? [];
+      for (const acct of allAccounts) {
+        if (selectedProviders[acct.id]) {
+          const field = PROVIDER_TYPE_TO_FIELD[acct.providerType];
+          bindings[field] = acct.id;
+        }
+      }
+      if (Object.keys(bindings).length > 0) {
+        await updateProject(project.id, bindings as never);
       }
 
       return project;
     },
-    onSuccess: async (project) => {
+    onSuccess: (project) => {
       setProjectId(project.id);
       setCreateError('');
-
-      if (companyNames.length === 0 || selectedGeos.length === 0) {
-        setDiscoveryCompleted(true);
-        return;
-      }
-
-      setDiscoveryRunning(true);
-      setDiscoveryError('');
-
-      try {
-        await triggerJobTitleDiscovery(
-          project.id,
-          companyNames.map((c) => ({ companyName: c })),
-          selectedGeos
-        );
-
-        let attempts = 0;
-        pollingRef.current = setInterval(async () => {
-          attempts += 1;
-          try {
-            const titles = await listProjectJobTitles(project.id);
-            if (titles.length > 0 || attempts >= 30) {
-              if (pollingRef.current) clearInterval(pollingRef.current);
-              pollingRef.current = null;
-              setDiscoveredTitles(
-                titles.map((t) => ({ ...t, selected: t.relevanceScore >= 0.5 }))
-              );
-              setDiscoveryRunning(false);
-              setDiscoveryCompleted(true);
-            }
-          } catch {
-            // keep polling
-          }
-        }, 3000);
-      } catch (err) {
-        setDiscoveryRunning(false);
-        setDiscoveryError(err instanceof Error ? err.message : 'Failed to start job title discovery');
-        setDiscoveryCompleted(true);
-      }
+      setStep('titles');
     },
     onError: (err) => {
       setCreateError(err instanceof Error ? err.message : 'Failed to create project');
+    }
+  });
+
+  // --- Step 2: Job title discovery ---
+  const triggerDiscovery = useMutation({
+    mutationFn: async () => {
+      if (companyNames.length === 0) throw new Error('Add at least one company');
+
+      await addProjectCompanies(
+        projectId,
+        companyNames.map((c) => ({ name: c }))
+      );
+
+      await triggerJobTitleDiscovery(
+        projectId,
+        companyNames.map((c) => ({ companyName: c })),
+        selectedGeos
+      );
+    },
+    onSuccess: () => {
+      setDiscoveryRunning(true);
+      setDiscoveryError('');
+
+      let attempts = 0;
+      pollingRef.current = setInterval(async () => {
+        attempts += 1;
+        try {
+          const titles = await listProjectJobTitles(projectId);
+          if (titles.length > 0 || attempts >= 30) {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            pollingRef.current = null;
+            setDiscoveredTitles(
+              titles.map((t) => ({ ...t, selected: t.relevanceScore >= 0.5 }))
+            );
+            setDiscoveryRunning(false);
+            setDiscoveryCompleted(true);
+          }
+        } catch {
+          // keep polling
+        }
+      }, 3000);
+    },
+    onError: (err) => {
+      setDiscoveryRunning(false);
+      setDiscoveryError(err instanceof Error ? err.message : 'Failed to start job title discovery');
     }
   });
 
@@ -223,13 +280,13 @@ export default function NewProjectWizardPage(): JSX.Element {
       }
     },
     onSuccess: () => setStep('sources'),
-    onError: (err) => setCreateError(err instanceof Error ? err.message : 'Failed to save titles')
+    onError: (err) => setTitleError(err instanceof Error ? err.message : 'Failed to save titles')
   });
 
+  // --- Step 3: Lead sources ---
   const addSalesNavUrl = useCallback(() => {
     const url = newSalesNavUrl.trim();
-    if (!url) return;
-    if (salesNavUrls.includes(url)) return;
+    if (!url || salesNavUrls.includes(url)) return;
     setSalesNavUrls((prev) => [...prev, url]);
     setNewSalesNavUrl('');
   }, [newSalesNavUrl, salesNavUrls]);
@@ -245,104 +302,62 @@ export default function NewProjectWizardPage(): JSX.Element {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      const rows = parseSalesNavCsv(text);
-      setCsvRows(rows);
+      setCsvRows(parseSalesNavCsv(text));
     };
     reader.readAsText(file);
   }, []);
 
   const saveSourcesAndContinue = useMutation({
     mutationFn: async () => {
-      const bindings: Record<string, string> = {};
-      const allAccounts = providersQuery.data ?? [];
-      for (const acct of allAccounts) {
-        if (selectedProviders[acct.id]) {
-          const field = PROVIDER_TYPE_TO_FIELD[acct.providerType];
-          bindings[field] = acct.id;
-        }
-      }
-      if (Object.keys(bindings).length > 0) {
-        await updateProject(projectId, bindings as never);
-      }
-
       if (salesNavUrls.length > 0) {
         await addSalesNavSearches(
           projectId,
           salesNavUrls.map((url) => ({ sourceUrl: url, normalizedUrl: url }))
         );
       }
-
       if (csvRows.length > 0) {
         const result = await importLeadsCsv(projectId, csvRows);
         setImportResult(result);
       }
     },
-    onSuccess: () => {
-      setStep('exports');
-      setSourceError('');
-    },
-    onError: (err) => {
-      setSourceError(err instanceof Error ? err.message : 'Failed to save sources');
-    }
+    onSuccess: () => { setStep('exports'); setSourceError(''); },
+    onError: (err) => { setSourceError(err instanceof Error ? err.message : 'Failed to save sources'); }
   });
 
+  // --- Step 4: Exports ---
   const exportBindMutation = useMutation({
     mutationFn: async () => {
       const bindings: Record<string, string> = {};
       for (const acct of exportAccounts) {
         if (selectedExports[acct.id]) {
-          const field = PROVIDER_TYPE_TO_FIELD[acct.providerType];
-          bindings[field] = acct.id;
+          bindings[PROVIDER_TYPE_TO_FIELD[acct.providerType]] = acct.id;
         }
       }
       if (Object.keys(bindings).length > 0) {
         return updateProject(projectId, bindings as never);
       }
     },
-    onSuccess: () => {
-      setStep('outreach');
-      setExportError('');
-    },
-    onError: (err) => {
-      setExportError(err instanceof Error ? err.message : 'Failed to bind export destinations');
-    }
+    onSuccess: () => { setStep('outreach'); setExportError(''); },
+    onError: (err) => { setExportError(err instanceof Error ? err.message : 'Failed to bind export destinations'); }
   });
 
+  // --- Step 5: Outreach ---
   const outreachBindMutation = useMutation({
     mutationFn: async () => {
       if (!outreachTemplate.trim()) throw new Error('Message template is required');
       const bindings: Record<string, string | null> = { outreachMessageTemplate: outreachTemplate };
       for (const acct of outreachAccounts) {
         if (selectedOutreach[acct.id]) {
-          const field = PROVIDER_TYPE_TO_FIELD[acct.providerType];
-          bindings[field] = acct.id;
+          bindings[PROVIDER_TYPE_TO_FIELD[acct.providerType]] = acct.id;
         }
       }
       return updateProject(projectId, bindings as never);
     },
-    onSuccess: () => {
-      setStep('done');
-      setOutreachError('');
-    },
-    onError: (err) => {
-      setOutreachError(err instanceof Error ? err.message : 'Failed to save outreach configuration');
-    }
+    onSuccess: () => { setStep('done'); setOutreachError(''); },
+    onError: (err) => { setOutreachError(err instanceof Error ? err.message : 'Failed to save outreach configuration'); }
   });
 
-  const toggleExport = useCallback((accountId: string, providerType: ProviderType) => {
-    setSelectedExports((prev) => {
-      const next = { ...prev };
-      if (next[accountId]) { delete next[accountId]; }
-      else {
-        for (const other of exportAccounts) {
-          if (other.providerType === providerType && other.id !== accountId) delete next[other.id];
-        }
-        next[accountId] = true;
-      }
-      return next;
-    });
-  }, [exportAccounts]);
-
+  // Toggle helpers
   const toggleProvider = useCallback((accountId: string, providerType: ProviderType) => {
     setSelectedProviders((prev) => {
       const next = { ...prev };
@@ -357,6 +372,20 @@ export default function NewProjectWizardPage(): JSX.Element {
       return next;
     });
   }, [providersQuery.data]);
+
+  const toggleExport = useCallback((accountId: string, providerType: ProviderType) => {
+    setSelectedExports((prev) => {
+      const next = { ...prev };
+      if (next[accountId]) { delete next[accountId]; }
+      else {
+        for (const other of exportAccounts) {
+          if (other.providerType === providerType && other.id !== accountId) delete next[other.id];
+        }
+        next[accountId] = true;
+      }
+      return next;
+    });
+  }, [exportAccounts]);
 
   const toggleOutreach = useCallback((accountId: string, providerType: ProviderType) => {
     setSelectedOutreach((prev) => {
@@ -377,13 +406,10 @@ export default function NewProjectWizardPage(): JSX.Element {
     if (!textarea) { setOutreachTemplate((prev) => prev + variable); return; }
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
-    const before = outreachTemplate.slice(0, start);
-    const after = outreachTemplate.slice(end);
-    setOutreachTemplate(before + variable + after);
+    setOutreachTemplate(outreachTemplate.slice(0, start) + variable + outreachTemplate.slice(end));
     requestAnimationFrame(() => {
       textarea.focus();
-      const cursorPos = start + variable.length;
-      textarea.setSelectionRange(cursorPos, cursorPos);
+      textarea.setSelectionRange(start + variable.length, start + variable.length);
     });
   }, [outreachTemplate]);
 
@@ -399,39 +425,120 @@ export default function NewProjectWizardPage(): JSX.Element {
     router.push(`/admin/leads?projectId=${projectId}`);
   }, [router, projectId]);
 
-  const selectedCount = Object.values(selectedProviders).filter(Boolean).length;
   const outreachSelectedCount = Object.values(selectedOutreach).filter(Boolean).length;
   const selectedTitleCount = discoveredTitles.filter((t) => t.selected).length;
 
   const isAfterStep = (target: WizardStep): boolean => {
-    const order: WizardStep[] = ['titles', 'sources', 'exports', 'outreach', 'done'];
+    const order: WizardStep[] = ['providers', 'titles', 'sources', 'exports', 'outreach', 'done'];
     return order.indexOf(step) > order.indexOf(target);
+  };
+
+  // Provider account picker component
+  const renderProviderPicker = (
+    types: ProviderType[],
+    label: string,
+    mandatory: boolean,
+    sublabel?: string
+  ) => {
+    const available = types.filter((t) => (accountsByType.get(t)?.length ?? 0) > 0);
+    const missing = types.filter((t) => (accountsByType.get(t)?.length ?? 0) === 0);
+    const hasSelection = types.some((t) =>
+      (accountsByType.get(t) ?? []).some((a) => selectedProviders[a.id])
+    );
+
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-slate-700">{label}</h3>
+          {mandatory && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+              hasSelection ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+            }`}>
+              {hasSelection ? 'Selected' : 'Required'}
+            </span>
+          )}
+        </div>
+        {sublabel && <p className="text-xs text-slate-400 -mt-1">{sublabel}</p>}
+
+        {available.length === 0 && (
+          <div className="rounded-lg border-2 border-dashed border-red-200 bg-red-50/50 p-3 text-center">
+            <p className="text-xs text-red-600">
+              No {missing.map((t) => PROVIDER_DISPLAY_NAMES[t]).join(' / ')} accounts configured.{' '}
+              <button type="button" onClick={() => router.push('/admin/providers')} className="underline font-medium">
+                Go to Providers
+              </button>
+            </p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {available.flatMap((provType) =>
+            (accountsByType.get(provType) ?? []).map((acct) => {
+              const isSelected = !!selectedProviders[acct.id];
+              return (
+                <button
+                  key={acct.id}
+                  type="button"
+                  onClick={() => toggleProvider(acct.id, acct.providerType)}
+                  className={`flex items-center gap-3 rounded-lg border px-3 py-2 text-left transition-all ${
+                    isSelected
+                      ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div className={`flex size-4 shrink-0 items-center justify-center rounded border ${
+                    isSelected ? 'border-primary bg-primary text-white' : 'border-slate-300'
+                  }`}>
+                    {isSelected && <span className="material-symbols-outlined text-xs">check</span>}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-800 truncate">
+                      {PROVIDER_DISPLAY_NAMES[acct.providerType]} — {acct.accountLabel}
+                    </p>
+                    {acct.lastHealthStatus && (
+                      <p className={`text-[11px] ${
+                        acct.lastHealthStatus === 'healthy' || acct.lastHealthStatus === 'ok' ? 'text-emerald-600' : 'text-amber-600'
+                      }`}>
+                        {acct.lastHealthStatus === 'healthy' || acct.lastHealthStatus === 'ok' ? 'Connected' : acct.lastHealthStatus}
+                      </p>
+                    )}
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center gap-2">
-        <StepIndicator num={1} label="Job Titles" active={step === 'titles'} done={step !== 'titles'} />
+        <StepIndicator num={1} label="Providers" active={step === 'providers'} done={isAfterStep('providers')} />
         <div className="h-px flex-1 bg-slate-200" />
-        <StepIndicator num={2} label="Lead Sources" active={step === 'sources'} done={isAfterStep('sources')} />
+        <StepIndicator num={2} label="Job Titles" active={step === 'titles'} done={isAfterStep('titles')} />
         <div className="h-px flex-1 bg-slate-200" />
-        <StepIndicator num={3} label="Exports" active={step === 'exports'} done={isAfterStep('exports')} />
+        <StepIndicator num={3} label="Lead Sources" active={step === 'sources'} done={isAfterStep('sources')} />
         <div className="h-px flex-1 bg-slate-200" />
-        <StepIndicator num={4} label="Outreach" active={step === 'outreach'} done={isAfterStep('outreach')} />
+        <StepIndicator num={4} label="Exports" active={step === 'exports'} done={isAfterStep('exports')} />
         <div className="h-px flex-1 bg-slate-200" />
-        <StepIndicator num={5} label="Done" active={step === 'done'} done={false} />
+        <StepIndicator num={5} label="Outreach" active={step === 'outreach'} done={isAfterStep('outreach')} />
+        <div className="h-px flex-1 bg-slate-200" />
+        <StepIndicator num={6} label="Done" active={step === 'done'} done={false} />
       </div>
 
-      {/* Step 1: Job Title Discovery */}
-      {step === 'titles' && (
+      {/* ── Step 1: Providers + Project Basics ── */}
+      {step === 'providers' && (
         <Card className="space-y-5">
           <div>
-            <h2 className="text-lg font-bold">Job Title Discovery</h2>
+            <h2 className="text-lg font-bold">Create Project & Select Providers</h2>
             <p className="text-sm text-slate-500">
-              Define your project, target countries, and companies. The system will use Apollo + OpenAI to discover real job titles used at those organizations.
+              Set up your project and bind the required provider accounts. OpenAI and Apollo are mandatory for job title discovery.
             </p>
           </div>
 
+          {/* Project basics */}
           <div className="space-y-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Project Name *</label>
@@ -450,7 +557,6 @@ export default function NewProjectWizardPage(): JSX.Element {
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Target Experts *</label>
                 <Input type="number" value={targetThreshold} onChange={(e) => setTargetThreshold(e.target.value)} min="1" />
-                <p className="mt-1 text-xs text-slate-400">How many experts you need</p>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Priority</label>
@@ -475,30 +581,115 @@ export default function NewProjectWizardPage(): JSX.Element {
             {selectedGeos.length === 0 && (
               <p className="-mt-2 text-xs text-red-500">Select at least one geography</p>
             )}
-            <TagInput
-              label="Target Companies *"
-              helperText="Add the companies you want to source experts from. Used for job title discovery via Apollo + OpenAI."
-              values={companyNames}
-              onChange={setCompanyNames}
-              placeholder="Type a company name and press Enter"
-            />
           </div>
 
-          {!projectId && !discoveryRunning && !discoveryCompleted && (
-            <>
-              {createError && <p className="text-sm text-red-600">{createError}</p>}
-              <div className="flex justify-end">
-                <Button
-                  onClick={() => createAndDiscover.mutate()}
-                  disabled={!name || selectedGeos.length === 0 || createAndDiscover.isPending}
-                >
-                  {createAndDiscover.isPending ? 'Creating...' : companyNames.length > 0 ? 'Create & Get Job Titles' : 'Create & Continue'}
-                  <span className="material-symbols-outlined text-base">
-                    {companyNames.length > 0 ? 'psychology' : 'arrow_forward'}
-                  </span>
-                </Button>
+          {/* Provider selection */}
+          <div className="space-y-4 pt-4 border-t border-slate-100">
+            <h3 className="text-sm font-bold text-slate-800">Provider Accounts</h3>
+
+            {providersQuery.isLoading && (
+              <div className="flex items-center justify-center py-8 text-slate-400">
+                <span className="material-symbols-outlined animate-spin mr-2">progress_activity</span>
+                Loading providers...
               </div>
-            </>
+            )}
+
+            {providersQuery.isSuccess && (
+              <div className="space-y-5">
+                {renderProviderPicker(
+                  ['OPENAI'],
+                  'OpenAI',
+                  true,
+                  'Required for AI-powered job title expansion and scoring.'
+                )}
+
+                {renderProviderPicker(
+                  ['APOLLO'],
+                  'Apollo',
+                  true,
+                  'Required for job title discovery and email pattern enrichment.'
+                )}
+
+                {renderProviderPicker(
+                  ENRICHMENT_TYPES,
+                  'Enrichment Providers',
+                  true,
+                  'At least one enrichment provider is required for lead data enrichment.'
+                )}
+
+                {renderProviderPicker(
+                  OUTREACH_CHANNEL_TYPES,
+                  'Outreach Channels',
+                  false,
+                  'Optional. Select channels for automated outreach (Email, SMS, WhatsApp, etc.).'
+                )}
+
+                {renderProviderPicker(
+                  EXPORT_DESTINATION_TYPES,
+                  'Export Destinations',
+                  false,
+                  'Optional. Where enriched leads should be automatically exported.'
+                )}
+              </div>
+            )}
+          </div>
+
+          {!allMandatoryMet && providersQuery.isSuccess && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <span className="material-symbols-outlined text-amber-500 text-base mt-0.5">warning</span>
+              <p className="text-xs text-amber-800">
+                {!selectedMandatory.OPENAI && 'OpenAI account is required. '}
+                {!selectedMandatory.APOLLO && 'Apollo account is required. '}
+                {!hasEnrichmentSelected && 'At least one enrichment provider is required.'}
+              </p>
+            </div>
+          )}
+
+          {createError && <p className="text-sm text-red-600">{createError}</p>}
+
+          <div className="flex justify-end">
+            <Button
+              onClick={() => createAndBindMutation.mutate()}
+              disabled={!name || selectedGeos.length === 0 || !allMandatoryMet || createAndBindMutation.isPending}
+            >
+              {createAndBindMutation.isPending ? 'Creating...' : 'Create Project & Continue'}
+              <span className="material-symbols-outlined text-base">arrow_forward</span>
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* ── Step 2: Job Title Discovery ── */}
+      {step === 'titles' && (
+        <Card className="space-y-5">
+          <div>
+            <h2 className="text-lg font-bold">Job Title Discovery</h2>
+            <p className="text-sm text-slate-500">
+              Add target companies, then click "Get Job Titles" to discover real titles via Apollo + OpenAI. Select the relevant ones for your Sales Navigator searches.
+            </p>
+          </div>
+
+          <TagInput
+            label="Target Companies"
+            helperText="Add the companies you want to source experts from."
+            values={companyNames}
+            onChange={setCompanyNames}
+            placeholder="Type a company name and press Enter"
+          />
+
+          {!discoveryRunning && !discoveryCompleted && (
+            <div className="flex justify-between">
+              <Button onClick={() => { setDiscoveryCompleted(true); }} className="bg-slate-100 text-slate-700 hover:bg-slate-200">
+                Skip (add titles later)
+              </Button>
+              <Button
+                onClick={() => triggerDiscovery.mutate()}
+                disabled={companyNames.length === 0 || triggerDiscovery.isPending}
+              >
+                {triggerDiscovery.isPending ? 'Starting...' : 'Get Job Titles'}
+                <span className="material-symbols-outlined text-base">psychology</span>
+              </Button>
+            </div>
           )}
 
           {discoveryRunning && (
@@ -506,7 +697,7 @@ export default function NewProjectWizardPage(): JSX.Element {
               <span className="material-symbols-outlined animate-spin text-blue-600 text-2xl mb-2">progress_activity</span>
               <p className="text-sm font-medium text-blue-800">Discovering job titles via Apollo + OpenAI...</p>
               <p className="text-xs text-blue-600 mt-1">
-                Querying real titles from {companyNames.length} {companyNames.length === 1 ? 'company' : 'companies'} across {selectedGeos.length} {selectedGeos.length === 1 ? 'geography' : 'geographies'}. This may take 30-60 seconds.
+                Querying titles from {companyNames.length} {companyNames.length === 1 ? 'company' : 'companies'}. This may take 30-60 seconds.
               </p>
             </div>
           )}
@@ -516,9 +707,7 @@ export default function NewProjectWizardPage(): JSX.Element {
           {discoveryCompleted && discoveredTitles.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-700">
-                  Discovered Titles ({discoveredTitles.length})
-                </h3>
+                <h3 className="text-sm font-semibold text-slate-700">Discovered Titles ({discoveredTitles.length})</h3>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => selectAllTitles(true)} className="text-xs text-primary hover:underline">Select all</button>
                   <button type="button" onClick={() => selectAllTitles(false)} className="text-xs text-slate-400 hover:underline">Deselect all</button>
@@ -539,43 +728,33 @@ export default function NewProjectWizardPage(): JSX.Element {
                     }`}>
                       {title.selected && <span className="material-symbols-outlined text-xs">check</span>}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm text-slate-800">{title.titleOriginal}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${
-                        title.relevanceScore >= 0.7 ? 'bg-emerald-100 text-emerald-700'
-                          : title.relevanceScore >= 0.4 ? 'bg-amber-100 text-amber-700'
-                          : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        {(title.relevanceScore * 100).toFixed(0)}%
-                      </span>
-                      <span className="text-[10px] text-slate-400">{title.source}</span>
-                    </div>
+                    <span className="flex-1 text-sm text-slate-800">{title.titleOriginal}</span>
+                    <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${
+                      title.relevanceScore >= 0.7 ? 'bg-emerald-100 text-emerald-700'
+                        : title.relevanceScore >= 0.4 ? 'bg-amber-100 text-amber-700'
+                        : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      {(title.relevanceScore * 100).toFixed(0)}%
+                    </span>
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-slate-400">
-                {selectedTitleCount} of {discoveredTitles.length} titles selected. These will be used for Sales Navigator search targeting.
-              </p>
+              <p className="text-xs text-slate-400">{selectedTitleCount} of {discoveredTitles.length} titles selected.</p>
             </div>
           )}
 
           {discoveryCompleted && discoveredTitles.length === 0 && companyNames.length > 0 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-              <p className="text-sm text-amber-800">
-                No titles were discovered. You can continue and add job titles manually later, or check that the OpenAI and Apollo providers are configured.
-              </p>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-sm text-amber-800">No titles discovered. You can add them manually later from the project page.</p>
             </div>
           )}
 
+          {titleError && <p className="text-sm text-red-600">{titleError}</p>}
+
           {discoveryCompleted && (
             <div className="flex justify-end">
-              <Button
-                onClick={() => proceedToSources.mutate()}
-                disabled={proceedToSources.isPending}
-              >
-                {proceedToSources.isPending ? 'Saving...' : `Continue with ${selectedTitleCount} Title${selectedTitleCount !== 1 ? 's' : ''}`}
+              <Button onClick={() => proceedToSources.mutate()} disabled={proceedToSources.isPending}>
+                {proceedToSources.isPending ? 'Saving...' : 'Continue'}
                 <span className="material-symbols-outlined text-base">arrow_forward</span>
               </Button>
             </div>
@@ -583,13 +762,13 @@ export default function NewProjectWizardPage(): JSX.Element {
         </Card>
       )}
 
-      {/* Step 2: Lead Sources (Sales Nav URLs + CSV + Providers) */}
+      {/* ── Step 3: Lead Sources ── */}
       {step === 'sources' && (
         <Card className="space-y-5">
           <div>
             <h2 className="text-lg font-bold">Lead Sources</h2>
             <p className="text-sm text-slate-500">
-              Add Sales Navigator search URLs (~6 recommended per project) and optionally import leads from a CSV export. You can also bind enrichment providers.
+              Add Sales Navigator search URLs (~6 recommended per project) and optionally import leads from a CSV export.
             </p>
           </div>
 
@@ -623,22 +802,13 @@ export default function NewProjectWizardPage(): JSX.Element {
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSalesNavUrl(); } }}
                 className="flex-1"
               />
-              <Button
-                onClick={addSalesNavUrl}
-                disabled={!newSalesNavUrl.trim()}
-                className="shrink-0"
-              >
-                Add
-              </Button>
+              <Button onClick={addSalesNavUrl} disabled={!newSalesNavUrl.trim()} className="shrink-0">Add</Button>
             </div>
 
             {salesNavUrls.length < 6 && (
               <div className="flex items-center gap-2">
                 <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${Math.min(100, (salesNavUrls.length / 6) * 100)}%` }}
-                  />
+                  <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(100, (salesNavUrls.length / 6) * 100)}%` }} />
                 </div>
                 <span className="text-[11px] text-slate-400">{salesNavUrls.length}/6</span>
               </div>
@@ -651,7 +821,6 @@ export default function NewProjectWizardPage(): JSX.Element {
               <span className="material-symbols-outlined text-base align-text-bottom mr-1">upload_file</span>
               Import Leads from CSV
             </h3>
-
             <label className="flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-200 p-4 cursor-pointer hover:border-slate-300 hover:bg-slate-50 transition-colors">
               <span className="material-symbols-outlined text-slate-400">cloud_upload</span>
               <span className="text-sm text-slate-600">
@@ -659,81 +828,16 @@ export default function NewProjectWizardPage(): JSX.Element {
               </span>
               <input type="file" accept=".csv" onChange={handleCsvUpload} className="hidden" />
             </label>
-
             {csvRows.length > 0 && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs text-slate-600">
-                  <strong>{csvRows.length}</strong> leads parsed. Columns detected: {Object.keys(csvRows[0]).join(', ')}
+                  <strong>{csvRows.length}</strong> leads parsed. Columns: {Object.keys(csvRows[0]).join(', ')}
                 </p>
               </div>
             )}
-
             {importResult && (
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-                Imported {importResult.imported} leads, {importResult.duplicatesSkipped} duplicates skipped.
-                {importResult.errors.length > 0 && (
-                  <span className="text-red-600 ml-1">{importResult.errors.length} errors.</span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Enrichment Providers */}
-          <div className="space-y-3 pt-3 border-t border-slate-100">
-            <h3 className="text-sm font-semibold text-slate-700">
-              <span className="material-symbols-outlined text-base align-text-bottom mr-1">database</span>
-              Enrichment & Other Providers
-            </h3>
-
-            {providersQuery.isLoading && (
-              <div className="flex items-center justify-center py-6 text-slate-400">
-                <span className="material-symbols-outlined animate-spin mr-2">progress_activity</span>
-                Loading providers...
-              </div>
-            )}
-
-            {providersQuery.isSuccess && (
-              <div className="space-y-3">
-                {PROVIDER_CATEGORIES.map((cat) => {
-                  const available = cat.types
-                    .filter((t) => !EXPORT_DESTINATION_TYPES.includes(t) && !OUTREACH_CHANNEL_TYPES.includes(t))
-                    .filter((t) => (accountsByType.get(t)?.length ?? 0) > 0);
-                  if (available.length === 0) return null;
-
-                  return (
-                    <div key={cat.key}>
-                      <p className="text-xs font-medium text-slate-500 mb-1.5">{cat.label}</p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {available.flatMap((provType) =>
-                          (accountsByType.get(provType) ?? []).map((acct) => {
-                            const isSelected = !!selectedProviders[acct.id];
-                            return (
-                              <button
-                                key={acct.id}
-                                type="button"
-                                onClick={() => toggleProvider(acct.id, acct.providerType)}
-                                className={`flex items-center gap-3 rounded-lg border px-3 py-2 text-left transition-all ${
-                                  isSelected
-                                    ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-                                    : 'border-slate-200 bg-white hover:border-slate-300'
-                                }`}
-                              >
-                                <div className={`flex size-4 shrink-0 items-center justify-center rounded border ${
-                                  isSelected ? 'border-primary bg-primary text-white' : 'border-slate-300'
-                                }`}>
-                                  {isSelected && <span className="material-symbols-outlined text-xs">check</span>}
-                                </div>
-                                <span className="text-sm text-slate-800 truncate">
-                                  {PROVIDER_DISPLAY_NAMES[acct.providerType]} — {acct.accountLabel}
-                                </span>
-                              </button>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                Imported {importResult.imported}, {importResult.duplicatesSkipped} skipped.
               </div>
             )}
           </div>
@@ -741,13 +845,8 @@ export default function NewProjectWizardPage(): JSX.Element {
           {sourceError && <p className="text-sm text-red-600">{sourceError}</p>}
 
           <div className="flex justify-between">
-            <Button onClick={() => setStep('exports')} className="bg-slate-100 text-slate-700 hover:bg-slate-200">
-              Skip for now
-            </Button>
-            <Button
-              onClick={() => saveSourcesAndContinue.mutate()}
-              disabled={saveSourcesAndContinue.isPending}
-            >
+            <Button onClick={() => setStep('exports')} className="bg-slate-100 text-slate-700 hover:bg-slate-200">Skip</Button>
+            <Button onClick={() => saveSourcesAndContinue.mutate()} disabled={saveSourcesAndContinue.isPending}>
               {saveSourcesAndContinue.isPending ? 'Saving...' : 'Save & Continue'}
               <span className="material-symbols-outlined text-base">arrow_forward</span>
             </Button>
@@ -755,57 +854,41 @@ export default function NewProjectWizardPage(): JSX.Element {
         </Card>
       )}
 
-      {/* Step 3: Export Destinations */}
+      {/* ── Step 4: Exports ── */}
       {step === 'exports' && (
         <Card className="space-y-5">
           <div>
             <h2 className="text-lg font-bold">Export Destinations</h2>
-            <p className="text-sm text-slate-500">
-              Choose where enriched leads should be automatically exported.
-            </p>
+            <p className="text-sm text-slate-500">Choose where enriched leads should be automatically exported.</p>
           </div>
-
-          {exportAccounts.length === 0 && (
+          {exportAccounts.length === 0 ? (
             <div className="rounded-lg border-2 border-dashed border-slate-200 p-8 text-center">
               <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">cloud_off</span>
               <p className="text-sm font-medium text-slate-600">No export destinations configured</p>
-              <p className="text-xs text-slate-400 mt-1">
-                Go to <button type="button" onClick={() => router.push('/admin/providers')} className="text-primary underline">Providers</button> to add a Google Sheets or Supabase account first.
-              </p>
             </div>
-          )}
-
-          {exportAccounts.length > 0 && (
+          ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {exportAccounts.map((acct) => {
                 const isSelected = !!selectedExports[acct.id];
                 return (
-                  <button
-                    key={acct.id}
-                    type="button"
-                    onClick={() => toggleExport(acct.id, acct.providerType)}
+                  <button key={acct.id} type="button" onClick={() => toggleExport(acct.id, acct.providerType)}
                     className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
                       isSelected ? 'border-primary bg-primary/5 ring-1 ring-primary/30' : 'border-slate-200 bg-white hover:border-slate-300'
-                    }`}
-                  >
+                    }`}>
                     <div className={`flex size-5 shrink-0 items-center justify-center rounded border ${
                       isSelected ? 'border-primary bg-primary text-white' : 'border-slate-300'
                     }`}>
                       {isSelected && <span className="material-symbols-outlined text-sm">check</span>}
                     </div>
-                    <span className="text-sm text-slate-800 truncate">
-                      {PROVIDER_DISPLAY_NAMES[acct.providerType]} — {acct.accountLabel}
-                    </span>
+                    <span className="text-sm text-slate-800 truncate">{PROVIDER_DISPLAY_NAMES[acct.providerType]} — {acct.accountLabel}</span>
                   </button>
                 );
               })}
             </div>
           )}
-
           {exportError && <p className="text-sm text-red-600">{exportError}</p>}
-
           <div className="flex justify-between">
-            <Button onClick={() => setStep('outreach')} className="bg-slate-100 text-slate-700 hover:bg-slate-200">Skip for now</Button>
+            <Button onClick={() => setStep('outreach')} className="bg-slate-100 text-slate-700 hover:bg-slate-200">Skip</Button>
             <Button onClick={() => exportBindMutation.mutate()} disabled={Object.values(selectedExports).filter(Boolean).length === 0 || exportBindMutation.isPending}>
               {exportBindMutation.isPending ? 'Saving...' : 'Save & Continue'}
               <span className="material-symbols-outlined text-base">arrow_forward</span>
@@ -814,41 +897,29 @@ export default function NewProjectWizardPage(): JSX.Element {
         </Card>
       )}
 
-      {/* Step 4: Outreach */}
+      {/* ── Step 5: Outreach ── */}
       {step === 'outreach' && (
         <Card className="space-y-5">
           <div>
             <h2 className="text-lg font-bold">Outreach Configuration</h2>
-            <p className="text-sm text-slate-500">
-              Select outreach channels and write a message template.
-            </p>
+            <p className="text-sm text-slate-500">Select outreach channels and write a message template.</p>
           </div>
-
-          {outreachAccounts.length === 0 && (
+          {outreachAccounts.length === 0 ? (
             <div className="rounded-lg border-2 border-dashed border-slate-200 p-8 text-center">
               <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">campaign</span>
-              <p className="text-sm font-medium text-slate-600">No healthy outreach channels available</p>
-              <p className="text-xs text-slate-400 mt-1">
-                Go to <button type="button" onClick={() => router.push('/admin/providers')} className="text-primary underline">Providers</button> to configure outreach channels.
-              </p>
+              <p className="text-sm font-medium text-slate-600">No healthy outreach channels</p>
             </div>
-          )}
-
-          {outreachAccounts.length > 0 && (
+          ) : (
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-slate-700">Outreach Channels</h3>
+              <h3 className="text-sm font-semibold text-slate-700">Channels</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {outreachAccounts.map((acct) => {
                   const isSelected = !!selectedOutreach[acct.id];
                   return (
-                    <button
-                      key={acct.id}
-                      type="button"
-                      onClick={() => toggleOutreach(acct.id, acct.providerType)}
+                    <button key={acct.id} type="button" onClick={() => toggleOutreach(acct.id, acct.providerType)}
                       className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
                         isSelected ? 'border-primary bg-primary/5 ring-1 ring-primary/30' : 'border-slate-200 bg-white hover:border-slate-300'
-                      }`}
-                    >
+                      }`}>
                       <div className={`flex size-5 shrink-0 items-center justify-center rounded border ${
                         isSelected ? 'border-primary bg-primary text-white' : 'border-slate-300'
                       }`}>
@@ -864,7 +935,6 @@ export default function NewProjectWizardPage(): JSX.Element {
               </div>
             </div>
           )}
-
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-700">Message Template *</h3>
@@ -872,14 +942,9 @@ export default function NewProjectWizardPage(): JSX.Element {
             </div>
             <div className="flex flex-wrap gap-1.5">
               {TEMPLATE_VARIABLES.map((v) => (
-                <button
-                  key={v.key}
-                  type="button"
-                  onClick={() => insertVariable(v.key)}
-                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"
-                >
-                  <span className="material-symbols-outlined text-xs">{v.icon}</span>
-                  {v.label}
+                <button key={v.key} type="button" onClick={() => insertVariable(v.key)}
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+                  <span className="material-symbols-outlined text-xs">{v.icon}</span>{v.label}
                 </button>
               ))}
             </div>
@@ -897,23 +962,19 @@ export default function NewProjectWizardPage(): JSX.Element {
               </div>
             )}
           </div>
-
           {outreachError && <p className="text-sm text-red-600">{outreachError}</p>}
-
           <div className="flex justify-between">
-            <Button onClick={() => setStep('done')} className="bg-slate-100 text-slate-700 hover:bg-slate-200">Skip for now</Button>
-            <Button
-              onClick={() => outreachBindMutation.mutate()}
-              disabled={!outreachTemplate.trim() || outreachSelectedCount === 0 || outreachBindMutation.isPending}
-            >
-              {outreachBindMutation.isPending ? 'Saving...' : 'Save & Start Prospecting'}
+            <Button onClick={() => setStep('done')} className="bg-slate-100 text-slate-700 hover:bg-slate-200">Skip</Button>
+            <Button onClick={() => outreachBindMutation.mutate()}
+              disabled={!outreachTemplate.trim() || outreachSelectedCount === 0 || outreachBindMutation.isPending}>
+              {outreachBindMutation.isPending ? 'Saving...' : 'Save & Finish'}
               <span className="material-symbols-outlined text-base">arrow_forward</span>
             </Button>
           </div>
         </Card>
       )}
 
-      {/* Step 5: Done */}
+      {/* ── Step 6: Done ── */}
       {step === 'done' && (
         <Card className="space-y-5 text-center py-8">
           <div className="flex justify-center">
@@ -923,9 +984,7 @@ export default function NewProjectWizardPage(): JSX.Element {
           </div>
           <div>
             <h2 className="text-lg font-bold">Project Created!</h2>
-            <p className="text-sm text-slate-500 mt-1">
-              Your project is set up. Head to the Leads page to watch leads flow through the pipeline.
-            </p>
+            <p className="text-sm text-slate-500 mt-1">Your project is set up. Head to the Leads page to watch leads flow through the pipeline.</p>
           </div>
           <div className="flex justify-center gap-3">
             <Button onClick={() => router.push('/admin/projects')} className="bg-slate-100 text-slate-700 hover:bg-slate-200">Back to Projects</Button>
