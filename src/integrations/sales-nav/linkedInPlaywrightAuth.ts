@@ -7,7 +7,6 @@ import { chromium, type BrowserContext } from 'playwright';
 import { logger } from '../../core/logging/logger';
 
 const PLAYWRIGHT_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
-const HEADLESS_AUTO_TIMEOUT_MS = 20 * 1000;
 
 const DEFAULT_PROFILE_DIR = path.join(
   os.homedir(),
@@ -53,8 +52,9 @@ async function runOAuthFlow(
     callbackResolve = resolve;
   });
 
-  // Register route interceptor and AWAIT it so it's active before goto
-  await page.route(`${callbackUrlPrefix}**`, (route) => {
+  // Register the interceptor at the context level so it applies to the
+  // full top-level navigation, not just the current page instance.
+  await context.route(`${callbackUrlPrefix}**`, (route) => {
     const url = new URL(route.request().url());
     capturedCode = url.searchParams.get('code');
     capturedState = url.searchParams.get('state');
@@ -89,6 +89,10 @@ async function runOAuthFlow(
     );
   }
 
+  await context.unroute(`${callbackUrlPrefix}**`).catch(() => {
+    logger.warn('playwright-oauth-callback-unroute-failed');
+  });
+
   let liAtCookie: string | null = null;
   let liAtCookieExpiry: number | null = null;
   const cookies = await context.cookies('https://www.linkedin.com');
@@ -105,15 +109,13 @@ async function runOAuthFlow(
 }
 
 /**
- * Launches a Chromium browser with a **persistent profile** so the
- * LinkedIn login session survives across invocations.
+ * Launches a Chromium browser with a persistent profile so the LinkedIn
+ * login session survives across invocations.
  *
- * Strategy:
- *   1. Try **headless** first (silent, invisible to user) with a short
- *      timeout. If the profile already has a valid LinkedIn session,
- *      LinkedIn auto-consents and redirects — the user sees nothing.
- *   2. If the headless attempt times out (no session / consent required),
- *      fall back to **headed** mode so the user can log in interactively.
+ * We keep this flow headed because LinkedIn session reuse only works
+ * reliably against the same persistent Playwright profile. A short-lived
+ * headless preflight created a bad UX and was not reliably reusing the
+ * stored session.
  */
 export async function launchLinkedInOAuthBrowser(
   authorizeUrl: string,
@@ -121,34 +123,7 @@ export async function launchLinkedInOAuthBrowser(
 ): Promise<PlaywrightOAuthResult> {
   const profileDir = process.env.PLAYWRIGHT_PROFILE_DIR ?? DEFAULT_PROFILE_DIR;
   await fs.mkdir(profileDir, { recursive: true });
-
-  // ── 1. Silent headless attempt ──
   let context: BrowserContext | null = null;
-  try {
-    logger.info('playwright-oauth-trying-headless');
-    context = await chromium.launchPersistentContext(profileDir, {
-      headless: true,
-      viewport: { width: 1280, height: 900 },
-      args: BROWSER_ARGS,
-      userAgent: USER_AGENT,
-      locale: 'en-US'
-    });
-
-    const result = await runOAuthFlow(context, authorizeUrl, callbackUrlPrefix, HEADLESS_AUTO_TIMEOUT_MS);
-    logger.info('playwright-oauth-headless-success');
-    return result;
-  } catch (headlessErr) {
-    logger.info(
-      { reason: headlessErr instanceof Error ? headlessErr.message : 'unknown' },
-      'playwright-oauth-headless-failed-falling-back-to-headed'
-    );
-    if (context) {
-      await context.close().catch(() => {});
-      context = null;
-    }
-  }
-
-  // ── 2. Headed fallback — user must interact ──
   try {
     logger.info('playwright-oauth-launching-headed');
     context = await chromium.launchPersistentContext(profileDir, {
@@ -159,7 +134,12 @@ export async function launchLinkedInOAuthBrowser(
       locale: 'en-US'
     });
 
-    const result = await runOAuthFlow(context, authorizeUrl, callbackUrlPrefix, PLAYWRIGHT_LOGIN_TIMEOUT_MS);
+    const result = await runOAuthFlow(
+      context,
+      authorizeUrl,
+      callbackUrlPrefix,
+      PLAYWRIGHT_LOGIN_TIMEOUT_MS
+    );
     logger.info('playwright-oauth-headed-success');
     return result;
   } finally {

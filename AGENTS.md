@@ -43,3 +43,7 @@ The API uses cookie-based JWT auth. To call protected endpoints:
 - The `.env` file must exist with valid `JWT_SECRET` and `PROVIDER_ENCRYPTION_SECRET` (32+ chars). Copy from `.env.example` and replace the placeholder values.
 - `frontend/next.config.mjs` includes a rewrite rule proxying `/api/v1/*` to `http://localhost:3000/api/v1/*` for local dev so the frontend can talk to the backend.
 - Integration tests (`npm run test:integration`) require live PostgreSQL and Redis.
+
+### Step 3 — Update memory (end of task)
+
+To avoid repeating work and save tokens, at the end of tasks update `docs/memory/` when relevant: `done_index.md` (mark deliverable done), `lessons_learned.md`, `error_patterns.md`, `open_questions.md`, `backlog.md` (remove completed, reprioritize). See `docs/memory/README.md`.

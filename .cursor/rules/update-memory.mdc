@@ -1,0 +1,17 @@
+---
+description: At the end of tasks, update project memory to avoid repeating work and save tokens
+alwaysApply: true
+---
+
+# Step 3 — Update memory so we don't repeat work
+
+At the **end of a task** (or before closing out a multi-step change), update the project memory files under `docs/memory/` when relevant:
+
+1. **`docs/memory/done_index.md`** — Mark today's deliverable as completed (date + short description).
+2. **`docs/memory/lessons_learned.md`** — Add any new learnings from this task.
+3. **`docs/memory/error_patterns.md`** — If a confusion or mistake occurred, record it here along with the fix.
+4. **`docs/memory/open_questions.md`** — Add new unresolved items with concrete verification steps; remove or update when resolved.
+5. **`docs/memory/backlog.md`** — Remove completed items and reprioritize the next tasks.
+
+- Only update files that have something new to record; don't add empty or filler entries.
+- Keep entries short and actionable so future sessions can reuse them without re-explaining.

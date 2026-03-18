@@ -81,6 +81,24 @@ export interface LinkedInOAuthStatus {
   linkedInSessionCookieCapturedAt?: string | null;
 }
 
+export interface LinkedInSessionCapturePreflight {
+  executablePath: string | null;
+  userDataDir: string | null;
+  profileDirectory: string | null;
+  executableExists: boolean;
+  userDataDirExists: boolean;
+  profileExists: boolean;
+  profileLocked: boolean;
+  usingConfiguredPaths: boolean;
+}
+
+export interface LinkedInSessionCaptureStatus {
+  state: 'idle' | 'running' | 'succeeded' | 'failed';
+  startedAt: string | null;
+  finishedAt: string | null;
+  error: string | null;
+}
+
 export async function getLinkedInOAuthStatus(
   providerAccountId: string
 ): Promise<LinkedInOAuthStatus> {
@@ -107,6 +125,34 @@ export async function triggerPlaywrightOAuth(
 }> {
   return apiRequest(
     `/api/v1/auth/linkedin/authorize?providerAccountId=${providerAccountId}&mode=playwright`
+  );
+}
+
+export async function getLinkedInSessionCapturePreflight(
+  providerAccountId: string
+): Promise<LinkedInSessionCapturePreflight> {
+  return apiRequest<LinkedInSessionCapturePreflight>(
+    `/api/v1/auth/linkedin/session/preflight?providerAccountId=${providerAccountId}`
+  );
+}
+
+export async function getLinkedInSessionCaptureStatus(
+  providerAccountId: string
+): Promise<LinkedInSessionCaptureStatus> {
+  return apiRequest<LinkedInSessionCaptureStatus>(
+    `/api/v1/auth/linkedin/session/capture/status?providerAccountId=${providerAccountId}`
+  );
+}
+
+export async function startLinkedInSessionCapture(
+  providerAccountId: string
+): Promise<{ started: boolean; status: LinkedInSessionCaptureStatus }> {
+  return apiRequest<{ started: boolean; status: LinkedInSessionCaptureStatus }>(
+    '/api/v1/auth/linkedin/session/capture',
+    {
+      method: 'POST',
+      body: { providerAccountId }
+    }
   );
 }
 

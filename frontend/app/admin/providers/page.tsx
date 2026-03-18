@@ -15,11 +15,13 @@ import {
   deleteLinkedInWebhookSubscription,
   getLinkedInOAuthAuthorizeUrl,
   getLinkedInOAuthStatus,
+  getLinkedInSessionCapturePreflight,
+  getLinkedInSessionCaptureStatus,
   listLinkedInLeadForms,
   listProviderAccounts,
   registerLinkedInWebhook,
+  startLinkedInSessionCapture,
   testProviderConnection,
-  triggerPlaywrightOAuth,
   updateProviderAccount,
   updateSyncedForms,
   type LeadFormSummary,
@@ -71,7 +73,10 @@ const CREDENTIAL_FIELDS: Record<ProviderType, CredentialFieldDef[]> = {
     { key: 'clientId', label: 'Client ID', type: 'text', placeholder: 'e.g. 77vlauv23ezc0v' },
     { key: 'clientSecret', label: 'Client Secret', type: 'password', placeholder: 'Primary client secret' },
     { key: 'organizationId', label: 'Organization ID', type: 'text', placeholder: 'LinkedIn org ID (numeric, from company page URL)' },
-    { key: 'sponsoredAccountId', label: 'Sponsored Account ID (optional)', type: 'text', placeholder: 'For sponsored lead ads — e.g. 522147830' }
+    { key: 'sponsoredAccountId', label: 'Sponsored Account ID (optional)', type: 'text', placeholder: 'For sponsored lead ads — e.g. 522147830' },
+    { key: 'chromeExecutablePath', label: 'Chrome Executable Path (optional)', type: 'text', placeholder: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', optional: true },
+    { key: 'chromeUserDataDir', label: 'Chrome User Data Dir (optional)', type: 'text', placeholder: '~/Library/Application Support/Google/Chrome', optional: true },
+    { key: 'chromeProfileDirectory', label: 'Chrome Profile Directory (optional)', type: 'text', placeholder: 'Default', optional: true }
   ],
   LEADMAGIC: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   PROSPEO: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
@@ -260,6 +265,7 @@ function UpdateCredentialsForm({
 function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
   const queryClient = useQueryClient();
   const [authorizing, setAuthorizing] = useState(false);
+  const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState('');
   const [showManualCookie, setShowManualCookie] = useState(false);
   const [manualCookie, setManualCookie] = useState('');
@@ -268,10 +274,22 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
   const statusQuery = useQuery({
     queryKey: ['linkedin-oauth-status', accountId],
     queryFn: () => getLinkedInOAuthStatus(accountId),
-    refetchInterval: authorizing ? 3_000 : 30_000
+    refetchInterval: authorizing || capturing ? 3_000 : 30_000
   });
 
   const oauthStatus: LinkedInOAuthStatus | null = statusQuery.data ?? null;
+
+  const capturePreflightQuery = useQuery({
+    queryKey: ['linkedin-session-preflight', accountId],
+    queryFn: () => getLinkedInSessionCapturePreflight(accountId),
+    refetchInterval: capturing ? 3_000 : false
+  });
+
+  const captureStatusQuery = useQuery({
+    queryKey: ['linkedin-session-capture-status', accountId],
+    queryFn: () => getLinkedInSessionCaptureStatus(accountId),
+    refetchInterval: capturing ? 3_000 : 30_000
+  });
 
   useEffect(() => {
     const handler = (event: MessageEvent): void => {
@@ -297,35 +315,54 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
     }
   }, [authorizing, oauthStatus?.status, queryClient]);
 
-  const handlePlaywrightAuth = async (): Promise<void> => {
-    setAuthorizing(true);
-    setError('');
-    try {
-      await triggerPlaywrightOAuth(accountId);
+  useEffect(() => {
+    const captureState = captureStatusQuery.data?.state;
+    if (!capturing && captureState !== 'running') return;
+    if (captureState === 'succeeded') {
+      setCapturing(false);
+      setError('');
+      setShowManualCookie(false);
       void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', accountId] });
       void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to authorize';
-      if (msg.includes('playwright') || msg.includes('Playwright')) {
-        setError('Could not open browser window. Use "Manual Cookie Paste" below as fallback.');
-      } else {
-        setError(msg);
-      }
-    } finally {
-      setAuthorizing(false);
+      return;
     }
-  };
+    if (captureState === 'failed') {
+      setCapturing(false);
+      setError(captureStatusQuery.data?.error ?? 'Failed to capture the scraping session.');
+      setShowManualCookie(true);
+    }
+  }, [accountId, capturing, captureStatusQuery.data, queryClient]);
 
-  const handleFallbackAuth = async (): Promise<void> => {
+  const handleConnectLinkedIn = async (): Promise<void> => {
     setAuthorizing(true);
     setError('');
     try {
       const { authorizationUrl } = await getLinkedInOAuthAuthorizeUrl(accountId);
-      window.open(authorizationUrl, 'linkedin-oauth', 'width=600,height=700');
+      const popup = window.open(authorizationUrl, 'linkedin-oauth', 'width=600,height=700');
+      if (!popup) {
+        setError('Popup was blocked. Allow popups for this site and try again.');
+        setAuthorizing(false);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start authorization');
-    } finally {
       setAuthorizing(false);
+    }
+  };
+
+  const handleCaptureSession = async (): Promise<void> => {
+    setCapturing(true);
+    setError('');
+    try {
+      const result = await startLinkedInSessionCapture(accountId);
+      if (!result.started && result.status.state === 'running') {
+        setError('A scraping-session capture is already running for this provider.');
+      }
+      void queryClient.invalidateQueries({ queryKey: ['linkedin-session-capture-status', accountId] });
+      void queryClient.invalidateQueries({ queryKey: ['linkedin-session-preflight', accountId] });
+    } catch (err) {
+      setCapturing(false);
+      setError(err instanceof Error ? err.message : 'Failed to start session capture');
+      setShowManualCookie(true);
     }
   };
 
@@ -369,23 +406,19 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
     return `Access token expires in ${String(daysLeft)} day${daysLeft !== 1 ? 's' : ''}`;
   };
 
+  const hasCookie = oauthStatus?.linkedInSessionCookie === true;
+  const capturePreflight = capturePreflightQuery.data;
+  const captureStatus = captureStatusQuery.data;
+
   return (
     <div className="mt-3 space-y-2 rounded-md border border-blue-200 bg-blue-50/40 p-3">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-blue-800">LinkedIn Authorization</p>
         <div className="flex items-center gap-2">
-          {oauthStatus?.linkedInSessionCookie && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-              <span className="inline-block size-1.5 rounded-full bg-emerald-500" />
-              Session cookie captured
-              {oauthStatus.linkedInSessionCookieCapturedAt && (
-                <span className="text-emerald-500 ml-0.5">
-                  ({new Date(oauthStatus.linkedInSessionCookieCapturedAt).toLocaleDateString()})
-                </span>
-              )}
-            </span>
-          )}
           {statusBadge()}
+          <Badge tone={hasCookie ? 'success' : 'warning'}>
+            {hasCookie ? 'Scraping ready' : 'No scraping session'}
+          </Badge>
         </div>
       </div>
 
@@ -393,41 +426,61 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
         <p className="text-xs text-slate-600">{expiryInfo()}</p>
       ) : null}
 
-      {oauthStatus?.status === 'not_connected' ? (
-        <p className="text-xs text-slate-600">
-          Authorize your LinkedIn account to enable the Lead Sync API and Sales Navigator scraping.
-          A browser window will open for you to log in.
+      <p className="text-xs text-slate-600">
+        Connect LinkedIn first for the Lead Sync API. Then capture a scraping session from your
+        Chrome profile to enable Sales Navigator scraping.
+      </p>
+
+      {oauthStatus?.linkedInSessionCookieCapturedAt && hasCookie ? (
+        <p className="text-xs text-emerald-700">
+          Scraping session captured on {new Date(oauthStatus.linkedInSessionCookieCapturedAt).toLocaleString()}.
         </p>
       ) : null}
 
-      {oauthStatus?.status === 'expired' ? (
-        <p className="text-xs text-amber-700">
-          LinkedIn tokens have expired. Re-authorize to resume Lead Sync and scraping.
-        </p>
+      {capturePreflight ? (
+        <div className="rounded-md border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-600">
+          <p>
+            Chrome profile: <span className="font-medium">{capturePreflight.profileDirectory ?? 'unknown'}</span>
+            {' '}at <span className="font-mono">{capturePreflight.userDataDir ?? 'not found'}</span>
+          </p>
+          {capturePreflight.profileLocked ? (
+            <p className="mt-1 text-amber-700">
+              Close Google Chrome before capturing the scraping session. The selected profile is currently locked.
+            </p>
+          ) : null}
+          {!capturePreflight.executableExists || !capturePreflight.userDataDirExists || !capturePreflight.profileExists ? (
+            <p className="mt-1 text-red-600">
+              Chrome profile preflight failed. Update the optional Chrome path settings on this provider account.
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       {error ? <p className="text-xs text-red-600">{error}</p> : null}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           variant={oauthStatus?.status === 'connected' ? 'secondary' : 'primary'}
-          onClick={() => void handlePlaywrightAuth()}
-          disabled={authorizing}
+          onClick={() => void handleConnectLinkedIn()}
+          disabled={authorizing || capturing}
         >
           {authorizing
-            ? 'Authorizing (browser will open)...'
+            ? 'Connecting LinkedIn...'
             : oauthStatus?.status === 'connected'
-              ? 'Re-authorize with LinkedIn'
-              : 'Authorize with LinkedIn'}
+              ? 'Reconnect LinkedIn'
+              : 'Connect LinkedIn'}
         </Button>
-        <button
-          type="button"
-          onClick={() => void handleFallbackAuth()}
-          disabled={authorizing}
-          className="text-xs text-slate-400 hover:text-slate-600 hover:underline disabled:opacity-50"
+        <Button
+          variant="secondary"
+          onClick={() => void handleCaptureSession()}
+          disabled={authorizing || capturing}
         >
-          Open in browser tab instead
-        </button>
+          {capturing || captureStatus?.state === 'running'
+            ? 'Capturing scraping session...'
+            : hasCookie
+              ? 'Recapture scraping session'
+              : 'Capture scraping session'}
+        </Button>
       </div>
 
       <div className="border-t border-blue-200 pt-2 mt-2">
@@ -439,7 +492,7 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
           <span className="material-symbols-outlined text-sm">
             {showManualCookie ? 'expand_less' : 'expand_more'}
           </span>
-          Manual cookie paste (fallback)
+          Manual cookie paste (use only if automatic capture fails)
         </button>
 
         {showManualCookie && (

@@ -491,7 +491,7 @@ linkedInOAuthCallbackRoutes.get(
         .setHeader('Content-Security-Policy', "default-src 'self'; script-src 'unsafe-inline'")
         .status(200)
         .send(
-          `<html><body><h2>LinkedIn Authorization Successful</h2><p>Your LinkedIn account has been connected. You may close this window and return to the admin panel.</p><script>try{window.opener&&window.opener.postMessage({type:'linkedin-oauth-success',providerAccountId:'${providerAccountId}'},'*')}catch(e){}setTimeout(function(){window.close()},3000);</script></body></html>`
+          `<!doctype html><html><head><meta charset="utf-8" /><title>LinkedIn Connected</title></head><body style="font-family: sans-serif; padding: 24px;"><p>LinkedIn authorization saved. You can close this window.</p><script>try{if(window.opener){window.opener.postMessage({type:'linkedin-oauth-success',providerAccountId:'${providerAccountId}'},'*');window.close();}}catch(e){}setTimeout(function(){window.close()},1000);</script></body></html>`
         );
     } catch (err) {
       next(err);

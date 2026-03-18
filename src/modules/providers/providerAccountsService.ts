@@ -65,7 +65,7 @@ function healthErrorMessageFromDetails(details: unknown): string {
   }
 }
 
-const SECRET_FIELD_PATTERNS = /^(apiKey|serviceRoleKey|clientSecret|oauthAccessToken|oauthRefreshToken|pass|authToken|webhookSecret|botToken|serviceAccountJson)$/;
+const SECRET_FIELD_PATTERNS = /^(apiKey|serviceRoleKey|clientSecret|oauthAccessToken|oauthRefreshToken|pass|authToken|webhookSecret|botToken|serviceAccountJson|linkedInSessionCookie)$/;
 
 function buildCredentialHints(credentials: Record<string, unknown>): Record<string, string> {
   const hints: Record<string, string> = {};
@@ -91,7 +91,7 @@ function sanitizeAccount(account: ProviderAccount, credentials: Record<string, u
     lastHealthCheckAt: account.lastHealthCheckAt,
     lastHealthStatus: account.lastHealthStatus,
     lastHealthError: account.lastHealthError,
-    credentialFields: Object.keys(credentials),
+    credentialFields: Object.keys(credentials).filter((field) => !SECRET_FIELD_PATTERNS.test(field)),
     credentialHints: buildCredentialHints(credentials)
   };
 }

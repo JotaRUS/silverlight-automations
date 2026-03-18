@@ -17,9 +17,11 @@ import {
 } from '@/lib/providerConstants';
 import {
   getLinkedInOAuthStatus,
+  getLinkedInSessionCapturePreflight,
+  getLinkedInSessionCaptureStatus,
   listProviderAccounts,
-  triggerPlaywrightOAuth,
   getLinkedInOAuthAuthorizeUrl,
+  startLinkedInSessionCapture,
   updateProviderAccount,
   type LinkedInOAuthStatus
 } from '@/services/providerService';
@@ -94,6 +96,7 @@ export default function NewProjectWizardPage(): JSX.Element {
   const [importResult, setImportResult] = useState<{ imported: number; duplicatesSkipped: number; errors: string[] } | null>(null);
   const [sourceError, setSourceError] = useState('');
   const [linkedInAuthorizing, setLinkedInAuthorizing] = useState(false);
+  const [linkedInCapturing, setLinkedInCapturing] = useState(false);
   const [linkedInError, setLinkedInError] = useState('');
   const [showManualCookie, setShowManualCookie] = useState(false);
   const [manualCookie, setManualCookie] = useState('');
@@ -130,10 +133,24 @@ export default function NewProjectWizardPage(): JSX.Element {
     queryKey: ['linkedin-oauth-status', salesNavAccount?.id],
     queryFn: () => getLinkedInOAuthStatus(salesNavAccount!.id),
     enabled: !!salesNavAccount?.id && step === 'sources',
-    refetchInterval: linkedInAuthorizing ? 3_000 : 30_000
+    refetchInterval: linkedInAuthorizing || linkedInCapturing ? 3_000 : 30_000
   });
 
   const oauthStatus: LinkedInOAuthStatus | null = linkedInOAuthQuery.data ?? null;
+
+  const linkedInCapturePreflightQuery = useQuery({
+    queryKey: ['linkedin-session-preflight', salesNavAccount?.id],
+    queryFn: () => getLinkedInSessionCapturePreflight(salesNavAccount!.id),
+    enabled: !!salesNavAccount?.id && step === 'sources',
+    refetchInterval: linkedInCapturing ? 3_000 : false
+  });
+
+  const linkedInCaptureStatusQuery = useQuery({
+    queryKey: ['linkedin-session-capture-status', salesNavAccount?.id],
+    queryFn: () => getLinkedInSessionCaptureStatus(salesNavAccount!.id),
+    enabled: !!salesNavAccount?.id && step === 'sources',
+    refetchInterval: linkedInCapturing ? 3_000 : 30_000
+  });
 
   useEffect(() => {
     return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
@@ -317,67 +334,79 @@ export default function NewProjectWizardPage(): JSX.Element {
     reader.readAsText(file);
   }, []);
 
-  const handlePlaywrightAuth = async (): Promise<void> => {
-    if (!salesNavAccount) return;
-    setLinkedInAuthorizing(true);
-    setLinkedInError('');
-    try {
-      await triggerPlaywrightOAuth(salesNavAccount.id);
-      void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', salesNavAccount.id] });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to authorize';
-      if (msg.includes('playwright') || msg.includes('Playwright')) {
-        setLinkedInError('Could not open browser window. Use manual cookie paste below as fallback.');
-        setLinkedInAuthorizing(false);
-        return;
-      }
-      // Proxy timeout or connection abort — the Playwright browser is still
-      // running server-side. Polling will detect the cookie once it's saved.
-      if (msg.includes('Request failed') || msg.includes('network') || msg.includes('abort')) {
-        void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', salesNavAccount.id] });
-        return;
-      }
-      setLinkedInError(msg);
-    } finally {
-      setLinkedInAuthorizing(false);
-    }
-  };
-
-  const handleFallbackAuth = async (): Promise<void> => {
+  const handleConnectLinkedIn = async (): Promise<void> => {
     if (!salesNavAccount) return;
     setLinkedInAuthorizing(true);
     setLinkedInError('');
     try {
       const { authorizationUrl } = await getLinkedInOAuthAuthorizeUrl(salesNavAccount.id);
-      window.open(authorizationUrl, 'linkedin-oauth', 'width=600,height=700');
+      const popup = window.open(authorizationUrl, 'linkedin-oauth', 'width=600,height=700');
+      if (!popup) {
+        setLinkedInError('Popup was blocked. Allow popups for this site and try again.');
+        setLinkedInAuthorizing(false);
+      }
     } catch (err) {
       setLinkedInError(err instanceof Error ? err.message : 'Failed to start authorization');
       setLinkedInAuthorizing(false);
     }
   };
 
+  const handleCaptureScrapingSession = async (): Promise<void> => {
+    if (!salesNavAccount) return;
+    setLinkedInCapturing(true);
+    setLinkedInError('');
+    try {
+      const result = await startLinkedInSessionCapture(salesNavAccount.id);
+      if (!result.started && result.status.state === 'running') {
+        setLinkedInError('A scraping-session capture is already running for this provider.');
+      }
+      void queryClient.invalidateQueries({ queryKey: ['linkedin-session-capture-status', salesNavAccount.id] });
+      void queryClient.invalidateQueries({ queryKey: ['linkedin-session-preflight', salesNavAccount.id] });
+    } catch (err) {
+      setLinkedInCapturing(false);
+      const msg = err instanceof Error ? err.message : 'Failed to start session capture';
+      setLinkedInError(msg);
+      setShowManualCookie(true);
+    }
+  };
+
   useEffect(() => {
     const handler = (event: MessageEvent): void => {
       if (event.data?.type !== 'linkedin-oauth-success') return;
+      if (event.data?.providerAccountId && event.data.providerAccountId !== salesNavAccount?.id) return;
       setLinkedInAuthorizing(false);
       void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', salesNavAccount?.id] });
-      setTimeout(async () => {
-        if (!salesNavAccount) return;
-        try {
-          const fresh = await getLinkedInOAuthStatus(salesNavAccount.id);
-          if (!fresh.linkedInSessionCookie) {
-            setShowManualCookie(true);
-            setLinkedInError(
-              'OAuth tokens saved, but the session cookie could not be captured via browser tab. ' +
-              'Paste your li_at cookie below to enable scraping.'
-            );
-          }
-        } catch { /* status will be re-fetched by the query */ }
-      }, 1000);
+      void queryClient.invalidateQueries({ queryKey: ['providerAccounts', 'active'] });
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
   }, [queryClient, salesNavAccount]);
+
+  useEffect(() => {
+    if (linkedInAuthorizing && oauthStatus?.status === 'connected') {
+      setLinkedInAuthorizing(false);
+      setLinkedInError('');
+      void queryClient.invalidateQueries({ queryKey: ['providerAccounts', 'active'] });
+    }
+  }, [linkedInAuthorizing, oauthStatus?.status, queryClient]);
+
+  useEffect(() => {
+    const captureState = linkedInCaptureStatusQuery.data?.state;
+    if (!linkedInCapturing && captureState !== 'running') return;
+    if (captureState === 'succeeded') {
+      setLinkedInCapturing(false);
+      setLinkedInError('');
+      setShowManualCookie(false);
+      void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', salesNavAccount?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['providerAccounts', 'active'] });
+      return;
+    }
+    if (captureState === 'failed') {
+      setLinkedInCapturing(false);
+      setLinkedInError(linkedInCaptureStatusQuery.data?.error ?? 'Failed to capture the scraping session.');
+      setShowManualCookie(true);
+    }
+  }, [linkedInCapturing, linkedInCaptureStatusQuery.data, queryClient, salesNavAccount?.id]);
 
   const handleSaveManualCookie = async (): Promise<void> => {
     if (!salesNavAccount || !manualCookie.trim()) return;
@@ -459,6 +488,9 @@ export default function NewProjectWizardPage(): JSX.Element {
   };
 
   const hasCookie = oauthStatus?.linkedInSessionCookie === true;
+  const oauthConnected = oauthStatus?.status === 'connected';
+  const capturePreflight = linkedInCapturePreflightQuery.data;
+  const captureStatus = linkedInCaptureStatusQuery.data;
 
   const renderProviderPicker = (
     types: ProviderType[],
@@ -793,64 +825,78 @@ export default function NewProjectWizardPage(): JSX.Element {
           </div>
 
           {/* LinkedIn Authorization */}
-          {salesNavAccount && hasCookie && (
-            <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50/50 px-4 py-3">
-              <span className="inline-block size-2 rounded-full bg-emerald-500 shrink-0" />
-              <p className="flex-1 text-sm text-emerald-800">
-                LinkedIn session active
-                {oauthStatus?.linkedInSessionCookieCapturedAt && (
-                  <span className="text-emerald-600 ml-1 text-xs">
-                    (since {new Date(oauthStatus.linkedInSessionCookieCapturedAt).toLocaleDateString()})
-                  </span>
-                )}
-              </p>
-              <button
-                type="button"
-                onClick={() => void handlePlaywrightAuth()}
-                disabled={linkedInAuthorizing}
-                className="text-xs text-slate-400 hover:text-slate-600 hover:underline disabled:opacity-50"
-              >
-                {linkedInAuthorizing ? 'Re-authorizing...' : 'Re-authorize'}
-              </button>
-            </div>
-          )}
-
-          {salesNavAccount && !hasCookie && (
+          {salesNavAccount && (
             <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/40 p-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <h3 className="text-sm font-semibold text-blue-800">
                   <span className="material-symbols-outlined text-base align-text-bottom mr-1">lock</span>
-                  LinkedIn Session
+                  LinkedIn Connection
                 </h3>
-                {oauthStatus && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                    No session cookie
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    oauthConnected ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {oauthConnected ? 'OAuth connected' : 'OAuth not connected'}
                   </span>
-                )}
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    hasCookie ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {hasCookie ? 'Scraping session ready' : 'No scraping session'}
+                  </span>
+                </div>
               </div>
 
               <p className="text-xs text-slate-600">
-                Authorize with LinkedIn to capture a session cookie. This is needed for scraping Sales Navigator search results.
-                A browser window will open — if you&apos;ve logged in before, it will remember your session.
+                First connect LinkedIn in a browser tab using your normal browser session. Then capture a
+                scraping session from your Chrome profile for Sales Navigator scraping.
               </p>
+
+              {oauthStatus?.linkedInSessionCookieCapturedAt && hasCookie ? (
+                <p className="text-xs text-emerald-700">
+                  Session cookie captured on {new Date(oauthStatus.linkedInSessionCookieCapturedAt).toLocaleString()}.
+                </p>
+              ) : null}
+
+              {capturePreflight ? (
+                <div className="rounded-lg border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-600">
+                  <p>
+                    Chrome profile: <span className="font-medium">{capturePreflight.profileDirectory ?? 'unknown'}</span>
+                    {' '}at <span className="font-mono">{capturePreflight.userDataDir ?? 'not found'}</span>
+                  </p>
+                  {capturePreflight.profileLocked ? (
+                    <p className="mt-1 text-amber-700">
+                      Close Google Chrome before capturing the scraping session. The active profile is currently locked.
+                    </p>
+                  ) : null}
+                  {!capturePreflight.executableExists || !capturePreflight.userDataDirExists || !capturePreflight.profileExists ? (
+                    <p className="mt-1 text-red-600">
+                      Chrome profile preflight failed. Check the provider account Chrome path settings on the Providers page.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
 
               {linkedInError && <p className="text-xs text-red-600">{linkedInError}</p>}
 
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={() => void handlePlaywrightAuth()}
-                  disabled={linkedInAuthorizing}
-                >
-                  {linkedInAuthorizing ? 'Authorizing (browser will open)...' : 'Authorize with LinkedIn'}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button onClick={() => void handleConnectLinkedIn()} disabled={linkedInAuthorizing || linkedInCapturing}>
+                  {linkedInAuthorizing
+                    ? 'Connecting LinkedIn...'
+                    : oauthConnected
+                      ? 'Reconnect LinkedIn'
+                      : 'Connect LinkedIn'}
                 </Button>
-                <button
-                  type="button"
-                  onClick={() => void handleFallbackAuth()}
-                  disabled={linkedInAuthorizing}
-                  className="text-xs text-slate-400 hover:text-slate-600 hover:underline disabled:opacity-50"
+                <Button
+                  onClick={() => void handleCaptureScrapingSession()}
+                  disabled={linkedInAuthorizing || linkedInCapturing}
+                  className="bg-slate-100 text-slate-700 hover:bg-slate-200"
                 >
-                  Open in browser tab
-                </button>
+                  {linkedInCapturing || captureStatus?.state === 'running'
+                    ? 'Capturing scraping session...'
+                    : hasCookie
+                      ? 'Recapture scraping session'
+                      : 'Capture scraping session'}
+                </Button>
               </div>
 
               <div className="border-t border-blue-200 pt-2">
@@ -862,7 +908,7 @@ export default function NewProjectWizardPage(): JSX.Element {
                   <span className="material-symbols-outlined text-sm">
                     {showManualCookie ? 'expand_less' : 'expand_more'}
                   </span>
-                  Manual cookie paste (fallback)
+                  Manual cookie paste (use only if automatic capture fails)
                 </button>
                 {showManualCookie && (
                   <div className="mt-2 space-y-2">

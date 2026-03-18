@@ -17,7 +17,15 @@ import {
   buildLinkedInRedirectUri,
   exchangeLinkedInAuthorizationCode
 } from '../../integrations/sales-nav/linkedinAuthCodeClient';
+import {
+  captureLinkedInSessionCookieFromChromeProfile,
+  getLinkedInChromeProfileDiagnostics
+} from '../../integrations/sales-nav/linkedInChromeProfileSessionCapture';
 import { launchLinkedInOAuthBrowser } from '../../integrations/sales-nav/linkedInPlaywrightAuth';
+import {
+  getLinkedInSessionCaptureStatus,
+  runLinkedInSessionCapture
+} from '../../integrations/sales-nav/linkedInSessionCaptureRegistry';
 import { ProviderAccountsService } from '../../modules/providers/providerAccountsService';
 
 const loginRequestSchema = z.object({
@@ -43,6 +51,31 @@ const linkedInAuthCodeCallbackQuerySchema = z.object({
   error: z.string().optional(),
   error_description: z.string().optional()
 });
+
+const providerAccountIdQuerySchema = z.object({
+  providerAccountId: z.string().uuid()
+});
+
+function buildLinkedInOAuthSuccessHtml(): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>LinkedIn Connected</title>
+  </head>
+  <body style="font-family: sans-serif; padding: 24px;">
+    <p>LinkedIn authorization saved. You can close this window.</p>
+    <script>
+      try {
+        if (window.opener) {
+          window.opener.postMessage({ type: 'linkedin-oauth-success' }, '*');
+          window.close();
+        }
+      } catch {}
+    </script>
+  </body>
+</html>`;
+}
 
 function mapDbRole(dbRole: string): AuthRole {
   const lower = dbRole.toLowerCase();
@@ -409,18 +442,106 @@ authRoutes.get('/linkedin/callback', async (request, response, next) => {
       credentials: mergedCredentials
     });
 
-    response.status(200).json({
-      connected: true,
-      providerAccountId: stateSession.providerAccountId,
-      redirectUri,
-      scope: mergedCredentials.oauthScope,
-      accessTokenExpiresAt: mergedCredentials.oauthAccessTokenExpiresAt,
-      refreshTokenExpiresAt: mergedCredentials.oauthRefreshTokenExpiresAt ?? null
-    });
+    response
+      .status(200)
+      .type('html')
+      .send(buildLinkedInOAuthSuccessHtml());
   } catch (error) {
     next(error);
   }
 });
+
+authRoutes.get(
+  '/linkedin/session/preflight',
+  authenticate,
+  authorize(['admin', 'ops']),
+  async (request, response, next) => {
+    try {
+      const parsedQuery = providerAccountIdQuerySchema.safeParse(request.query);
+      if (!parsedQuery.success) {
+        throw new AppError('Invalid payload', 400, 'invalid_payload', parsedQuery.error.flatten());
+      }
+
+      const providerAccount = await providerAccountsService.getActiveAccountOrThrow(
+        parsedQuery.data.providerAccountId,
+        'SALES_NAV_WEBHOOK'
+      );
+      const credentials = await providerAccountsService.getDecryptedCredentials(
+        providerAccount.id,
+        'SALES_NAV_WEBHOOK'
+      );
+      const diagnostics = await getLinkedInChromeProfileDiagnostics(credentials);
+
+      response.status(200).json(diagnostics);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+authRoutes.get(
+  '/linkedin/session/capture/status',
+  authenticate,
+  authorize(['admin', 'ops']),
+  async (request, response, next) => {
+    try {
+      const parsedQuery = providerAccountIdQuerySchema.safeParse(request.query);
+      if (!parsedQuery.success) {
+        throw new AppError('Invalid payload', 400, 'invalid_payload', parsedQuery.error.flatten());
+      }
+
+      response.status(200).json(getLinkedInSessionCaptureStatus(parsedQuery.data.providerAccountId));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+authRoutes.post(
+  '/linkedin/session/capture',
+  authenticate,
+  authorize(['admin', 'ops']),
+  async (request, response, next) => {
+    try {
+      const parsedBody = providerAccountIdQuerySchema.safeParse(request.body);
+      if (!parsedBody.success) {
+        throw new AppError('Invalid payload', 400, 'invalid_payload', parsedBody.error.flatten());
+      }
+
+      const providerAccount = await providerAccountsService.getActiveAccountOrThrow(
+        parsedBody.data.providerAccountId,
+        'SALES_NAV_WEBHOOK'
+      );
+
+      const startResult = runLinkedInSessionCapture(providerAccount.id, async () => {
+        const credentials = await providerAccountsService.getDecryptedCredentials(
+          providerAccount.id,
+          'SALES_NAV_WEBHOOK'
+        );
+        const capture = await captureLinkedInSessionCookieFromChromeProfile(credentials);
+        const now = Date.now();
+        const mergedCredentials: Record<string, unknown> = {
+          ...credentials,
+          linkedInSessionCookie: capture.liAtCookie,
+          linkedInSessionCookieCapturedAt: new Date(now).toISOString()
+        };
+        if (capture.liAtCookieExpiry) {
+          mergedCredentials.linkedInSessionCookieExpiresAt = new Date(
+            capture.liAtCookieExpiry * 1000
+          ).toISOString();
+        }
+
+        await providerAccountsService.update(providerAccount.id, {
+          credentials: mergedCredentials
+        });
+      });
+
+      response.status(startResult.started ? 202 : 200).json(startResult);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 const profileUpdateSchema = z
   .object({
