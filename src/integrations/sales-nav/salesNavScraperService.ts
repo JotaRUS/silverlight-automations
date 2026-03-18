@@ -160,7 +160,7 @@ async function extractLeadsFromPage(page: Page): Promise<ScrapedLead[]> {
       }
     }
 
-    function extractFromCard(card: Element): typeof results[number] | null {
+    const extractFromCard = (card: Element): typeof results[number] | null => {
       const nameEl =
         card.querySelector('[data-anonymize="person-name"]') ??
         card.querySelector('a[href*="/sales/lead/"] span[dir]') ??
@@ -209,7 +209,7 @@ async function extractLeadsFromPage(page: Page): Promise<ScrapedLead[]> {
         location: (locationEl?.textContent ?? '').trim() || undefined,
         linkedinUrl
       };
-    }
+    };
 
     const seen = new Set<string>();
     for (const card of cards) {
