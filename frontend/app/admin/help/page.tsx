@@ -136,7 +136,7 @@ export default function HelpPage(): JSX.Element {
         <SectionHeading id="overview">Platform Overview</SectionHeading>
         <p className="text-sm text-slate-600 leading-relaxed">
           The Expert Sourcing Automation Platform helps you find, verify, and reach out to domain experts at
-          scale. <strong>Sales Navigator URLs</strong> are the primary lead source; leads are ingested via the Lead Sync API
+          scale. <strong>Sales Navigator URLs</strong> are the primary lead source; leads are ingested via the Sales Navigator provider
           (Sales Nav webhook) or CSV import. Apollo is used only for <strong>enrichment</strong> — specifically email pattern
           detection by enriching 2–3 leads per company to infer the format (e.g. first.last@company.com), then the
           email pattern engine generates emails for remaining leads without extra API calls. For personal emails (Gmail,
@@ -558,8 +558,8 @@ export default function HelpPage(): JSX.Element {
             notes="You must be an account admin to create API keys. API access depends on your Apollo pricing plan."
           />
           <ProviderGuide
-            name="Lead Sync API"
-            role="Lead Sync API ingestion via OAuth 2.0"
+            name="Sales Navigator"
+            role="Sales Navigator ingestion via OAuth 2.0"
             fields={['Client ID', 'Client Secret']}
             steps={[
               'Go to the LinkedIn Developer Portal at developer.linkedin.com.',
@@ -773,7 +773,7 @@ export default function HelpPage(): JSX.Element {
             links={[
               { label: 'LinkedIn Developer Portal', url: 'https://developer.linkedin.com/' }
             ]}
-            notes="For sourcing and webhook ingestion, use the Lead Sync API provider with Client ID + Client Secret."
+            notes="For sourcing and webhook ingestion, use the Sales Navigator provider with Client ID + Client Secret."
           />
           <ProviderGuide
             name="Email Provider"

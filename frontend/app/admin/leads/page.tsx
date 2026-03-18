@@ -5,10 +5,12 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { toast } from 'sonner';
 import { useSocket } from '@/hooks/useSocket';
 import { deleteLead, fetchLeadExplorer, updateLead, type LeadExplorerResponse } from '@/services/adminService';
-import { listProjects } from '@/services/projectService';
+import { listProjects, scrapeSalesNav } from '@/services/projectService';
 
 type LeadStatus = 'NEW' | 'ENRICHING' | 'ENRICHED' | 'OUTREACH_PENDING' | 'CONTACTED' | 'REPLIED' | 'SCREENING' | 'DISQUALIFIED' | 'CONVERTED';
 
@@ -537,6 +539,15 @@ export default function LeadsPage(): JSX.Element {
     }
   });
 
+  const scrapeMutation = useMutation({
+    mutationFn: (projectId: string) => scrapeSalesNav(projectId),
+    onSuccess: (data) => {
+      toast.success(`Queued scraping for ${data.queued} search URL(s)`);
+      void queryClient.invalidateQueries({ queryKey: ['leads-pipeline'] });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to start scraping')
+  });
+
   const handleStatusChange = useCallback(
     (id: string, status: LeadStatus) => updateMutation.mutate({ id, status }),
     [updateMutation]
@@ -667,6 +678,16 @@ export default function LeadsPage(): JSX.Element {
           ))}
         </select>
         <div className="ml-auto flex items-center gap-2">
+          {selectedProjectId && (
+            <Button
+              variant="secondary"
+              onClick={() => scrapeMutation.mutate(selectedProjectId)}
+              disabled={scrapeMutation.isPending}
+            >
+              <span className="material-symbols-outlined text-base">travel_explore</span>
+              {scrapeMutation.isPending ? 'Scraping…' : 'Scrape Leads'}
+            </Button>
+          )}
           <span className="text-xs text-slate-400">{totalLeads} lead{totalLeads !== 1 ? 's' : ''}</span>
           <ColumnToggle visibleColumns={visibleColumns} onToggle={toggleColumn} />
         </div>

@@ -349,7 +349,7 @@ Auth: any role. Returns the authenticated user's `userId` and `role`.
 
 #### LinkedIn OAuth 2.0 Authorization Code Flow (3-Legged OAuth)
 
-The LinkedIn Sales Navigator (SALES_NAV_WEBHOOK) provider uses 3-legged OAuth (Authorization Code Flow) to obtain member-level access tokens for the Lead Sync API. After creating a provider account with Client ID, Client Secret, and Organization ID, an admin must complete the OAuth authorization flow to grant member-level access.
+The LinkedIn Sales Navigator (SALES_NAV_WEBHOOK) provider uses 3-legged OAuth (Authorization Code Flow) to obtain member-level access tokens for the Sales Navigator integration. After creating a provider account with Client ID, Client Secret, and Organization ID, an admin must complete the OAuth authorization flow to grant member-level access.
 
 **Token lifetimes:** Access tokens last 60 days, refresh tokens last 365 days. Tokens are automatically refreshed when API calls are made.
 

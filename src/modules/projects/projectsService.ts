@@ -171,6 +171,18 @@ export class ProjectsService {
   }
 
   public async createProject(input: ProjectCreateInput): Promise<Project> {
+    const bindings = this.projectProviderBindings(input);
+
+    if (!bindings.salesNavWebhookProviderAccountId) {
+      const salesNavAccount = await this.prismaClient.providerAccount.findFirst({
+        where: { providerType: 'SALES_NAV_WEBHOOK', isActive: true },
+        select: { id: true }
+      });
+      if (salesNavAccount) {
+        bindings.salesNavWebhookProviderAccountId = salesNavAccount.id;
+      }
+    }
+
     return this.prismaClient.project.create({
       data: {
         name: input.name,
@@ -182,7 +194,7 @@ export class ProjectsService {
         regionConfig: toJsonValue(input.regionConfig) ?? {},
         enrichmentRoutingConfig: toJsonValue(input.enrichmentRoutingConfig ?? undefined),
         outreachMessageTemplate: input.outreachMessageTemplate,
-        ...this.projectProviderBindings(input)
+        ...bindings
       }
     });
   }

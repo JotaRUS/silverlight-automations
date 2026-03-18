@@ -67,6 +67,21 @@ providerAccountRoutes.post('/', authorize(['admin', 'ops']), async (request, res
     if (!auth?.userId) {
       throw new AppError('Unauthorized', 401, 'unauthorized');
     }
+
+    if (payload.providerType === 'SALES_NAV_WEBHOOK') {
+      const existing = await prisma.providerAccount.findFirst({
+        where: { providerType: 'SALES_NAV_WEBHOOK', deletedAt: null },
+        select: { id: true }
+      });
+      if (existing) {
+        throw new AppError(
+          'Only one Sales Navigator provider is allowed (cookie-based session). Use the existing one.',
+          409,
+          'sales_nav_already_exists'
+        );
+      }
+    }
+
     const created = await providerAccountsService.create(payload, auth.userId);
     response.status(201).json(created);
   } catch (error) {

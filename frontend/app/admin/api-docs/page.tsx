@@ -609,7 +609,7 @@ const groups: EndpointGroup[] = [
         method: 'GET',
         path: '/api/v1/providers/{providerAccountId}/linkedin/oauth/status',
         summary: 'Check LinkedIn OAuth connection status',
-        description: 'Returns the current OAuth status for a Lead Sync API provider, including token expiration dates and granted scopes.',
+        description: 'Returns the current OAuth status for a Sales Navigator provider, including token expiration dates and granted scopes.',
         auth: 'Session cookie or API key (admin/ops)',
         pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: 'LinkedIn Sales Nav provider account ID' }],
         responses: [
@@ -1159,7 +1159,7 @@ const groups: EndpointGroup[] = [
       {
         method: 'POST',
         path: '/webhooks/sales-nav/{providerAccountId}',
-        summary: 'Lead Sync API lead ingestion',
+        summary: 'Sales Navigator lead ingestion',
         auth: 'Bearer token or x-sales-nav-client-id header',
         pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: 'Sales Nav provider' }],
         responses: [
@@ -1169,7 +1169,7 @@ const groups: EndpointGroup[] = [
       {
         method: 'POST',
         path: '/webhooks/sales-nav/{providerAccountId}/notification',
-        summary: 'Lead Sync API notification webhook',
+        summary: 'Sales Navigator notification webhook',
         auth: 'LinkedIn signature verification',
         pathParams: [{ name: 'providerAccountId', type: 'UUID', required: true, description: 'Sales Nav provider' }],
         responses: [

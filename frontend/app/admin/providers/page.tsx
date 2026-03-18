@@ -675,6 +675,11 @@ export default function ProviderAccountsPage(): JSX.Element {
     }, {});
   }, [providerAccountsQuery.data]);
 
+  const salesNavAlreadyExists = useMemo(
+    () => (providerAccountsQuery.data ?? []).some((a) => a.providerType === 'SALES_NAV_WEBHOOK'),
+    [providerAccountsQuery.data]
+  );
+
   return (
     <div className="space-y-6">
       <Card className="space-y-4">
@@ -688,8 +693,12 @@ export default function ProviderAccountsPage(): JSX.Element {
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             >
               {providerTypes.map((type) => (
-                <option key={type} value={type}>
-                  {PROVIDER_DISPLAY_NAMES[type]}
+                <option
+                  key={type}
+                  value={type}
+                  disabled={type === 'SALES_NAV_WEBHOOK' && salesNavAlreadyExists}
+                >
+                  {PROVIDER_DISPLAY_NAMES[type]}{type === 'SALES_NAV_WEBHOOK' && salesNavAlreadyExists ? ' (already configured)' : ''}
                 </option>
               ))}
             </select>

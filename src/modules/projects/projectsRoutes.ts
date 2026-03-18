@@ -361,7 +361,7 @@ projectsRoutes.post('/:projectId/scrape-sales-nav', async (request, response, ne
 
     if (!project.salesNavWebhookProviderAccountId) {
       throw new AppError(
-        'No Lead Sync API provider bound to this project',
+        'No Sales Navigator provider bound to this project',
         422,
         'no_sales_nav_provider'
       );

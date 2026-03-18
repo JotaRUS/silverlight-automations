@@ -106,9 +106,9 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
   {
     slug: 'sales-navigator',
     providerType: 'SALES_NAV_WEBHOOK',
-    name: 'Lead Sync API',
+    name: 'Sales Navigator',
     category: 'Lead Sourcing',
-    summary: 'Lead Sync API using 3-legged OAuth (Authorization Code Flow) and webhook delivery.',
+    summary: 'Sales Navigator using 3-legged OAuth (Authorization Code Flow) and webhook delivery.',
     credentials: [
       {
         key: 'clientId',
@@ -559,7 +559,7 @@ export const providerGuideDocs: ProviderGuideDoc[] = [
     providerType: 'LINKEDIN',
     name: 'LinkedIn Messaging (Legacy)',
     category: 'Outreach & Messaging',
-    summary: 'Legacy LinkedIn outreach token provider. New sourcing integrations should use the Lead Sync API.',
+    summary: 'Legacy LinkedIn outreach token provider. New sourcing integrations should use the Sales Navigator provider.',
     credentials: [
       { key: 'apiKey', label: 'API Key / Access Token', required: true, description: 'LinkedIn API credential/token used for outbound calls.' }
     ],
