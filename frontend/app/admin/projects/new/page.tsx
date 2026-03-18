@@ -477,7 +477,7 @@ export default function NewProjectWizardPage(): JSX.Element {
   }, [providersQuery.data]);
 
   const goToLeads = useCallback(() => {
-    router.push(`/admin/leads?projectId=${projectId}`);
+    router.push(`/admin/leads?projectId=${projectId}&fromWizard=1`);
   }, [router, projectId]);
 
   const selectedTitleCount = discoveredTitles.filter((t) => t.selected).length;

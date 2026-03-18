@@ -134,6 +134,10 @@ export async function scrapeSalesNav(
   });
 }
 
+export async function getScrapingStatus(projectId: string): Promise<{ scraping: boolean }> {
+  return apiRequest<{ scraping: boolean }>(`/api/v1/projects/${projectId}/scraping-status`);
+}
+
 export interface ScreeningQuestionRecord {
   id: string;
   projectId: string;

@@ -422,3 +422,38 @@ projectsRoutes.post('/:projectId/scrape-sales-nav', async (request, response, ne
     next(error);
   }
 });
+
+projectsRoutes.get('/:projectId/scraping-status', async (request, response, next) => {
+  try {
+    const params = parseOrThrow(pathParamsSchema, request.params);
+
+    const lastStarted = await prisma.systemEvent.findFirst({
+      where: {
+        entityType: 'sales_nav_scraper',
+        message: 'sales_nav_scraper_started',
+        payload: { path: ['projectId'], equals: params.projectId }
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true }
+    });
+
+    if (!lastStarted) {
+      response.json({ scraping: false });
+      return;
+    }
+
+    const lastCompleted = await prisma.systemEvent.findFirst({
+      where: {
+        entityType: 'sales_nav_scraper',
+        message: 'sales_nav_scraper_completed',
+        payload: { path: ['projectId'], equals: params.projectId },
+        createdAt: { gte: lastStarted.createdAt }
+      },
+      select: { id: true }
+    });
+
+    response.json({ scraping: !lastCompleted });
+  } catch (error) {
+    next(error);
+  }
+});

@@ -10,7 +10,7 @@ import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { useSocket } from '@/hooks/useSocket';
 import { deleteLead, fetchLeadExplorer, updateLead, type LeadExplorerResponse } from '@/services/adminService';
-import { listProjects, scrapeSalesNav } from '@/services/projectService';
+import { getScrapingStatus, listProjects, scrapeSalesNav } from '@/services/projectService';
 
 type LeadStatus = 'NEW' | 'ENRICHING' | 'ENRICHED' | 'OUTREACH_PENDING' | 'CONTACTED' | 'REPLIED' | 'SCREENING' | 'DISQUALIFIED' | 'CONVERTED';
 
@@ -542,11 +542,31 @@ export default function LeadsPage(): JSX.Element {
   const scrapeMutation = useMutation({
     mutationFn: (projectId: string) => scrapeSalesNav(projectId),
     onSuccess: (data) => {
-      toast.success(`Queued scraping for ${data.queued} search URL(s)`);
+      if (data.queued > 0) {
+        toast.success(`Queued scraping for ${data.queued} search URL(s)`);
+      }
       void queryClient.invalidateQueries({ queryKey: ['leads-pipeline'] });
+      void queryClient.invalidateQueries({ queryKey: ['scraping-status', selectedProjectId] });
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to start scraping')
   });
+
+  const scrapingStatusQuery = useQuery({
+    queryKey: ['scraping-status', selectedProjectId],
+    queryFn: () => getScrapingStatus(selectedProjectId),
+    enabled: !!selectedProjectId,
+    refetchInterval: 5_000
+  });
+  const isScraping = scrapingStatusQuery.data?.scraping ?? false;
+
+  const autoScrapedRef = useRef(false);
+  useEffect(() => {
+    const fromWizard = searchParams.get('fromWizard') === '1';
+    if (fromWizard && selectedProjectId && !autoScrapedRef.current) {
+      autoScrapedRef.current = true;
+      scrapeMutation.mutate(selectedProjectId);
+    }
+  }, [selectedProjectId, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStatusChange = useCallback(
     (id: string, status: LeadStatus) => updateMutation.mutate({ id, status }),
@@ -679,14 +699,21 @@ export default function LeadsPage(): JSX.Element {
         </select>
         <div className="ml-auto flex items-center gap-2">
           {selectedProjectId && (
-            <Button
-              variant="secondary"
-              onClick={() => scrapeMutation.mutate(selectedProjectId)}
-              disabled={scrapeMutation.isPending}
-            >
-              <span className="material-symbols-outlined text-base">travel_explore</span>
-              {scrapeMutation.isPending ? 'Scraping…' : 'Scrape Leads'}
-            </Button>
+            isScraping ? (
+              <span className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium bg-emerald-100 text-emerald-700">
+                <span className="material-symbols-outlined text-base animate-spin">progress_activity</span>
+                Scraping…
+              </span>
+            ) : (
+              <Button
+                variant="secondary"
+                onClick={() => scrapeMutation.mutate(selectedProjectId)}
+                disabled={scrapeMutation.isPending}
+              >
+                <span className="material-symbols-outlined text-base">travel_explore</span>
+                {scrapeMutation.isPending ? 'Starting…' : 'Scrape Leads'}
+              </Button>
+            )
           )}
           <span className="text-xs text-slate-400">{totalLeads} lead{totalLeads !== 1 ? 's' : ''}</span>
           <ColumnToggle visibleColumns={visibleColumns} onToggle={toggleColumn} />
