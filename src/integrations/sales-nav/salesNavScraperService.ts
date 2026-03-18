@@ -20,10 +20,16 @@ export interface ScrapedLead {
 }
 
 export interface ScrapeResult {
-  leads: ScrapedLead[];
+  leadsEmitted: number;
   lastPageScraped: number;
   totalResultsEstimate: number;
   abortedReason?: string;
+}
+
+export interface ScrapeOptions {
+  maxLeads: number;
+  onLeadScraped: (lead: ScrapedLead) => Promise<void>;
+  onProgress?: (pageNum: number, leadsOnPage: number) => void;
 }
 
 function randomDelay(): Promise<void> {
@@ -230,10 +236,10 @@ function extractTotalResultCount(page: Page): Promise<number> {
 export async function scrapeSearchUrl(
   page: Page,
   url: string,
-  startPage = 1,
-  onProgress?: (pageNum: number, leadsOnPage: number) => void
+  startPage: number,
+  options: ScrapeOptions
 ): Promise<ScrapeResult> {
-  const allLeads: ScrapedLead[] = [];
+  let leadsEmitted = 0;
   let currentPage = startPage;
   let totalResultsEstimate = 0;
   let captchaRetries = 0;
@@ -245,14 +251,14 @@ export async function scrapeSearchUrl(
     pageUrl.searchParams.set('page', String(startPage));
   }
 
-  logger.info({ url: pageUrl.toString(), startPage }, 'sales-nav-scraper-starting');
+  logger.info({ url: pageUrl.toString(), startPage, maxLeads: options.maxLeads }, 'sales-nav-scraper-starting');
 
   await page.goto(pageUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await randomDelay();
 
   if (await detectAuthFailure(page)) {
     return {
-      leads: allLeads,
+      leadsEmitted: 0,
       lastPageScraped: Math.max(1, currentPage - 1),
       totalResultsEstimate: 0,
       abortedReason: 'session_expired'
@@ -265,11 +271,16 @@ export async function scrapeSearchUrl(
     : maxPages;
 
   while (currentPage <= effectiveMaxPages) {
+    if (leadsEmitted >= options.maxLeads) {
+      logger.info({ leadsEmitted, maxLeads: options.maxLeads }, 'sales-nav-scraper-target-reached');
+      break;
+    }
+
     if (await detectCaptcha(page)) {
       if (captchaRetries >= MAX_CAPTCHA_RETRIES) {
         logger.warn({ currentPage }, 'sales-nav-scraper-captcha-limit-reached');
         return {
-          leads: allLeads,
+          leadsEmitted,
           lastPageScraped: Math.max(1, currentPage - 1),
           totalResultsEstimate,
           abortedReason: 'captcha_limit'
@@ -285,7 +296,7 @@ export async function scrapeSearchUrl(
 
     if (await detectAuthFailure(page)) {
       return {
-        leads: allLeads,
+        leadsEmitted,
         lastPageScraped: Math.max(1, currentPage - 1),
         totalResultsEstimate,
         abortedReason: 'session_expired'
@@ -306,15 +317,22 @@ export async function scrapeSearchUrl(
       }
     }
 
-    allLeads.push(...pageLeads);
-    onProgress?.(currentPage, pageLeads.length);
+    let emittedThisPage = 0;
+    for (const lead of pageLeads) {
+      if (leadsEmitted >= options.maxLeads) break;
+      await options.onLeadScraped(lead);
+      leadsEmitted++;
+      emittedThisPage++;
+    }
+
+    options.onProgress?.(currentPage, emittedThisPage);
 
     logger.info(
-      { currentPage, leadsOnPage: pageLeads.length, totalLeads: allLeads.length },
+      { currentPage, leadsOnPage: pageLeads.length, emittedThisPage, totalEmitted: leadsEmitted, maxLeads: options.maxLeads },
       'sales-nav-scraper-page-complete'
     );
 
-    if (pageLeads.length === 0) {
+    if (pageLeads.length === 0 || leadsEmitted >= options.maxLeads) {
       break;
     }
 
@@ -343,7 +361,7 @@ export async function scrapeSearchUrl(
   }
 
   return {
-    leads: allLeads,
+    leadsEmitted,
     lastPageScraped: currentPage,
     totalResultsEstimate
   };

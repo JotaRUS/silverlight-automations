@@ -16,6 +16,16 @@ import { bullMqConnection } from '../redis';
 import { createJobLogger, type CorrelatedJobData } from './withWorkerContext';
 import { registerDeadLetterHandler } from './withDeadLetter';
 
+async function countActiveLeadsInPipeline(projectId: string): Promise<number> {
+  return prisma.lead.count({
+    where: {
+      projectId,
+      status: { not: 'DISQUALIFIED' },
+      deletedAt: null
+    }
+  });
+}
+
 export function createSalesNavScraperWorker(): Worker<CorrelatedJobData<SalesNavScraperJob>> {
   const worker = new Worker<CorrelatedJobData<SalesNavScraperJob>>(
     QUEUE_NAMES.SALES_NAV_SCRAPER,
@@ -28,12 +38,24 @@ export function createSalesNavScraperWorker(): Worker<CorrelatedJobData<SalesNav
         select: {
           id: true,
           name: true,
+          targetThreshold: true,
           salesNavWebhookProviderAccountId: true
         }
       });
 
       if (!project?.salesNavWebhookProviderAccountId) {
         throw new Error('Project has no Sales Navigator provider account bound');
+      }
+
+      const activeLeads = await countActiveLeadsInPipeline(project.id);
+      const leadsNeeded = Math.max(0, project.targetThreshold - activeLeads);
+
+      if (leadsNeeded <= 0) {
+        jobLogger.info(
+          { activeLeads, targetThreshold: project.targetThreshold },
+          'sales-nav-scraper-target-already-met'
+        );
+        return;
       }
 
       const providerAccount = await prisma.providerAccount.findUniqueOrThrow({
@@ -62,9 +84,9 @@ export function createSalesNavScraperWorker(): Worker<CorrelatedJobData<SalesNav
         type: 'project.scraping_started',
         severity: 'INFO',
         title: `Scraping started: ${project.name}`,
-        message: `Scraping Sales Navigator search URL (page ${String(payload.resumeFromPage)}).`,
+        message: `Scraping for up to ${String(leadsNeeded)} leads (page ${String(payload.resumeFromPage)}).`,
         projectId: payload.projectId,
-        metadata: { salesNavSearchId: payload.salesNavSearchId }
+        metadata: { salesNavSearchId: payload.salesNavSearchId, leadsNeeded }
       });
 
       await prisma.systemEvent.create({
@@ -77,23 +99,61 @@ export function createSalesNavScraperWorker(): Worker<CorrelatedJobData<SalesNav
           payload: {
             projectId: payload.projectId,
             sourceUrl: payload.sourceUrl,
-            resumeFromPage: payload.resumeFromPage
+            resumeFromPage: payload.resumeFromPage,
+            leadsNeeded
           }
         }
       });
 
       const { browser, page } = await launchScraperBrowser(liAtCookie);
+      let enqueued = 0;
+      const timeSlice = new Date().toISOString().slice(0, 16);
 
       try {
         const result = await scrapeSearchUrl(
           page,
           payload.sourceUrl,
           payload.resumeFromPage,
-          (pageNum, leadsOnPage) => {
-            jobLogger.info(
-              { pageNum, leadsOnPage },
-              'sales-nav-scraper-page-progress'
-            );
+          {
+            maxLeads: leadsNeeded,
+            onLeadScraped: async (lead) => {
+              const jobId = buildJobId(
+                'scraper-lead',
+                payload.projectId,
+                lead.linkedinUrl ?? lead.fullName,
+                timeSlice
+              );
+              await getQueues().leadIngestionQueue.add(
+                'lead-ingestion.ingest',
+                {
+                  correlationId: job.data.correlationId,
+                  data: {
+                    projectId: payload.projectId,
+                    salesNavSearchId: payload.salesNavSearchId,
+                    source: 'sales_nav' as const,
+                    lead: {
+                      firstName: lead.firstName,
+                      lastName: lead.lastName,
+                      fullName: lead.fullName,
+                      companyName: lead.companyName,
+                      jobTitle: lead.jobTitle,
+                      linkedinUrl: lead.linkedinUrl,
+                      emails: [],
+                      phones: [],
+                      metadata: { scrapedFromPage: true, location: lead.location }
+                    }
+                  }
+                },
+                { jobId }
+              );
+              enqueued++;
+            },
+            onProgress: (pageNum, leadsOnPage) => {
+              jobLogger.info(
+                { pageNum, leadsOnPage },
+                'sales-nav-scraper-page-progress'
+              );
+            }
           }
         );
 
@@ -107,42 +167,6 @@ export function createSalesNavScraperWorker(): Worker<CorrelatedJobData<SalesNav
             metadata: { providerAccountId: providerAccount.id }
           });
           throw new Error('LinkedIn session cookie expired — detected login redirect');
-        }
-
-        const timeSlice = new Date().toISOString().slice(0, 16);
-        let enqueued = 0;
-
-        for (const lead of result.leads) {
-          const jobId = buildJobId(
-            'scraper-lead',
-            payload.projectId,
-            lead.linkedinUrl ?? lead.fullName,
-            timeSlice
-          );
-          await getQueues().leadIngestionQueue.add(
-            'lead-ingestion.ingest',
-            {
-              correlationId: job.data.correlationId,
-              data: {
-                projectId: payload.projectId,
-                salesNavSearchId: payload.salesNavSearchId,
-                source: 'sales_nav' as const,
-                lead: {
-                  firstName: lead.firstName,
-                  lastName: lead.lastName,
-                  fullName: lead.fullName,
-                  companyName: lead.companyName,
-                  jobTitle: lead.jobTitle,
-                  linkedinUrl: lead.linkedinUrl,
-                  emails: [],
-                  phones: [],
-                  metadata: { scrapedFromPage: true, location: lead.location }
-                }
-              }
-            },
-            { jobId }
-          );
-          enqueued++;
         }
 
         await prisma.salesNavSearch.update({
@@ -159,11 +183,12 @@ export function createSalesNavScraperWorker(): Worker<CorrelatedJobData<SalesNav
             message: 'sales_nav_scraper_completed',
             payload: {
               projectId: payload.projectId,
-              leadsExtracted: result.leads.length,
+              leadsEmitted: result.leadsEmitted,
               leadsEnqueued: enqueued,
               lastPageScraped: result.lastPageScraped,
               totalResultsEstimate: result.totalResultsEstimate,
-              abortedReason: result.abortedReason ?? null
+              abortedReason: result.abortedReason ?? null,
+              leadsNeeded
             }
           }
         });
@@ -172,21 +197,22 @@ export function createSalesNavScraperWorker(): Worker<CorrelatedJobData<SalesNav
           type: 'project.scraping_completed',
           severity: result.abortedReason ? 'WARNING' : 'INFO',
           title: `Scraping ${result.abortedReason ? 'paused' : 'completed'}: ${project.name}`,
-          message: `Extracted ${String(result.leads.length)} leads (pages 1-${String(result.lastPageScraped)}).${result.abortedReason ? ` Stopped: ${result.abortedReason}` : ''}`,
+          message: `Scraped ${String(result.leadsEmitted)} leads (needed ${String(leadsNeeded)}, pages 1-${String(result.lastPageScraped)}).${result.abortedReason ? ` Stopped: ${result.abortedReason}` : ''}`,
           projectId: payload.projectId,
           metadata: {
             salesNavSearchId: payload.salesNavSearchId,
-            leadsExtracted: result.leads.length,
+            leadsEmitted: result.leadsEmitted,
             lastPageScraped: result.lastPageScraped
           }
         });
 
         jobLogger.info(
           {
-            leadsExtracted: result.leads.length,
+            leadsEmitted: result.leadsEmitted,
             enqueued,
             lastPageScraped: result.lastPageScraped,
-            abortedReason: result.abortedReason
+            abortedReason: result.abortedReason,
+            leadsNeeded
           },
           'sales-nav-scraper-job-complete'
         );
@@ -199,7 +225,7 @@ export function createSalesNavScraperWorker(): Worker<CorrelatedJobData<SalesNav
     {
       connection: bullMqConnection,
       prefix: env.REDIS_NAMESPACE,
-      concurrency: 1
+      concurrency: 5
     }
   );
 

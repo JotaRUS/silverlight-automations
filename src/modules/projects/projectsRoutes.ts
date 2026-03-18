@@ -367,6 +367,14 @@ projectsRoutes.post('/:projectId/scrape-sales-nav', async (request, response, ne
       );
     }
 
+    const activeLeads = await prisma.lead.count({
+      where: { projectId: params.projectId, status: { not: 'DISQUALIFIED' }, deletedAt: null }
+    });
+    if (activeLeads >= project.targetThreshold) {
+      response.status(200).json({ queued: 0, message: `Target already met (${activeLeads}/${project.targetThreshold} leads in pipeline)` });
+      return;
+    }
+
     const searches = salesNavSearchId
       ? await prisma.salesNavSearch.findMany({
           where: { id: salesNavSearchId, projectId: params.projectId, isActive: true, deletedAt: null }

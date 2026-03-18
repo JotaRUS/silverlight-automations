@@ -660,7 +660,10 @@ async function queueSalesNavScrapingIfNeeded(
     return 0;
   }
 
-  if (project.signedUpCount >= project.targetThreshold) {
+  const activeLeads = await prisma.lead.count({
+    where: { projectId: project.id, status: { not: 'DISQUALIFIED' }, deletedAt: null }
+  });
+  if (activeLeads >= project.targetThreshold) {
     return 0;
   }
 
