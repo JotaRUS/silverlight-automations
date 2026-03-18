@@ -123,13 +123,19 @@ function LeadActions({
 }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0 });
 
   const handleOpen = useCallback(() => {
     setOpen((v) => {
       if (!v && btnRef.current) {
         const rect = btnRef.current.getBoundingClientRect();
-        setPos({ top: rect.bottom + 4, left: rect.right - 208 });
+        const menuHeight = 420;
+        const spaceBelow = window.innerHeight - rect.bottom - 4;
+        const top = spaceBelow >= menuHeight
+          ? rect.bottom + 4
+          : Math.max(4, rect.top - menuHeight - 4);
+        setPos({ top, left: rect.right - 208 });
       }
       return !v;
     });
@@ -148,8 +154,9 @@ function LeadActions({
         <>
           <div className="fixed inset-0 z-[9998]" onClick={() => setOpen(false)} />
           <div
-            className="fixed z-[9999] w-52 rounded-xl bg-white shadow-lg border border-slate-200 py-1 text-sm"
-            style={{ top: pos.top, left: Math.max(0, pos.left) }}
+            ref={menuRef}
+            className="fixed z-[9999] w-52 rounded-xl bg-white shadow-lg border border-slate-200 py-1 text-sm overflow-y-auto"
+            style={{ top: pos.top, left: Math.max(0, pos.left), maxHeight: `calc(100vh - 8px)` }}
           >
             <p className="px-3 py-1.5 text-[10px] font-bold uppercase text-slate-400 tracking-wider">Change Status</p>
             {PIPELINE_STAGES.map((stage) => (
