@@ -2,7 +2,7 @@ import type { ProviderType } from '@/types/provider';
 
 export const PROVIDER_DISPLAY_NAMES: Record<ProviderType, string> = {
   APOLLO: 'Apollo',
-  SALES_NAV_WEBHOOK: 'Lead Sync API',
+  SALES_NAV_WEBHOOK: 'Sales Navigator',
   LEADMAGIC: 'LeadMagic',
   PROSPEO: 'Prospeo',
   EXA: 'Exa.ai',

@@ -267,7 +267,6 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
   const [authorizing, setAuthorizing] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState('');
-  const [showManualCookie, setShowManualCookie] = useState(false);
   const [manualCookie, setManualCookie] = useState('');
   const [savingCookie, setSavingCookie] = useState(false);
 
@@ -321,7 +320,6 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
     if (captureState === 'succeeded') {
       setCapturing(false);
       setError('');
-      setShowManualCookie(false);
       void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', accountId] });
       void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
       return;
@@ -329,7 +327,6 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
     if (captureState === 'failed') {
       setCapturing(false);
       setError(captureStatusQuery.data?.error ?? 'Failed to capture the scraping session.');
-      setShowManualCookie(true);
     }
   }, [accountId, capturing, captureStatusQuery.data, queryClient]);
 
@@ -362,7 +359,6 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
     } catch (err) {
       setCapturing(false);
       setError(err instanceof Error ? err.message : 'Failed to start session capture');
-      setShowManualCookie(true);
     }
   };
 
@@ -378,7 +374,6 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
         }
       });
       setManualCookie('');
-      setShowManualCookie(false);
       void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', accountId] });
       void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
     } catch (err) {
@@ -426,98 +421,35 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
         <p className="text-xs text-slate-600">{expiryInfo()}</p>
       ) : null}
 
-      <p className="text-xs text-slate-600">
-        Connect LinkedIn first for the Lead Sync API. Then capture a scraping session from your
-        Chrome profile to enable Sales Navigator scraping.
-      </p>
-
       {oauthStatus?.linkedInSessionCookieCapturedAt && hasCookie ? (
         <p className="text-xs text-emerald-700">
           Scraping session captured on {new Date(oauthStatus.linkedInSessionCookieCapturedAt).toLocaleString()}.
         </p>
       ) : null}
 
-      {capturePreflight ? (
-        <div className="rounded-md border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-600">
-          <p>
-            Chrome profile: <span className="font-medium">{capturePreflight.profileDirectory ?? 'unknown'}</span>
-            {' '}at <span className="font-mono">{capturePreflight.userDataDir ?? 'not found'}</span>
-          </p>
-          {capturePreflight.profileLocked ? (
-            <p className="mt-1 text-amber-700">
-              Close Google Chrome before capturing the scraping session. The selected profile is currently locked.
-            </p>
-          ) : null}
-          {!capturePreflight.executableExists || !capturePreflight.userDataDirExists || !capturePreflight.profileExists ? (
-            <p className="mt-1 text-red-600">
-              Chrome profile preflight failed. Update the optional Chrome path settings on this provider account.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-
       {error ? <p className="text-xs text-red-600">{error}</p> : null}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant={oauthStatus?.status === 'connected' ? 'secondary' : 'primary'}
-          onClick={() => void handleConnectLinkedIn()}
-          disabled={authorizing || capturing}
-        >
-          {authorizing
-            ? 'Connecting LinkedIn...'
-            : oauthStatus?.status === 'connected'
-              ? 'Reconnect LinkedIn'
-              : 'Connect LinkedIn'}
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={() => void handleCaptureSession()}
-          disabled={authorizing || capturing}
-        >
-          {capturing || captureStatus?.state === 'running'
-            ? 'Capturing scraping session...'
-            : hasCookie
-              ? 'Recapture scraping session'
-              : 'Capture scraping session'}
-        </Button>
-      </div>
-
-      <div className="border-t border-blue-200 pt-2 mt-2">
-        <button
-          type="button"
-          onClick={() => setShowManualCookie((prev) => !prev)}
-          className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
-        >
-          <span className="material-symbols-outlined text-sm">
-            {showManualCookie ? 'expand_less' : 'expand_more'}
-          </span>
-          Manual cookie paste (use only if automatic capture fails)
-        </button>
-
-        {showManualCookie && (
-          <div className="mt-2 space-y-2">
-            <p className="text-xs text-slate-500">
-              Open LinkedIn in your browser, then DevTools &gt; Application &gt; Cookies &gt;
-              linkedin.com. Copy the value of the <code className="font-mono bg-slate-100 px-1 rounded">li_at</code> cookie and paste it below.
-            </p>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={manualCookie}
-                onChange={(e) => setManualCookie(e.target.value)}
-                placeholder="Paste li_at cookie value..."
-                className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-primary"
-              />
-              <Button
-                onClick={() => void handleSaveManualCookie()}
-                disabled={!manualCookie.trim() || savingCookie}
-              >
-                {savingCookie ? 'Saving...' : 'Save'}
-              </Button>
-            </div>
-          </div>
-        )}
+      <div className="border-t border-blue-200 pt-2 mt-2 space-y-2">
+        <p className="text-xs font-medium text-slate-600">Paste your LinkedIn cookie</p>
+        <p className="text-xs text-slate-500">
+          Open LinkedIn in your browser, then DevTools &gt; Application &gt; Cookies &gt; linkedin.com.
+          Copy the value of the <code className="font-mono bg-slate-100 px-1 rounded">li_at</code> cookie and paste it below.
+        </p>
+        <div className="flex gap-2">
+          <textarea
+            value={manualCookie}
+            onChange={(e) => setManualCookie(e.target.value)}
+            placeholder={hasCookie ? 'Leave blank to keep current' : 'Paste li_at cookie value...'}
+            rows={3}
+            className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+          />
+          <Button
+            onClick={() => void handleSaveManualCookie()}
+            disabled={!manualCookie.trim() || savingCookie}
+            className="self-end"
+          >
+            {savingCookie ? 'Saving...' : 'Save'}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -586,7 +518,7 @@ function LinkedInLeadSyncPanel({ accountId }: { accountId: string }): JSX.Elemen
 
   return (
     <div className="mt-3 space-y-3 rounded-md border border-indigo-200 bg-indigo-50/40 p-3">
-      <p className="text-sm font-semibold text-indigo-800">Lead Sync API</p>
+      <p className="text-sm font-semibold text-indigo-800">Sales Navigator</p>
 
       {message ? (
         <p className={`text-xs ${message.tone === 'success' ? 'text-emerald-700' : 'text-red-600'}`}>
@@ -1008,9 +940,6 @@ export default function ProviderAccountsPage(): JSX.Element {
                 {account.providerType === 'SALES_NAV_WEBHOOK' ? (
                   <>
                     <LinkedInOAuthPanel accountId={account.id} />
-                    {account.lastHealthStatus === 'healthy' ? (
-                      <LinkedInLeadSyncPanel accountId={account.id} />
-                    ) : null}
                   </>
                 ) : null}
               </div>

@@ -819,129 +819,13 @@ export default function NewProjectWizardPage(): JSX.Element {
         <Card className="space-y-5">
           <div>
             <h2 className="text-lg font-bold">Lead Sources</h2>
-            <p className="text-sm text-slate-500">
-              Connect to LinkedIn Sales Navigator to scrape leads automatically. Add search URLs (~6 recommended), authorize your LinkedIn session, then scrape.
-            </p>
           </div>
-
-          {/* LinkedIn Authorization */}
-          {salesNavAccount && (
-            <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/40 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold text-blue-800">
-                  <span className="material-symbols-outlined text-base align-text-bottom mr-1">lock</span>
-                  LinkedIn Connection
-                </h3>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                    oauthConnected ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                  }`}>
-                    {oauthConnected ? 'OAuth connected' : 'OAuth not connected'}
-                  </span>
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                    hasCookie ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                  }`}>
-                    {hasCookie ? 'Scraping session ready' : 'No scraping session'}
-                  </span>
-                </div>
-              </div>
-
-              <p className="text-xs text-slate-600">
-                First connect LinkedIn in a browser tab using your normal browser session. Then capture a
-                scraping session from your Chrome profile for Sales Navigator scraping.
-              </p>
-
-              {oauthStatus?.linkedInSessionCookieCapturedAt && hasCookie ? (
-                <p className="text-xs text-emerald-700">
-                  Session cookie captured on {new Date(oauthStatus.linkedInSessionCookieCapturedAt).toLocaleString()}.
-                </p>
-              ) : null}
-
-              {capturePreflight ? (
-                <div className="rounded-lg border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-600">
-                  <p>
-                    Chrome profile: <span className="font-medium">{capturePreflight.profileDirectory ?? 'unknown'}</span>
-                    {' '}at <span className="font-mono">{capturePreflight.userDataDir ?? 'not found'}</span>
-                  </p>
-                  {capturePreflight.profileLocked ? (
-                    <p className="mt-1 text-amber-700">
-                      Close Google Chrome before capturing the scraping session. The active profile is currently locked.
-                    </p>
-                  ) : null}
-                  {!capturePreflight.executableExists || !capturePreflight.userDataDirExists || !capturePreflight.profileExists ? (
-                    <p className="mt-1 text-red-600">
-                      Chrome profile preflight failed. Check the provider account Chrome path settings on the Providers page.
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {linkedInError && <p className="text-xs text-red-600">{linkedInError}</p>}
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={() => void handleConnectLinkedIn()} disabled={linkedInAuthorizing || linkedInCapturing}>
-                  {linkedInAuthorizing
-                    ? 'Connecting LinkedIn...'
-                    : oauthConnected
-                      ? 'Reconnect LinkedIn'
-                      : 'Connect LinkedIn'}
-                </Button>
-                <Button
-                  onClick={() => void handleCaptureScrapingSession()}
-                  disabled={linkedInAuthorizing || linkedInCapturing}
-                  className="bg-slate-100 text-slate-700 hover:bg-slate-200"
-                >
-                  {linkedInCapturing || captureStatus?.state === 'running'
-                    ? 'Capturing scraping session...'
-                    : hasCookie
-                      ? 'Recapture scraping session'
-                      : 'Capture scraping session'}
-                </Button>
-              </div>
-
-              <div className="border-t border-blue-200 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowManualCookie((prev) => !prev)}
-                  className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
-                >
-                  <span className="material-symbols-outlined text-sm">
-                    {showManualCookie ? 'expand_less' : 'expand_more'}
-                  </span>
-                  Manual cookie paste (use only if automatic capture fails)
-                </button>
-                {showManualCookie && (
-                  <div className="mt-2 space-y-2">
-                    <p className="text-xs text-slate-500">
-                      Open LinkedIn in your browser, then DevTools &gt; Application &gt; Cookies &gt; linkedin.com.
-                      Copy the value of the <code className="font-mono bg-slate-100 px-1 rounded">li_at</code> cookie.
-                    </p>
-                    <div className="flex gap-2">
-                      <input
-                        type="password"
-                        value={manualCookie}
-                        onChange={(e) => setManualCookie(e.target.value)}
-                        placeholder="Paste li_at cookie value..."
-                        className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-primary"
-                      />
-                      <Button
-                        onClick={() => void handleSaveManualCookie()}
-                        disabled={!manualCookie.trim() || savingCookie}
-                      >
-                        {savingCookie ? 'Saving...' : 'Save'}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
 
           {!salesNavAccount && (
             <div className="rounded-lg border-2 border-dashed border-amber-200 bg-amber-50/50 p-4 text-center">
               <span className="material-symbols-outlined text-2xl text-amber-400">warning</span>
               <p className="text-sm text-amber-800 mt-1">
-                No Lead Sync API (Sales Navigator) provider is configured.{' '}
+                No Sales Navigator provider is configured.{' '}
                 <button type="button" onClick={() => router.push('/admin/providers')} className="underline font-medium">
                   Go to Providers
                 </button>{' '}
