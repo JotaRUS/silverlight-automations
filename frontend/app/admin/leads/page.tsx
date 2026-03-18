@@ -122,19 +122,35 @@ function LeadActions({
   onDelete: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  const handleOpen = useCallback(() => {
+    setOpen((v) => {
+      if (!v && btnRef.current) {
+        const rect = btnRef.current.getBoundingClientRect();
+        setPos({ top: rect.bottom + 4, left: rect.right - 208 });
+      }
+      return !v;
+    });
+  }, []);
 
   return (
     <div className="relative">
       <button
-        onClick={() => setOpen((v) => !v)}
+        ref={btnRef}
+        onClick={handleOpen}
         className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
       >
         <span className="material-symbols-outlined text-xl">more_vert</span>
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-8 z-50 w-52 rounded-xl bg-white shadow-lg border border-slate-200 py-1 text-sm">
+          <div className="fixed inset-0 z-[9998]" onClick={() => setOpen(false)} />
+          <div
+            className="fixed z-[9999] w-52 rounded-xl bg-white shadow-lg border border-slate-200 py-1 text-sm"
+            style={{ top: pos.top, left: Math.max(0, pos.left) }}
+          >
             <p className="px-3 py-1.5 text-[10px] font-bold uppercase text-slate-400 tracking-wider">Change Status</p>
             {PIPELINE_STAGES.map((stage) => (
               <button

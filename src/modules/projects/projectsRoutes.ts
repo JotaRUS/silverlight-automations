@@ -442,17 +442,17 @@ projectsRoutes.get('/:projectId/scraping-status', async (request, response, next
       return;
     }
 
-    const lastCompleted = await prisma.systemEvent.findFirst({
+    const lastFinished = await prisma.systemEvent.findFirst({
       where: {
         entityType: 'sales_nav_scraper',
-        message: 'sales_nav_scraper_completed',
+        message: { in: ['sales_nav_scraper_completed', 'sales_nav_scraper_failed'] },
         payload: { path: ['projectId'], equals: params.projectId },
         createdAt: { gte: lastStarted.createdAt }
       },
       select: { id: true }
     });
 
-    response.json({ scraping: !lastCompleted });
+    response.json({ scraping: !lastFinished });
   } catch (error) {
     next(error);
   }

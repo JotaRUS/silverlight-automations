@@ -221,9 +221,24 @@ export function createSalesNavScraperWorker(): Worker<CorrelatedJobData<SalesNav
           },
           'sales-nav-scraper-job-complete'
         );
+      } catch (err) {
+        await prisma.systemEvent.create({
+          data: {
+            category: 'JOB',
+            entityType: 'sales_nav_scraper',
+            entityId: payload.salesNavSearchId,
+            correlationId: job.data.correlationId,
+            message: 'sales_nav_scraper_failed',
+            payload: {
+              projectId: payload.projectId,
+              error: err instanceof Error ? err.message : String(err)
+            }
+          }
+        }).catch(() => { /* best-effort */ });
+        throw err;
       } finally {
-        await browser.close().catch((err: unknown) => {
-          jobLogger.warn({ err }, 'sales-nav-scraper-browser-close-error');
+        await browser.close().catch((closeErr: unknown) => {
+          jobLogger.warn({ err: closeErr }, 'sales-nav-scraper-browser-close-error');
         });
       }
     },

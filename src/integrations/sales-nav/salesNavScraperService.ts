@@ -32,6 +32,87 @@ export interface ScrapeOptions {
   onProgress?: (pageNum: number, leadsOnPage: number) => void;
 }
 
+/**
+ * Raw JS string passed to page.evaluate() — must NOT go through esbuild/tsx
+ * because the compiler injects `__name()` helpers that don't exist in the browser.
+ */
+const EXTRACT_LEADS_SCRIPT = `(() => {
+  var results = [];
+  var CARD_SELECTORS = [
+    'li.artdeco-list__item',
+    'ol.search-results__result-list > li',
+    '[class*="search-results"] li[class*="result"]',
+    '.artdeco-entity-lockup'
+  ];
+  var cards = [];
+  for (var i = 0; i < CARD_SELECTORS.length; i++) {
+    var found = document.querySelectorAll(CARD_SELECTORS[i]);
+    if (found.length > cards.length) cards = Array.from(found);
+  }
+  if (cards.length === 0) {
+    var allLinks = document.querySelectorAll('a[href*="/sales/lead/"]');
+    for (var j = 0; j < allLinks.length; j++) {
+      var link = allLinks[j];
+      var container = link.closest('li') || (link.parentElement && link.parentElement.parentElement);
+      if (container && cards.indexOf(container) === -1) cards.push(container);
+    }
+  }
+  var seen = {};
+  for (var k = 0; k < cards.length; k++) {
+    var card = cards[k];
+    var nameEl =
+      card.querySelector('[data-anonymize="person-name"]') ||
+      card.querySelector('a[href*="/sales/lead/"] span[dir]') ||
+      card.querySelector('a[href*="/sales/lead/"] span') ||
+      card.querySelector('.result-lockup__name a') ||
+      card.querySelector('.artdeco-entity-lockup__title a span');
+    if (!nameEl) continue;
+    var fullName = (nameEl.textContent || '').trim();
+    if (!fullName || fullName.length < 2) continue;
+    var nameParts = fullName.split(/\\s+/);
+    var firstName = nameParts[0];
+    var lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : undefined;
+    var titleEl =
+      card.querySelector('[data-anonymize="title"]') ||
+      card.querySelector('.result-lockup__highlight-keyword') ||
+      card.querySelector('.artdeco-entity-lockup__subtitle');
+    var companyEl =
+      card.querySelector('[data-anonymize="company-name"]') ||
+      card.querySelector('a[href*="/sales/company/"]') ||
+      card.querySelector('.artdeco-entity-lockup__subtitle a');
+    var locationEl =
+      card.querySelector('[data-anonymize="location"]') ||
+      card.querySelector('.result-lockup__misc-item') ||
+      card.querySelector('.artdeco-entity-lockup__caption');
+    var profileLink =
+      card.querySelector('a[href*="/sales/lead/"]') ||
+      card.querySelector('a[href*="/in/"]');
+    var linkedinUrl;
+    if (profileLink) {
+      var href = profileLink.getAttribute('href') || '';
+      linkedinUrl = href.indexOf('http') === 0
+        ? href.split('?')[0]
+        : 'https://www.linkedin.com' + href.split('?')[0];
+    }
+    var jobTitle = titleEl ? (titleEl.textContent || '').trim() : '';
+    var companyName = companyEl ? (companyEl.textContent || '').trim() : '';
+    var location = locationEl ? (locationEl.textContent || '').trim() : '';
+    var key = linkedinUrl || fullName;
+    if (seen[key]) continue;
+    seen[key] = true;
+    results.push({
+      fullName: fullName,
+      firstName: firstName,
+      lastName: lastName,
+      jobTitle: jobTitle || undefined,
+      companyName: companyName || undefined,
+      location: location || undefined,
+      linkedinUrl: linkedinUrl
+    });
+  }
+  return results;
+})()`;
+
 function randomDelay(): Promise<void> {
   const delay = MIN_DELAY_MS + Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS);
   return new Promise((resolve) => setTimeout(resolve, delay));
@@ -123,109 +204,10 @@ async function waitForSearchResults(page: Page): Promise<void> {
 async function extractLeadsFromPage(page: Page): Promise<ScrapedLead[]> {
   await waitForSearchResults(page);
 
-  /* eslint-disable @typescript-eslint/no-unnecessary-condition */
-  const leads = await page.evaluate(() => {
-    const results: {
-      fullName: string;
-      firstName?: string;
-      lastName?: string;
-      jobTitle?: string;
-      companyName?: string;
-      location?: string;
-      linkedinUrl?: string;
-    }[] = [];
-
-    const CARD_SELECTORS = [
-      'li.artdeco-list__item',
-      'ol.search-results__result-list > li',
-      '[class*="search-results"] li[class*="result"]',
-      '.artdeco-entity-lockup'
-    ];
-
-    let cards: Element[] = [];
-    for (const sel of CARD_SELECTORS) {
-      const found = document.querySelectorAll(sel);
-      if (found.length > cards.length) {
-        cards = Array.from(found);
-      }
-    }
-
-    if (cards.length === 0) {
-      const allLinks = document.querySelectorAll('a[href*="/sales/lead/"]');
-      for (const link of allLinks) {
-        const container = link.closest('li') ?? link.parentElement?.parentElement;
-        if (container && !cards.includes(container)) {
-          cards.push(container);
-        }
-      }
-    }
-
-    const extractFromCard = (card: Element): typeof results[number] | null => {
-      const nameEl =
-        card.querySelector('[data-anonymize="person-name"]') ??
-        card.querySelector('a[href*="/sales/lead/"] span[dir]') ??
-        card.querySelector('a[href*="/sales/lead/"] span') ??
-        card.querySelector('.result-lockup__name a') ??
-        card.querySelector('.artdeco-entity-lockup__title a span');
-      if (!nameEl) return null;
-
-      const fullName = (nameEl.textContent ?? '').trim();
-      if (!fullName || fullName.length < 2) return null;
-
-      const nameParts = fullName.split(/\s+/);
-      const firstName = nameParts[0];
-      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : undefined;
-
-      const titleEl =
-        card.querySelector('[data-anonymize="title"]') ??
-        card.querySelector('.result-lockup__highlight-keyword') ??
-        card.querySelector('.artdeco-entity-lockup__subtitle');
-      const companyEl =
-        card.querySelector('[data-anonymize="company-name"]') ??
-        card.querySelector('a[href*="/sales/company/"]') ??
-        card.querySelector('.artdeco-entity-lockup__subtitle a');
-      const locationEl =
-        card.querySelector('[data-anonymize="location"]') ??
-        card.querySelector('.result-lockup__misc-item') ??
-        card.querySelector('.artdeco-entity-lockup__caption');
-
-      const profileLink =
-        card.querySelector('a[href*="/sales/lead/"]') ??
-        card.querySelector('a[href*="/in/"]');
-      let linkedinUrl: string | undefined;
-      if (profileLink) {
-        const href = profileLink.getAttribute('href') ?? '';
-        linkedinUrl = href.startsWith('http')
-          ? href.split('?')[0]
-          : `https://www.linkedin.com${href.split('?')[0]}`;
-      }
-
-      return {
-        fullName,
-        firstName,
-        lastName,
-        jobTitle: (titleEl?.textContent ?? '').trim() || undefined,
-        companyName: (companyEl?.textContent ?? '').trim() || undefined,
-        location: (locationEl?.textContent ?? '').trim() || undefined,
-        linkedinUrl
-      };
-    };
-
-    const seen = new Set<string>();
-    for (const card of cards) {
-      const lead = extractFromCard(card);
-      if (!lead) continue;
-      const key = lead.linkedinUrl ?? lead.fullName;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      results.push(lead);
-    }
-
-    return results;
-  });
+  const leads = await page.evaluate(EXTRACT_LEADS_SCRIPT) as ScrapedLead[];
 
   if (leads.length === 0) {
-    const diagnostics = await page.evaluate(() => ({
+    const diagnostics = await page.evaluate(`({
       url: location.href,
       title: document.title,
       bodyTextLength: document.body.innerText.length,
@@ -234,7 +216,7 @@ async function extractLeadsFromPage(page: Page): Promise<ScrapedLead[]> {
       personNameCount: document.querySelectorAll('[data-anonymize="person-name"]').length,
       artdecoListItems: document.querySelectorAll('li.artdeco-list__item').length,
       entityLockups: document.querySelectorAll('.artdeco-entity-lockup').length
-    }));
+    })`) as Record<string, unknown>;
     logger.warn(diagnostics, 'sales-nav-scraper-zero-leads-diagnostics');
   }
 
@@ -242,15 +224,14 @@ async function extractLeadsFromPage(page: Page): Promise<ScrapedLead[]> {
 }
 
 function extractTotalResultCount(page: Page): Promise<number> {
-  return page.evaluate(() => {
-    const headerEl =
-      document.querySelector('.search-results__total-count') ??
-      document.querySelector('[class*="search-results__result-count"]') ??
-      document.querySelector('[class*="result-count"]');
-    if (!headerEl) return 0;
-    const text = (headerEl.textContent || '').replace(/[^0-9]/g, '');
-    return Number.parseInt(text, 10) || 0;
-  });
+  return page.evaluate(`(() => {
+    var h = document.querySelector('.search-results__total-count')
+      || document.querySelector('[class*="search-results__result-count"]')
+      || document.querySelector('[class*="result-count"]');
+    if (!h) return 0;
+    var t = (h.textContent || '').replace(/[^0-9]/g, '');
+    return parseInt(t, 10) || 0;
+  })()`) as Promise<number>;
 }
 
 export async function scrapeSearchUrl(
@@ -325,9 +306,9 @@ export async function scrapeSearchUrl(
       };
     }
 
-    await page.evaluate(() => { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); });
+    await page.evaluate(`window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })`);
     await new Promise((resolve) => setTimeout(resolve, 1500));
-    await page.evaluate(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    await page.evaluate(`window.scrollTo({ top: 0, behavior: 'smooth' })`);
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     const pageLeads = await extractLeadsFromPage(page);
