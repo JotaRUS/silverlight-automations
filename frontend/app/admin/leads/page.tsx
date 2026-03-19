@@ -618,6 +618,20 @@ export default function LeadsPage(): JSX.Element {
     return leadsQuery.data?.statusCounts ?? {};
   }, [leadsQuery.data?.statusCounts]);
 
+  const leadsFoundCount = useMemo(() => {
+    const counts = leadsQuery.data?.statusCounts ?? {};
+    return Object.entries(counts).reduce(
+      (sum, [status, count]) => (status === 'DISQUALIFIED' ? sum : sum + count),
+      0
+    );
+  }, [leadsQuery.data?.statusCounts]);
+
+  const selectedProject = useMemo(
+    () => projectsQuery.data?.find((p) => p.id === selectedProjectId),
+    [projectsQuery.data, selectedProjectId]
+  );
+  const targetThreshold = selectedProject?.targetThreshold ?? 0;
+
   const show = (key: ColumnKey) => visibleColumns[key];
 
   const noProjects = projectsQuery.isSuccess && (projectsQuery.data?.length ?? 0) === 0;
@@ -729,16 +743,21 @@ export default function LeadsPage(): JSX.Element {
               </span>
             ) : (
               <Button
-                variant="secondary"
+                variant="primary"
                 onClick={() => scrapeMutation.mutate(selectedProjectId)}
-                disabled={scrapeMutation.isPending}
+                disabled={scrapeMutation.isPending || leadsFoundCount >= targetThreshold}
+                className="disabled:bg-slate-100 disabled:text-slate-400 disabled:hover:bg-slate-100"
+                title={leadsFoundCount >= targetThreshold ? `Target reached (${leadsFoundCount}/${targetThreshold} leads)` : undefined}
               >
                 <span className="material-symbols-outlined text-base">travel_explore</span>
                 {scrapeMutation.isPending ? 'Starting…' : 'Scrape Leads'}
               </Button>
             )
           )}
-          <span className="text-xs text-slate-400">{totalLeads} lead{totalLeads !== 1 ? 's' : ''}</span>
+          <div className="flex flex-col items-end text-xs text-slate-400">
+            <span>{leadsFoundCount} lead{leadsFoundCount !== 1 ? 's' : ''} found</span>
+            <span>Target: {targetThreshold} leads</span>
+          </div>
           <ColumnToggle visibleColumns={visibleColumns} onToggle={toggleColumn} />
         </div>
       </Card>
