@@ -78,13 +78,13 @@ export const PROVIDER_CATEGORIES: ProviderCategory[] = [
     key: 'sourcing',
     label: 'Lead Sourcing',
     icon: 'person_search',
-    types: ['APOLLO', 'SALES_NAV_WEBHOOK']
+    types: ['SALES_NAV_WEBHOOK']
   },
   {
     key: 'enrichment',
     label: 'Data Enrichment',
     icon: 'database',
-    types: ['LEADMAGIC', 'PROSPEO', 'EXA', 'ROCKETREACH', 'WIZA', 'FORAGER', 'ZELIQ', 'CONTACTOUT', 'DATAGM', 'PEOPLEDATALABS', 'ANYLEADS']
+    types: ['APOLLO', 'LEADMAGIC', 'PROSPEO', 'EXA', 'ROCKETREACH', 'WIZA', 'FORAGER', 'ZELIQ', 'CONTACTOUT', 'DATAGM', 'PEOPLEDATALABS', 'ANYLEADS']
   },
   {
     key: 'ai',

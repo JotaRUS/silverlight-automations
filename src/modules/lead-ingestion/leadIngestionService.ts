@@ -97,6 +97,14 @@ export class LeadIngestionService {
     };
   }
 
+  /**
+   * Returns true if this lead is already in the pipeline and should not be re-scraped
+   * (i.e. status is not DISQUALIFIED and lead is not deleted).
+   */
+  private isLeadAlreadyInPipeline(existing: { status: string; deletedAt: Date | null }): boolean {
+    return existing.status !== 'DISQUALIFIED' && existing.deletedAt == null;
+  }
+
   public async ingest(job: LeadIngestionJob): Promise<Lead> {
     const identity = buildLeadIdentity(job);
     const lead = await withIdentityAdvisoryLock(this.prismaClient, `lead:${job.projectId}:${identity}`, async (transaction) => {
@@ -104,11 +112,34 @@ export class LeadIngestionService {
       const resolvedFullName = job.lead.fullName || nameFromParts || job.lead.firstName || 'Unknown';
       const normalizedLinkedin = normalizeLinkedinUrl(job.lead.linkedinUrl);
       const existing = await transaction.lead.findFirst({
-        where: this.toLeadWhere(job)
+        where: this.toLeadWhere(job),
+        select: { id: true, status: true, deletedAt: true, expertId: true }
       });
 
       if (existing) {
-        return existing;
+        if (this.isLeadAlreadyInPipeline(existing)) {
+          return transaction.lead.findUniqueOrThrow({ where: { id: existing.id } });
+        }
+        const reopened = await transaction.lead.update({
+          where: { id: existing.id },
+          data: { status: 'NEW', deletedAt: null }
+        });
+        await enqueueWithContext(getQueues().enrichmentQueue, 'enrichment.run', {
+          leadId: reopened.id,
+          projectId: job.projectId,
+          firstName: job.lead.firstName,
+          lastName: job.lead.lastName,
+          fullName: job.lead.fullName,
+          companyName: job.lead.companyName,
+          jobTitle: job.lead.jobTitle,
+          linkedinUrl: normalizedLinkedin ?? undefined,
+          countryIso: job.lead.countryIso,
+          emails: job.lead.emails.filter((e) => !isFakeEmail(e)),
+          phones: job.lead.phones.filter((p) => !isFakePhone(p))
+        }, {
+          jobId: buildJobId('enrichment', reopened.id)
+        });
+        return transaction.lead.findUniqueOrThrow({ where: { id: reopened.id } });
       }
 
       const createdLead = await transaction.lead.create({
