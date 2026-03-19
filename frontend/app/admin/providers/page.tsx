@@ -278,9 +278,107 @@ function UpdateCredentialsForm({
   );
 }
 
-function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
+function SalesNavOAuthOrTestButton({
+  accountId,
+  onTestConnection,
+  onFeedback
+}: {
+  accountId: string;
+  onTestConnection: () => Promise<void>;
+  onFeedback: (fb: { tone: 'success' | 'error'; message: string }) => void;
+}): JSX.Element {
   const queryClient = useQueryClient();
   const [authorizing, setAuthorizing] = useState(false);
+
+  const statusQuery = useQuery({
+    queryKey: ['linkedin-oauth-status', accountId],
+    queryFn: () => getLinkedInOAuthStatus(accountId),
+    refetchInterval: authorizing ? 3_000 : 30_000
+  });
+
+  const oauthStatus = statusQuery.data;
+
+  useEffect(() => {
+    const handler = (event: MessageEvent): void => {
+      if (
+        typeof event.data === 'object' &&
+        event.data !== null &&
+        (event.data as { type?: string }).type === 'linkedin-oauth-success' &&
+        (event.data as { providerAccountId?: string }).providerAccountId === accountId
+      ) {
+        setAuthorizing(false);
+        void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', accountId] });
+        void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
+        onFeedback({
+          tone: 'success',
+          message: 'LinkedIn authorization completed. Run Test Connection or paste your li_at cookie below.'
+        });
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+    // onFeedback comes from parent setState wrapper; stable enough for this listener
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- avoid re-subscribing every parent render
+  }, [accountId, queryClient]);
+
+  useEffect(() => {
+    if (authorizing && oauthStatus?.status === 'connected') {
+      setAuthorizing(false);
+      void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
+      onFeedback({ tone: 'success', message: 'LinkedIn connected successfully.' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- same as above
+  }, [authorizing, oauthStatus?.status, queryClient]);
+
+  const handleAuthorize = async (): Promise<void> => {
+    setAuthorizing(true);
+    try {
+      const { authorizationUrl } = await getLinkedInOAuthAuthorizeUrl(accountId);
+      const popup = window.open(authorizationUrl, 'linkedin-oauth', 'width=600,height=700');
+      if (!popup) {
+        onFeedback({
+          tone: 'error',
+          message: 'Popup was blocked. Allow popups for this site and click Authorize again.'
+        });
+        setAuthorizing(false);
+      }
+    } catch (err) {
+      onFeedback({
+        tone: 'error',
+        message: err instanceof Error ? err.message : 'Failed to start LinkedIn authorization.'
+      });
+      setAuthorizing(false);
+    }
+  };
+
+  if (statusQuery.isPending && oauthStatus === undefined) {
+    return (
+      <Button variant="secondary" disabled>
+        Checking LinkedIn…
+      </Button>
+    );
+  }
+
+  const needsLinkedInAuth =
+    oauthStatus?.status === 'not_connected' || oauthStatus?.status === 'expired';
+
+  if (needsLinkedInAuth) {
+    return (
+      <Button variant="primary" onClick={() => void handleAuthorize()} disabled={authorizing}>
+        {authorizing ? 'Opening LinkedIn…' : 'Authorize with LinkedIn'}
+      </Button>
+    );
+  }
+
+  return (
+    <Button variant="secondary" onClick={() => void onTestConnection()}>
+      Test Connection
+    </Button>
+  );
+}
+
+function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
+  const queryClient = useQueryClient();
   const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState('');
   const [manualCookie, setManualCookie] = useState('');
@@ -289,7 +387,7 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
   const statusQuery = useQuery({
     queryKey: ['linkedin-oauth-status', accountId],
     queryFn: () => getLinkedInOAuthStatus(accountId),
-    refetchInterval: authorizing || capturing ? 3_000 : 30_000
+    refetchInterval: capturing ? 3_000 : 30_000
   });
 
   const oauthStatus: LinkedInOAuthStatus | null = statusQuery.data ?? null;
@@ -314,7 +412,6 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
         (event.data as { type?: string }).type === 'linkedin-oauth-success' &&
         (event.data as { providerAccountId?: string }).providerAccountId === accountId
       ) {
-        setAuthorizing(false);
         void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', accountId] });
         void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
       }
@@ -322,13 +419,6 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
   }, [accountId, queryClient]);
-
-  useEffect(() => {
-    if (authorizing && oauthStatus?.status === 'connected') {
-      setAuthorizing(false);
-      void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
-    }
-  }, [authorizing, oauthStatus?.status, queryClient]);
 
   useEffect(() => {
     const captureState = captureStatusQuery.data?.state;
@@ -345,22 +435,6 @@ function LinkedInOAuthPanel({ accountId }: { accountId: string }): JSX.Element {
       setError(captureStatusQuery.data?.error ?? 'Failed to capture the scraping session.');
     }
   }, [accountId, capturing, captureStatusQuery.data, queryClient]);
-
-  const handleConnectLinkedIn = async (): Promise<void> => {
-    setAuthorizing(true);
-    setError('');
-    try {
-      const { authorizationUrl } = await getLinkedInOAuthAuthorizeUrl(accountId);
-      const popup = window.open(authorizationUrl, 'linkedin-oauth', 'width=600,height=700');
-      if (!popup) {
-        setError('Popup was blocked. Allow popups for this site and try again.');
-        setAuthorizing(false);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start authorization');
-      setAuthorizing(false);
-    }
-  };
 
   const handleCaptureSession = async (): Promise<void> => {
     setCapturing(true);
@@ -831,20 +905,20 @@ export default function ProviderAccountsPage(): JSX.Element {
                   </details>
                 ) : null}
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      void (async () => {
+                  {account.providerType === 'SALES_NAV_WEBHOOK' ? (
+                    <SalesNavOAuthOrTestButton
+                      accountId={account.id}
+                      onFeedback={(fb) =>
+                        setAccountActionFeedback((prev) => ({ ...prev, [account.id]: fb }))
+                      }
+                      onTestConnection={async () => {
                         try {
                           const updated = await testProviderConnection(account.id);
                           await queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
                           if (updated.lastHealthStatus === 'healthy') {
                             setAccountActionFeedback((prev) => ({
                               ...prev,
-                              [account.id]: {
-                                tone: 'success',
-                                message: 'Connection is healthy.'
-                              }
+                              [account.id]: { tone: 'success', message: 'Connection is healthy.' }
                             }));
                             return;
                           }
@@ -868,11 +942,52 @@ export default function ProviderAccountsPage(): JSX.Element {
                             }
                           }));
                         }
-                      })();
-                    }}
-                  >
-                    Test Connection
-                  </Button>
+                      }}
+                    />
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        void (async () => {
+                          try {
+                            const updated = await testProviderConnection(account.id);
+                            await queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
+                            if (updated.lastHealthStatus === 'healthy') {
+                              setAccountActionFeedback((prev) => ({
+                                ...prev,
+                                [account.id]: {
+                                  tone: 'success',
+                                  message: 'Connection is healthy.'
+                                }
+                              }));
+                              return;
+                            }
+                            const reason = formatHealthMessage(updated.lastHealthError);
+                            setAccountActionFeedback((prev) => ({
+                              ...prev,
+                              [account.id]: {
+                                tone: 'error',
+                                message: `Connection check completed: ${reason}`
+                              }
+                            }));
+                          } catch (error) {
+                            setAccountActionFeedback((prev) => ({
+                              ...prev,
+                              [account.id]: {
+                                tone: 'error',
+                                message:
+                                  error instanceof Error
+                                    ? error.message
+                                    : 'Connection check failed.'
+                              }
+                            }));
+                          }
+                        })();
+                      }}
+                    >
+                      Test Connection
+                    </Button>
+                  )}
                   {!account.isActive ? (
                     <Button
                       variant="secondary"
