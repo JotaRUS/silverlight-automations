@@ -712,9 +712,10 @@ async function queueSalesNavScrapingIfNeeded(
       continue;
     }
 
-    const resumeFromPage = search.paginationCursor
+    const lastPage = search.paginationCursor
       ? Math.max(1, Number.parseInt(search.paginationCursor, 10) || 1)
-      : 1;
+      : 0;
+    const resumeFromPage = lastPage + 1;
 
     const jobId = buildJobId('sales-nav-scraper', project.id, search.id, timeSlice);
     await getQueues().salesNavScraperQueue.add(
