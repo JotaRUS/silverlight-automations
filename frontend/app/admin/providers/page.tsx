@@ -65,6 +65,8 @@ interface CredentialFieldDef {
   type?: 'text' | 'password' | 'textarea';
   placeholder?: string;
   optional?: boolean;
+  /** Short help shown under the label (e.g. cookie instructions) */
+  hint?: string;
 }
 
 const CREDENTIAL_FIELDS: Record<ProviderType, CredentialFieldDef[]> = {
@@ -73,10 +75,23 @@ const CREDENTIAL_FIELDS: Record<ProviderType, CredentialFieldDef[]> = {
     { key: 'clientId', label: 'Client ID', type: 'text', placeholder: 'e.g. 77vlauv23ezc0v' },
     { key: 'clientSecret', label: 'Client Secret', type: 'password', placeholder: 'Primary client secret' },
     { key: 'organizationId', label: 'Organization ID', type: 'text', placeholder: 'LinkedIn org ID (numeric, from company page URL)' },
-    { key: 'sponsoredAccountId', label: 'Sponsored Account ID (optional)', type: 'text', placeholder: 'For sponsored lead ads — e.g. 522147830' },
-    { key: 'chromeExecutablePath', label: 'Chrome Executable Path (optional)', type: 'text', placeholder: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', optional: true },
-    { key: 'chromeUserDataDir', label: 'Chrome User Data Dir (optional)', type: 'text', placeholder: '~/Library/Application Support/Google/Chrome', optional: true },
-    { key: 'chromeProfileDirectory', label: 'Chrome Profile Directory (optional)', type: 'text', placeholder: 'Default', optional: true }
+    {
+      key: 'sponsoredAccountId',
+      label: 'Sponsored Account ID',
+      type: 'text',
+      placeholder: 'For sponsored lead ads — e.g. 522147830',
+      optional: true
+    },
+    {
+      key: 'linkedInSessionCookie',
+      label: 'Paste your LinkedIn cookie',
+      type: 'textarea',
+      optional: true,
+      placeholder: 'Leave blank to add later from the account card after OAuth',
+      hint:
+        'Open LinkedIn in your browser, then DevTools → Application → Cookies → linkedin.com. Copy the value of the li_at cookie and paste it here. ' +
+        'Required for Sales Navigator scraping on the server (OAuth alone is not enough).'
+    }
   ],
   LEADMAGIC: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
   PROSPEO: [{ key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter API key' }],
@@ -230,6 +245,7 @@ function UpdateCredentialsForm({
             {hasStoredValue(field) ? <span className="ml-1 text-xs text-emerald-600">(stored)</span> : null}
             {field.optional ? <span className="ml-1 text-xs text-slate-400">(optional)</span> : null}
           </label>
+          {field.hint ? <p className="mb-1 text-xs text-slate-500">{field.hint}</p> : null}
           {field.type === 'textarea' ? (
             <textarea
               value={creds[field.key] ?? ''}
@@ -716,10 +732,13 @@ export default function ProviderAccountsPage(): JSX.Element {
         <div className="space-y-3">
           <p className="text-sm font-medium">Credentials <span className="text-xs font-normal text-slate-500">(encrypted at rest)</span></p>
           {activeFields.map((field, idx) => {
-            const isFirstOptional = field.optional && (idx === 0 || !activeFields[idx - 1].optional);
+            const showSupabaseColumnHeader =
+              providerType === 'SUPABASE' &&
+              field.optional &&
+              (idx === 0 || !activeFields[idx - 1].optional);
             return (
               <div key={field.key}>
-                {isFirstOptional ? (
+                {showSupabaseColumnHeader ? (
                   <div className="mt-4 mb-2 border-t border-slate-200 pt-4">
                     <p className="text-sm font-medium text-slate-700">Column Mapping <span className="text-xs font-normal text-slate-500">(match your Supabase table columns)</span></p>
                   </div>
@@ -728,6 +747,7 @@ export default function ProviderAccountsPage(): JSX.Element {
                   {field.label}
                   {field.optional ? <span className="ml-1 text-xs text-slate-400">(optional)</span> : null}
                 </label>
+                {field.hint ? <p className="mb-1 text-xs text-slate-500">{field.hint}</p> : null}
                 {field.type === 'textarea' ? (
                   <textarea
                     value={credentials[field.key] ?? ''}
