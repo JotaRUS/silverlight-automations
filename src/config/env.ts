@@ -19,11 +19,17 @@ const envSchema = z.object({
   JWT_AUDIENCE: z.string().min(1).default('expert-sourcing-api'),
   JWT_SECRET: z.string().min(32).default('replace-with-long-test-secret-1234567890'),
   JWT_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
+  /**
+   * Public origin of the app (admin UI / API as users hit it in the browser).
+   * Used to derive the Sales Navigator LinkedIn OAuth callback when `LINKEDIN_OAUTH_REDIRECT_URI` is unset.
+   */
   EXTERNAL_APP_BASE_URL: z.string().url().default('http://localhost:3000'),
-  LINKEDIN_OAUTH_REDIRECT_URI: z
-    .string()
-    .url()
-    .default('http://localhost:3000/api/v1/providers/linkedin/oauth/callback'),
+  /**
+   * Exact redirect URI registered in LinkedIn → Auth → Authorized redirect URLs.
+   * Must match the URL that serves GET /api/v1/providers/linkedin/oauth/callback.
+   * If omitted, defaults to `${EXTERNAL_APP_BASE_URL}/api/v1/providers/linkedin/oauth/callback`.
+   */
+  LINKEDIN_OAUTH_REDIRECT_URI: z.string().url().optional(),
 
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
@@ -37,6 +43,17 @@ const envSchema = z.object({
   PROVIDER_ENCRYPTION_SECRET: z.string().min(32).default('replace-with-provider-encryption-secret-1234567890')
 });
 
-export type Env = z.infer<typeof envSchema>;
+type ParsedEnv = z.infer<typeof envSchema>;
+export type Env = Omit<ParsedEnv, 'LINKEDIN_OAUTH_REDIRECT_URI'> & {
+  LINKEDIN_OAUTH_REDIRECT_URI: string;
+};
 
-export const env: Env = envSchema.parse(process.env);
+function buildEnv(): Env {
+  const parsed = envSchema.parse(process.env);
+  const linkedInOAuthRedirectUri =
+    parsed.LINKEDIN_OAUTH_REDIRECT_URI ??
+    new URL('/api/v1/providers/linkedin/oauth/callback', parsed.EXTERNAL_APP_BASE_URL).href;
+  return { ...parsed, LINKEDIN_OAUTH_REDIRECT_URI: linkedInOAuthRedirectUri };
+}
+
+export const env: Env = buildEnv();

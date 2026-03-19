@@ -1464,7 +1464,7 @@ Channel names are normalized automatically (e.g., `kakao`, `kaokao` → `kakaota
 | `PORT`      | no       | `3000`        | HTTP server port        |
 | `LOG_LEVEL` | no       | `info`        | Pino log level          |
 | `EXTERNAL_APP_BASE_URL` | no | `http://localhost:3000` | Base URL used to build OAuth callback redirect URIs |
-| `LINKEDIN_OAUTH_REDIRECT_URI` | no | `http://localhost:3000/api/v1/providers/linkedin/oauth/callback` | Override the LinkedIn OAuth callback redirect URI. Must match the redirect URL registered in the LinkedIn Developer Portal (App → Auth tab). |
+| `LINKEDIN_OAUTH_REDIRECT_URI` | no | `{EXTERNAL_APP_BASE_URL}/api/v1/providers/linkedin/oauth/callback` | Optional full callback URL for Sales Navigator OAuth. Must match LinkedIn App → Auth → Authorized redirect URLs. If unset, derived from `EXTERNAL_APP_BASE_URL`. |
 
 ### Data stores
 

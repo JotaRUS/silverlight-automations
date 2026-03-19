@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -289,6 +289,9 @@ function SalesNavOAuthOrTestButton({
 }): JSX.Element {
   const queryClient = useQueryClient();
   const [authorizing, setAuthorizing] = useState(false);
+  const onFeedbackRef = useRef(onFeedback);
+  onFeedbackRef.current = onFeedback;
+  const oauthSuccessViaMessageRef = useRef(false);
 
   const statusQuery = useQuery({
     queryKey: ['linkedin-oauth-status', accountId],
@@ -306,10 +309,11 @@ function SalesNavOAuthOrTestButton({
         (event.data as { type?: string }).type === 'linkedin-oauth-success' &&
         (event.data as { providerAccountId?: string }).providerAccountId === accountId
       ) {
+        oauthSuccessViaMessageRef.current = true;
         setAuthorizing(false);
         void queryClient.invalidateQueries({ queryKey: ['linkedin-oauth-status', accountId] });
         void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
-        onFeedback({
+        onFeedbackRef.current({
           tone: 'success',
           message: 'LinkedIn authorization completed. Run Test Connection or paste your li_at cookie below.'
         });
@@ -317,33 +321,37 @@ function SalesNavOAuthOrTestButton({
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-    // onFeedback comes from parent setState wrapper; stable enough for this listener
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- avoid re-subscribing every parent render
   }, [accountId, queryClient]);
 
   useEffect(() => {
     if (authorizing && oauthStatus?.status === 'connected') {
       setAuthorizing(false);
       void queryClient.invalidateQueries({ queryKey: ['provider-accounts'] });
-      onFeedback({ tone: 'success', message: 'LinkedIn connected successfully.' });
+      if (!oauthSuccessViaMessageRef.current) {
+        onFeedbackRef.current({
+          tone: 'success',
+          message: 'LinkedIn authorization completed. Run Test Connection or paste your li_at cookie below.'
+        });
+      }
+      oauthSuccessViaMessageRef.current = false;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- same as above
   }, [authorizing, oauthStatus?.status, queryClient]);
 
   const handleAuthorize = async (): Promise<void> => {
+    oauthSuccessViaMessageRef.current = false;
     setAuthorizing(true);
     try {
       const { authorizationUrl } = await getLinkedInOAuthAuthorizeUrl(accountId);
       const popup = window.open(authorizationUrl, 'linkedin-oauth', 'width=600,height=700');
       if (!popup) {
-        onFeedback({
+        onFeedbackRef.current({
           tone: 'error',
           message: 'Popup was blocked. Allow popups for this site and click Authorize again.'
         });
         setAuthorizing(false);
       }
     } catch (err) {
-      onFeedback({
+      onFeedbackRef.current({
         tone: 'error',
         message: err instanceof Error ? err.message : 'Failed to start LinkedIn authorization.'
       });
