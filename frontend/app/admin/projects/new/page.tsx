@@ -13,7 +13,8 @@ import {
   EXPORT_DESTINATION_TYPES,
   OUTREACH_CHANNEL_TYPES,
   PROVIDER_DISPLAY_NAMES,
-  PROVIDER_TYPE_TO_FIELD
+  PROVIDER_TYPE_TO_FIELD,
+  TEMPLATE_VARIABLES
 } from '@/lib/providerConstants';
 import {
   getLinkedInOAuthStatus,
@@ -76,6 +77,8 @@ export default function NewProjectWizardPage(): JSX.Element {
   const [selectedGeos, setSelectedGeos] = useState<string[]>(['US']);
 
   const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({});
+  const [outreachTemplate, setOutreachTemplate] = useState('');
+  const templateRef = useRef<HTMLTextAreaElement>(null);
   const [projectId, setProjectId] = useState('');
   const [createError, setCreateError] = useState('');
 
@@ -175,6 +178,37 @@ export default function NewProjectWizardPage(): JSX.Element {
 
   const allMandatoryMet = selectedMandatory.OPENAI && selectedMandatory.APOLLO && hasEnrichmentSelected;
 
+  const hasOutreachSelected = useMemo(() => {
+    const allAccounts = providersQuery.data ?? [];
+    for (const acct of allAccounts) {
+      if (selectedProviders[acct.id] && OUTREACH_CHANNEL_TYPES.includes(acct.providerType)) {
+        return true;
+      }
+    }
+    return false;
+  }, [providersQuery.data, selectedProviders]);
+
+  const insertVariable = useCallback(
+    (variable: string) => {
+      const textarea = templateRef.current;
+      if (!textarea) {
+        setOutreachTemplate((prev) => prev + variable);
+        return;
+      }
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const before = outreachTemplate.slice(0, start);
+      const after = outreachTemplate.slice(end);
+      setOutreachTemplate(before + variable + after);
+      requestAnimationFrame(() => {
+        textarea.focus();
+        const cursorPos = start + variable.length;
+        textarea.setSelectionRange(cursorPos, cursorPos);
+      });
+    },
+    [outreachTemplate]
+  );
+
   useEffect(() => {
     if (!providersQuery.data) return;
     const auto: Record<string, boolean> = {};
@@ -212,8 +246,19 @@ export default function NewProjectWizardPage(): JSX.Element {
           bindings[field] = acct.id;
         }
       }
-      if (Object.keys(bindings).length > 0) {
-        await updateProject(project.id, bindings as never);
+      const patch: Record<string, unknown> = { ...bindings };
+      let hasOutreachChannel = false;
+      for (const acct of allAccounts) {
+        if (selectedProviders[acct.id] && OUTREACH_CHANNEL_TYPES.includes(acct.providerType)) {
+          hasOutreachChannel = true;
+          break;
+        }
+      }
+      if (hasOutreachChannel) {
+        patch.outreachMessageTemplate = outreachTemplate.trim() || null;
+      }
+      if (Object.keys(patch).length > 0) {
+        await updateProject(project.id, patch as never);
       }
 
       return project;
@@ -674,6 +719,44 @@ export default function NewProjectWizardPage(): JSX.Element {
                   'Outreach Channels',
                   false,
                   'Optional. Select channels for automated outreach (Email, SMS, WhatsApp, etc.).'
+                )}
+
+                {hasOutreachSelected && (
+                  <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-semibold text-slate-700">Initial message</h4>
+                      <span className="text-xs text-slate-400">{outreachTemplate.length} chars</span>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Template for automated outreach when leads are enriched. Use variables below; outreach sends only when required data exists for a lead.
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {TEMPLATE_VARIABLES.map((v) => (
+                        <button
+                          key={v.key}
+                          type="button"
+                          onClick={() => insertVariable(v.key)}
+                          className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:border-slate-300 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-xs">{v.icon}</span>
+                          {v.label}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      ref={templateRef}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary min-h-[100px] resize-y"
+                      value={outreachTemplate}
+                      onChange={(e) => setOutreachTemplate(e.target.value)}
+                      placeholder="Hi {{FirstName}}, we have a project that matches your expertise..."
+                    />
+                    <div className="flex items-center gap-2 pt-1 border-t border-slate-200/80">
+                      <span className="material-symbols-outlined text-base text-amber-500">info</span>
+                      <p className="text-xs text-slate-500">
+                        You can refine this later on the project page.
+                      </p>
+                    </div>
+                  </div>
                 )}
 
                 {renderProviderPicker(

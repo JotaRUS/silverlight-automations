@@ -60,7 +60,13 @@ function formatRelative(dateString: string): string {
   return `${days}d ago`;
 }
 
-function QuestionsPanel({ projectId }: { projectId: string }): JSX.Element {
+function QuestionsPanel({
+  projectId,
+  autoOpenAddSignal = 0
+}: {
+  projectId: string;
+  autoOpenAddSignal?: number;
+}): JSX.Element {
   const queryClient = useQueryClient();
   const questionsKey = ['screening-questions', projectId];
 
@@ -143,7 +149,18 @@ function QuestionsPanel({ projectId }: { projectId: string }): JSX.Element {
     setShowAdd(true);
   };
 
+  useEffect(() => {
+    if (autoOpenAddSignal > 0) {
+      setShowAdd(true);
+      setEditingId(null);
+      setPrompt('');
+      setRequired(true);
+      setError('');
+    }
+  }, [autoOpenAddSignal]);
+
   return (
+    <div id="screening-questions-section" className="scroll-mt-24">
     <Card className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-slate-600 flex items-center gap-1.5">
@@ -275,6 +292,7 @@ function QuestionsPanel({ projectId }: { projectId: string }): JSX.Element {
 
       {error && <p className="text-xs text-red-600">{error}</p>}
     </Card>
+    </div>
   );
 }
 
@@ -385,11 +403,13 @@ function LeadCombobox({
 function DispatchForm({
   projects,
   onDispatched,
-  onCancel
+  onCancel,
+  onRequestAddQuestions
 }: {
   projects: { id: string; name: string }[];
   onDispatched: () => void;
   onCancel: () => void;
+  onRequestAddQuestions: (projectId: string) => void;
 }): JSX.Element {
   const [projectId, setProjectId] = useState('');
   const [expertId, setExpertId] = useState('');
@@ -523,8 +543,21 @@ function DispatchForm({
             </div>
           )}
           {!questionsPreview.isLoading && previewQuestions.length === 0 && (
-            <div className="px-3 py-3 text-xs text-slate-400 text-center">
-              No screening questions configured for this project. Add questions first.
+            <div className="flex flex-col items-center gap-3 px-3 py-4 text-center">
+              <p className="text-xs text-slate-500 max-w-md">
+                No screening questions configured for this project. Add at least one question before you can dispatch.
+              </p>
+              <Button
+                type="button"
+                onClick={() => onRequestAddQuestions(projectId)}
+                className="inline-flex items-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-base">add</span>
+                Add screening questions
+              </Button>
+              <p className="text-[11px] text-slate-400">
+                Opens the Screening Questions editor below with a new question ready to type.
+              </p>
             </div>
           )}
           {previewQuestions.length > 0 && (
@@ -727,6 +760,7 @@ export default function ScreeningPage(): JSX.Element {
   const [filterStatus, setFilterStatus] = useState<ScreeningStatus | ''>('');
   const [showDispatch, setShowDispatch] = useState(false);
   const [editingRecord, setEditingRecord] = useState<ScreeningRecord | null>(null);
+  const [questionsAutoOpenSignal, setQuestionsAutoOpenSignal] = useState(0);
 
   const projectsQuery = useQuery({
     queryKey: ['projects'],
@@ -780,6 +814,20 @@ export default function ScreeningPage(): JSX.Element {
 
   const projectName = projectsQuery.data?.find((p) => p.id === selectedProjectId)?.name;
 
+  useEffect(() => {
+    if (questionsAutoOpenSignal === 0) return;
+    const t = window.setTimeout(() => {
+      document.getElementById('screening-questions-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [questionsAutoOpenSignal, selectedProjectId]);
+
+  const handleRequestAddQuestionsFromDispatch = useCallback((projectId: string) => {
+    setSelectedProjectId(projectId);
+    setShowDispatch(false);
+    setQuestionsAutoOpenSignal((n) => n + 1);
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Edit modal */}
@@ -815,6 +863,7 @@ export default function ScreeningPage(): JSX.Element {
             void queryClient.invalidateQueries({ queryKey });
           }}
           onCancel={() => setShowDispatch(false)}
+          onRequestAddQuestions={handleRequestAddQuestionsFromDispatch}
         />
       )}
 
@@ -850,7 +899,9 @@ export default function ScreeningPage(): JSX.Element {
       </Card>
 
       {/* Questions management */}
-      {selectedProjectId && <QuestionsPanel projectId={selectedProjectId} />}
+      {selectedProjectId && (
+        <QuestionsPanel projectId={selectedProjectId} autoOpenAddSignal={questionsAutoOpenSignal} />
+      )}
 
       {/* Status summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
