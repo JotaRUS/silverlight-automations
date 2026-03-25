@@ -78,6 +78,35 @@ describe('ScreeningService', () => {
     expect(screeningResponseCreateMock).toHaveBeenCalledTimes(2);
   });
 
+  it('uses LINKEDIN expert contact when dispatch channel is LINKEDIN', async () => {
+    const prisma = createPrismaMock();
+    const expertContactFindFirst = prisma.expertContact.findFirst as unknown as ReturnType<typeof vi.fn>;
+    (prisma.screeningQuestion.findMany as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'q1', displayOrder: 1, prompt: 'Q?' }
+    ]);
+    (prisma.expert.findUnique as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'expert-1' });
+    (prisma.screeningResponse.findFirst as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (prisma.screeningResponse.create as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    expertContactFindFirst.mockResolvedValue({ value: 'urn:li:person:abc' });
+
+    const service = new ScreeningService(prisma);
+    (service as unknown as { outreachService: { sendMessage: () => Promise<void> } }).outreachService = {
+      sendMessage: vi.fn().mockResolvedValue(undefined)
+    };
+
+    await service.dispatchScreening({
+      projectId: 'project-1',
+      expertId: 'expert-1',
+      channel: 'LINKEDIN'
+    });
+
+    expect(expertContactFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ type: 'LINKEDIN' })
+      })
+    );
+  });
+
   it('records response and triggers project completion recalculation', async () => {
     const prisma = createPrismaMock();
     const systemEventCreateMock = vi.fn();

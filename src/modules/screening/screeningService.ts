@@ -1,4 +1,10 @@
-import type { Channel, PrismaClient } from '@prisma/client';
+import type { Channel, ContactType, PrismaClient } from '@prisma/client';
+
+function contactTypeForScreeningDispatch(channel: Channel): ContactType {
+  if (channel === 'EMAIL') return 'EMAIL';
+  if (channel === 'LINKEDIN') return 'LINKEDIN';
+  return 'PHONE';
+}
 
 import { getRequestContext } from '../../core/http/requestContext';
 import { logger } from '../../core/logging/logger';
@@ -46,7 +52,7 @@ export class ScreeningService {
       return { sent: 0, delivered: 0, deliveryErrors: 0 };
     }
 
-    const contactType = channel === 'EMAIL' ? 'EMAIL' : 'PHONE';
+    const contactType = contactTypeForScreeningDispatch(channel);
     const recipientContact = await this.prismaClient.expertContact.findFirst({
       where: { expertId: input.expertId, deletedAt: null, type: contactType },
       orderBy: { isPrimary: 'desc' }
