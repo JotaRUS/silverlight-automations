@@ -136,6 +136,14 @@ pm2 start dist/workers/server.js --name worker
 pm2 start dist/scheduler/server.js --name scheduler
 ```
 
+If the PM2 apps get into a bad state (one `errored` while others run, or starting them one-by-one makes things worse), start every saved process together:
+
+```bash
+pm2 start all
+```
+
+After editing `.env`, PM2 does not reload variables unless you use `--update-env` (for example `pm2 restart all --update-env`).
+
 Build and start frontend (production mode):
 
 ```bash

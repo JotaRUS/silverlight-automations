@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 
 import { Card } from '@/components/ui/card';
 
-import { providerGuideDocBySlug, providerGuideDocs } from '../providerGuides';
+import { providerGuideDocBySlug } from '../providerGuides';
 
 interface ProviderGuidePageProps {
   params: {
@@ -11,9 +11,8 @@ interface ProviderGuidePageProps {
   };
 }
 
-export function generateStaticParams(): Array<{ providerSlug: string }> {
-  return providerGuideDocs.map((doc) => ({ providerSlug: doc.slug }));
-}
+/** Avoid build-time static prerender under the client `admin` layout (React dispatcher / useState error). */
+export const dynamic = 'force-dynamic';
 
 export default function ProviderGuidePage({ params }: ProviderGuidePageProps): JSX.Element {
   const doc = providerGuideDocBySlug[params.providerSlug];
