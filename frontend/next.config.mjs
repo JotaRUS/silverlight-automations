@@ -11,6 +11,8 @@ const nextConfig = {
   turbopack: {
     root: __dirname
   },
+  // Proxies browser calls from the Next origin (e.g. :3001) to Express (:3000). Requires API running locally.
+  // Dev uses `next dev --webpack` so rewrites apply reliably; see README quick start.
   async rewrites() {
     return [
       {

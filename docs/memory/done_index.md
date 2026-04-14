@@ -14,6 +14,7 @@ Mark deliverables as completed here so we don't repeat work. One entry per deliv
 
 <!-- Add new entries at the top -->
 
+- **2026-04-14**: Frontend dev: `next dev --webpack -p 3001` so `/api/v1` rewrites proxy reliably; README notes API must run on :3000 for login.
 - **2026-04-14**: `FIRST_DEPLOYMENT_AND_MAINTENANCE.md`: added nano/vim steps for editing `.env` on Ubuntu.
 - **2026-04-14**: Deployment doc: PM2 API entry corrected to `dist/app/server.js` (matches `package.json` / `tsc` output; `dist/api/` was stale).
 - **2026-04-01**: Supply chain review: no `axios`, `plain-crypto-js`, or vulnerable axios versions (`1.14.1`, `0.30.4`) in lockfiles or repo; no remediation pin required for this codebase.

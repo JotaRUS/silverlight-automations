@@ -14,6 +14,8 @@ Deterministic, queue-driven expert sourcing and outreach backend.
    - Scheduler: `npm run dev:scheduler`
    - Frontend: `npm run dev:frontend`
 
+The frontend dev server (port **3001**) rewrites `/api/v1/*` and `/socket.io/*` to the backend (`BACKEND_ORIGIN`, default **http://localhost:3000**). **Run the API** before signing in; otherwise the browser may show errors like `Request failed (404)` because the proxy has nothing to forward to. The dev script uses `--webpack` so those rewrites behave reliably with Next.js 16 (Turbopack is the default bundler and can mishandle rewrites in some setups).
+
 ## Validation commands
 
 - `npm run typecheck`

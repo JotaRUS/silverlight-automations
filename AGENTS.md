@@ -41,7 +41,7 @@ The API uses cookie-based JWT auth. To call protected endpoints:
 
 - Docker runs inside a Firecracker VM; you need `fuse-overlayfs` storage driver and `iptables-legacy`. See daemon config at `/etc/docker/daemon.json`.
 - The `.env` file must exist with valid `JWT_SECRET` and `PROVIDER_ENCRYPTION_SECRET` (32+ chars). Copy from `.env.example` and replace the placeholder values.
-- `frontend/next.config.mjs` includes a rewrite rule proxying `/api/v1/*` to `http://localhost:3000/api/v1/*` for local dev so the frontend can talk to the backend.
+- `frontend/next.config.mjs` rewrites `/api/v1/*` to the Express API (`BACKEND_ORIGIN`, default `http://localhost:3000`). **Start `npm run dev` (API) before using the UI** or login may show `Request failed (404)`. Frontend dev uses `next dev --webpack` so rewrites work reliably under Next.js 16.
 - Integration tests (`npm run test:integration`) require live PostgreSQL and Redis.
 
 ### Step 3 — Update memory (end of task)
