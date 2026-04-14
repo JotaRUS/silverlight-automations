@@ -127,31 +127,47 @@ Install PM2 (global install usually needs sudo):
 sudo npm install -g pm2
 ```
 
-Build and start backend:
+Build backend and frontend (production):
+
+```bash
+npm run build
+cd frontend
+npm run build
+cd ..
+```
+
+Start everything with one **ecosystem file** (recommended: correct `cwd` per app so `.env` and `dist/` paths resolve; avoids half the “everything errored” cases from wrong working directory):
+
+```bash
+cd <repo-folder>
+pm2 start ecosystem.config.cjs
+```
+
+Or start processes manually (must run `api` / `worker` / `scheduler` from the **repo root**, not from `frontend/`):
 
 ```bash
 npm run build
 pm2 start dist/app/server.js --name api
 pm2 start dist/workers/server.js --name worker
 pm2 start dist/scheduler/server.js --name scheduler
-```
-
-If the PM2 apps get into a bad state (one `errored` while others run, or starting them one-by-one makes things worse), start every saved process together:
-
-```bash
-pm2 start all
-```
-
-After editing `.env`, PM2 does not reload variables unless you use `--update-env` (for example `pm2 restart all --update-env`).
-
-Build and start frontend (production mode):
-
-```bash
-cd frontend
-npm run build
+cd frontend && npm run build && cd ..
 pm2 start npm --name frontend -- run start
-cd ..
 ```
+
+**About `pm2 start all`:** it only **restarts whatever is already saved** in PM2’s dump (`pm2 save`). It does **not** fix crash loops. If apps flip to `errored` seconds after looking `online`, the cause is usually **the process exiting** (bad env, DB/Redis down, validation errors) or the **Linux OOM killer** on small-RAM hosts when Docker + several Node processes run together—not a PM2 “sync” issue.
+
+When things look stuck:
+
+```bash
+pm2 logs api --lines 80 --nostream
+pm2 logs worker --lines 80 --nostream
+sudo dmesg -T | tail -80
+free -h
+```
+
+If `dmesg` shows “Out of memory” / “Killed process”, add **swap** or reduce concurrent services / container memory limits.
+
+After editing `.env`, reload env into PM2: `pm2 restart all --update-env` (or delete and `pm2 start ecosystem.config.cjs` again).
 
 Persist PM2 across reboots:
 

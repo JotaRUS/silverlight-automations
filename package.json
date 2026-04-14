@@ -15,6 +15,7 @@
     "start": "node dist/app/server.js",
     "start:worker": "node dist/workers/server.js",
     "start:scheduler": "node dist/scheduler/server.js",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "prisma:generate": "prisma generate",

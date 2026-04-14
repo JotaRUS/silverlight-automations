@@ -16,6 +16,10 @@ Record new learnings here so the same insights can be reused and we save tokens.
 
 <!-- Add new entries at the top -->
 
+- **Topic**: PM2 `start all` vs crash loops.
+- **What we learned**: `pm2 start all` only restarts the saved process list; it does not fix exits or OOM. Use explicit `cwd` (ecosystem file or start from repo root), `pm2 logs <name>`, `dmesg` for OOM, `pm2 restart all --update-env` after `.env` edits.
+- **When**: 2026-04.
+
 - **Topic**: Next.js `/_global-error` prerender `useContext` / `useState` null.
 - **What we learned**: Known Next 15/16 issue when the **root** `layout.tsx` wraps children in client providers. Move providers to a route-group layout (e.g. `app/(app)/layout.tsx`) so the root layout stays server-only; keep a minimal `global-error.tsx` with `<html>/<body>`. Force `NODE_ENV=production` for `next build` if the shell inherits a non-standard `NODE_ENV` from `.env`.
 - **When**: 2026-04.
