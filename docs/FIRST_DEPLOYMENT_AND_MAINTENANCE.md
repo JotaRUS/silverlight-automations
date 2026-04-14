@@ -58,6 +58,13 @@ Edit `.env` and set real values (minimum):
 - `JWT_SECRET`
 - `PROVIDER_ENCRYPTION_SECRET`
 
+**How to edit `.env` on Ubuntu (SSH or local terminal)**
+
+From the project folder (where `.env` lives), use an editor in the terminal:
+
+- **nano** (simplest): `nano .env` — move with arrow keys; edit the lines you need. **Save:** `Ctrl+O`, then `Enter` to confirm the filename. **Exit:** `Ctrl+X`. If it asks to save unsaved changes, press `Y` then `Enter`.
+- **vim** (if you prefer): `vim .env` — press `i` to insert, edit, then `Esc`, type `:wq`, `Enter` to save and quit (`:q!` quits without saving).
+
 Generate secure secrets:
 
 ```bash
@@ -124,7 +131,7 @@ Build and start backend:
 
 ```bash
 npm run build
-pm2 start dist/api/server.js --name api
+pm2 start dist/app/server.js --name api
 pm2 start dist/workers/server.js --name worker
 pm2 start dist/scheduler/server.js --name scheduler
 ```
