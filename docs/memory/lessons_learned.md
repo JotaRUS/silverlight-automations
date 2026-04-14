@@ -16,6 +16,10 @@ Record new learnings here so the same insights can be reused and we save tokens.
 
 <!-- Add new entries at the top -->
 
+- **Topic**: Next.js `/_global-error` prerender `useContext` / `useState` null.
+- **What we learned**: Known Next 15/16 issue when the **root** `layout.tsx` wraps children in client providers. Move providers to a route-group layout (e.g. `app/(app)/layout.tsx`) so the root layout stays server-only; keep a minimal `global-error.tsx` with `<html>/<body>`. Force `NODE_ENV=production` for `next build` if the shell inherits a non-standard `NODE_ENV` from `.env`.
+- **When**: 2026-04.
+
 - **Topic**: Next.js build `Cannot read properties of null (reading 'useState')` on admin help provider guide pages.
 - **What we learned**: `generateStaticParams` + build-time prerender of a server page nested under a **client** `admin` layout can trip React during static generation. Use `export const dynamic = 'force-dynamic'` on that segment (or avoid SSG for that tree).
 - **When**: 2026-04.

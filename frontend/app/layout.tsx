@@ -1,11 +1,7 @@
 import type { Metadata } from 'next';
 import type { PropsWithChildren } from 'react';
-import { Toaster } from 'sonner';
-
-import { AuthProvider } from '@/hooks/useAuth';
 
 import './globals.css';
-import { AppProviders } from './providers';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://silverlight-automations.siblingssoftware.com.ar';
 
@@ -40,6 +36,10 @@ export const metadata: Metadata = {
   }
 };
 
+/**
+ * Keep this layout free of client providers (Auth, React Query, etc.).
+ * Those live in `app/(app)/layout.tsx` so `/_global-error` prerender does not run hooks with a null dispatcher (Next.js 16 + root client providers).
+ */
 export default function RootLayout({ children }: PropsWithChildren): JSX.Element {
   return (
     <html lang="en">
@@ -53,12 +53,7 @@ export default function RootLayout({ children }: PropsWithChildren): JSX.Element
           rel="stylesheet"
         />
       </head>
-      <body className="font-display">
-        <AppProviders>
-          <AuthProvider>{children}</AuthProvider>
-          <Toaster position="top-center" richColors />
-        </AppProviders>
-      </body>
+      <body className="font-display">{children}</body>
     </html>
   );
 }
