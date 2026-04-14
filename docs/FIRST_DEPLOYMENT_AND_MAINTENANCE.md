@@ -71,6 +71,8 @@ Generate secure secrets:
 openssl rand -hex 32
 ```
 
+If the API logs `JWT_SECRET` / `PROVIDER_ENCRYPTION_SECRET` “must contain at least 32 character(s)” but `.env` looks correct, something in the environment may be **overriding** the file (empty or short `JWT_SECRET` from an old shell export or systemd). The app loads `.env` with **override** so values in `.env` win; also check: `env | grep -E '^JWT_|^PROVIDER_'` before starting PM2, and use `pm2 restart all --update-env` after editing `.env`.
+
 ## 4) Start Postgres and Redis
 
 ```bash

@@ -1,7 +1,8 @@
 import { config as loadEnv } from 'dotenv';
 import { z } from 'zod';
 
-loadEnv();
+// Prefer values from `.env` over pre-set process.env (PM2/systemd/shell may export empty or stale JWT_*).
+loadEnv({ override: true });
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
