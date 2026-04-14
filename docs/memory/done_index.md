@@ -14,6 +14,7 @@ Mark deliverables as completed here so we don't repeat work. One entry per deliv
 
 <!-- Add new entries at the top -->
 
+- **2026-04-14**: `frontend/app/global-error.tsx`: inline styles only (no Tailwind) so UI works if root layout/CSS did not load.
 - **2026-04-14**: `dotenv` now uses `override: true` so `.env` wins over stale `JWT_SECRET` / secrets in the outer environment (fixes PM2 Zod JWT_SECRET errors when the file was correct); deployment doc + `error_patterns.md`.
 - **2026-04-14**: PM2: added repo-root `ecosystem.config.cjs` + `npm run pm2:start`; deployment doc clarifies `pm2 start all` does not fix crashes, points to logs/OOM/`--update-env`.
 - **2026-04-14**: Frontend: root `app/layout.tsx` is server-only; `AuthProvider` / React Query / Toaster moved to `app/(app)/layout.tsx` so `/_global-error` build prerender avoids `useContext` null. `npm run build` uses `NODE_ENV=production` to silence Next non-standard NODE_ENV warning.
